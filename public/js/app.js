@@ -76,6 +76,12 @@
   // GPSタイムアウト（ミリ秒）。plan.md 4節の「8〜10秒案」を踏まえ10秒に設定。
   const GPS_TIMEOUT_MS = 10000;
 
+  // 粗い位置（Wi-Fi/セルタワーベース、enableHighAccuracy:false）用の短いタイムアウト。
+  // 2026-09-17ユーザー指示: 高精度GPSの初回取得は数秒〜10秒かかることがあるため、
+  // まず粗い位置で素早く暫定表示し、高精度の結果が届き次第正確な結果に差し替える
+  // 段階的取得を導入した（initGpsLocation()参照）。
+  const GPS_FAST_TIMEOUT_MS = 5000;
+
   // 近傍バス停の取得件数（横スワイプで2番目以降まで使う）。当初3件固定
   // だったが、ユーザー指摘「反対側もあるし3つだとちょっと少ないかも」を受け
   // 5件に増やした(2026-09-14)。道路の反対側(逆方向)のバス停も別エントリとして
@@ -2614,7 +2620,7 @@
     loadBusArrivals(nearestStop.BusStopCode);
   }
 
-  // GPS取得のエントリーポイント。成功/拒否/タイムアウト/非対応を分岐する。
+  // ネイティブアプリ(Capacitor)/Web両対応の位置情報取得ラッパー。
   //
   // 2026-09-16実機(TestFlight)で発見・修正: ネイティブアプリ(Capacitor)内で
   // 標準のnavigator.geolocationを使うと、WKWebView内蔵のWebKitレベルの権限
@@ -2627,67 +2633,96 @@
   // ダイアログ（"SGBusNavi" Would Like to Use Your Location）になる。
   // Web版(PWA、bus.willoa.net)ではCapacitorのプラグインは存在しないため、
   // 従来通りnavigator.geolocationを使う（window.Capacitorの有無で分岐）。
+  // どちらの経路でもエラーは{message: 'denied'|'disabled'|'unavailable'|'timeout'|...}
+  // 形式に正規化し、呼び出し元でメッセージ分岐を1箇所に共通化できるようにする。
+  function isNativeGeoAvailable() {
+    return Boolean(
+      window.Capacitor &&
+        window.Capacitor.isNativePlatform &&
+        window.Capacitor.isNativePlatform() &&
+        window.Capacitor.Plugins &&
+        window.Capacitor.Plugins.Geolocation
+    );
+  }
+
+  function getCurrentCoords(options) {
+    if (isNativeGeoAvailable()) {
+      return window.Capacitor.Plugins.Geolocation.getCurrentPosition(options).then(
+        (position) => position.coords
+      );
+    }
+
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => resolve(position.coords),
+        (error) => {
+          // error.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
+          // POSITION_UNAVAILABLE は「このサイトへの許可」ではなく「端末の位置情報サービス自体がオフ」の
+          // ケースで発生することが多い（iOS Safari等）。許可拒否と区別して設定変更を明示的に促す。
+          let code = 'unavailable';
+          if (error.code === error.PERMISSION_DENIED) code = 'denied';
+          else if (error.code === error.TIMEOUT) code = 'timeout';
+          reject(new Error(code));
+        },
+        { maximumAge: 0, ...options }
+      );
+    });
+  }
+
+  function buildGpsErrorMessage(error) {
+    const msg = (error && error.message) || '';
+    if (/denied/i.test(msg)) {
+      return 'Location access was denied. Please allow location access in your device Settings.';
+    } else if (/disabled|unavailable/i.test(msg)) {
+      return 'Location Services appear to be turned off. Please turn on Location Services in your device Settings.';
+    } else if (/timeout/i.test(msg)) {
+      return 'Getting your location timed out. Please check your signal and try again.';
+    }
+    return 'Unable to get your location.';
+  }
+
+  // GPS取得のエントリーポイント。
+  //
+  // 2026-09-17ユーザー指示による段階的取得: 高精度GPS(enableHighAccuracy:true)の
+  // 初回取得は数秒〜10秒かかることがある（特に高層ビルの多いシンガポールの屋内）。
+  // このアプリの核心機能（最寄りバス停の自動検出）は精度が命のため常に高精度取得を
+  // 使い続けるが、それと並行してWi-Fi/セルタワーベースの粗い位置(速いが精度は低い)も
+  // 同時にリクエストし、どちらか早く届いた方で先に暫定表示する。高精度の結果が
+  // 後から届いた時点で、ユーザーがまだ最寄りバス停（0番目）を見ている場合のみ
+  // 正確な結果に差し替える（既に2番目以降のバス停に手動でスワイプ/タップ済みの
+  // 場合は、表示を勝手に0番目へ戻して驚かせないよう上書きしない）。
   async function initGpsLocation() {
     renderGpsLoadingState();
 
-    const isNativeApp = Boolean(
-      window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()
-    );
-
-    if (isNativeApp && window.Capacitor.Plugins && window.Capacitor.Plugins.Geolocation) {
-      try {
-        const position = await window.Capacitor.Plugins.Geolocation.getCurrentPosition({
-          enableHighAccuracy: true,
-          timeout: GPS_TIMEOUT_MS,
-        });
-        const { latitude, longitude } = position.coords;
-        loadNearbyStopsAndArrivals(latitude, longitude);
-      } catch (error) {
-        const msg = (error && error.message) || '';
-        let message = 'Unable to get your location.';
-        if (/denied/i.test(msg)) {
-          message = 'Location access was denied. Please allow location access in your device Settings.';
-        } else if (/disabled|unavailable/i.test(msg)) {
-          message = 'Location Services appear to be turned off. Please turn on Location Services in your device Settings.';
-        } else if (/timeout/i.test(msg)) {
-          message = 'Getting your location timed out. Please check your signal and try again.';
-        }
-        showGpsFallback(message);
-      }
-      return;
-    }
-
-    if (!('geolocation' in navigator)) {
-      // 位置情報API非対応ブラウザ
+    if (!isNativeGeoAvailable() && !('geolocation' in navigator)) {
       showGpsFallback('Your browser does not support location services.');
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        loadNearbyStopsAndArrivals(latitude, longitude);
-      },
-      (error) => {
-        // error.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
-        // POSITION_UNAVAILABLE は「このサイトへの許可」ではなく「端末の位置情報サービス自体がオフ」の
-        // ケースで発生することが多い（iOS Safari等）。許可拒否と区別して設定変更を明示的に促す。
-        let message = 'Unable to get your location.';
-        if (error.code === error.PERMISSION_DENIED) {
-          message = 'Location access was denied for this site. Please allow location access in your browser settings.';
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          message = 'Location Services appear to be turned off. Please turn on Location Services in your device Settings.';
-        } else if (error.code === error.TIMEOUT) {
-          message = 'Getting your location timed out. Please check your signal and try again.';
-        }
-        showGpsFallback(message);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: GPS_TIMEOUT_MS,
-        maximumAge: 0,
-      }
-    );
+    let shownAnyLocation = false;
+
+    // 粗い位置（速いが精度は低い）。失敗しても高精度側の結果を待てばよいため、
+    // ここでのエラーはフォールバック表示せず黙って無視する。
+    getCurrentCoords({ enableHighAccuracy: false, timeout: GPS_FAST_TIMEOUT_MS })
+      .then((coords) => {
+        if (shownAnyLocation) return; // 高精度側が先に届いていれば何もしない
+        shownAnyLocation = true;
+        loadNearbyStopsAndArrivals(coords.latitude, coords.longitude);
+      })
+      .catch(() => {
+        // 粗い位置の取得失敗は無視（高精度側の結果を待つ）
+      });
+
+    // 高精度（GPS）。こちらが本命の正確な結果。
+    try {
+      const coords = await getCurrentCoords({ enableHighAccuracy: true, timeout: GPS_TIMEOUT_MS });
+      if (shownAnyLocation && currentStopIndex !== 0) return; // ユーザーが既に他のバス停を見ている場合は上書きしない
+      shownAnyLocation = true;
+      loadNearbyStopsAndArrivals(coords.latitude, coords.longitude);
+    } catch (error) {
+      if (shownAnyLocation) return; // 粗い位置で既に何か表示できていれば高精度側の失敗は無視してよい
+      showGpsFallback(buildGpsErrorMessage(error));
+    }
   }
 
   /* ══════════════════════════════════════════════
