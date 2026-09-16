@@ -4157,13 +4157,29 @@
       window.location.reload();
     });
 
+    let swRegistration = null;
+
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js').then((registration) => {
+        swRegistration = registration;
         // ページを開いたまま長時間放置されているケースに備え、明示的に更新確認も行う。
         registration.update();
       }).catch((err) => {
         console.error('Service Workerの登録に失敗しました:', err);
       });
+    });
+
+    // 2026-09-17実機で発見: iOS(WebKit)のホーム画面追加PWA(standalone)は、
+    // アプリを完全に閉じて再度開いた場合でも'load'イベント自体が発火しない
+    // （前回セッションのページがバックグラウンドから復帰するだけの扱いになる）
+    // ケースがあり、その場合sw.jsの更新確認自体が長期間まったく走らず、
+    // CACHE_VERSIONを上げても実機に反映されない不具合があった(ユーザー指摘
+    // 「Web版は直ってないね」)。visibilitychangeでアプリがフォアグラウンドに
+    // 戻るたびにも明示的な更新確認を行うことで、この抜け穴を塞ぐ。
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && swRegistration) {
+        swRegistration.update();
+      }
     });
   }
 })();
