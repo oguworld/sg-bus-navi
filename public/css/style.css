@@ -218,7 +218,14 @@ button {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 14px 0 4px;
+  /* 2026-09-17実機(iOSネイティブアプリ)で発見・修正: env(safe-area-inset-top)
+     を考慮していなかったため、Capacitorの`contentInset: 'never'`設定
+     （キーボード表示時のビューポート固着バグ対策で採用済み、CLAUDE.md参照）と
+     組み合わさると、ヘッダーがステータスバー・ノッチの下に潜り込んで
+     時計・バッテリー表示と重なって見えていた(ユーザー指摘「上に上がりすぎてる」)。
+     経路モーダルヘッダー(.route-modal-header)で先に採用済みの
+     calc(既存値 + env(safe-area-inset-top))パターンをHome画面ヘッダーにも適用。 */
+  padding: calc(14px + env(safe-area-inset-top)) 0 4px;
 }
 
 /* Saved/Settings画面の.saved-header-titleと統一するための画面タイトル
@@ -993,7 +1000,9 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 14px 14px 10px;
+  /* 2026-09-17: .app-header(Home画面)と同じ理由でSaved/Settings画面にも
+     safe-area-inset-top対応を適用（ユーザー指摘「ヘッダーが上に上がりすぎてる」）。 */
+  padding: calc(14px + env(safe-area-inset-top)) 14px 10px;
 }
 
 .saved-header-title {
