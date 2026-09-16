@@ -66,6 +66,30 @@ app.post('/api/client-error', (req, res) => {
 });
 
 /* ══════════════════════════════════════════════
+ * CORS（iOSネイティブアプリ/Capacitorからのクロスオリジンfetch許可）
+ *
+ * 2026-09-16実機(TestFlight)で発見・修正: ネイティブアプリはCapacitorの
+ * webDir設定により静的アセットをアプリバンドル内にローカル同梱しており、
+ * WebViewのoriginはbus.willoa.netではなくcapacitor://localhost（iOS）になる。
+ * public/js/app.jsのfetch呼び出しをAPI_BASE（絶対URL）に修正しても、
+ * サーバー側でこのオリジンをCORS許可していなければブラウザ側でレスポンスが
+ * ブロックされる（「Getting your location…」から進まずGPS取得自体は成功して
+ * いるのに後続の/api/bus-stops/nearby呼び出しが全滅する不具合の原因）。
+ * sg-weekend-app（server.js）と同じ許可オリジンリストを踏襲する。
+ * ══════════════════════════════════════════════ */
+const ALLOWED_ORIGINS = ['capacitor://localhost', 'ionic://localhost', 'http://localhost'];
+app.use('/api', (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+/* ══════════════════════════════════════════════
  * レート制限
  *
  * 2026-09-14実機テストで発見: 従来は/api/*全体に一律30リクエスト/分を適用して

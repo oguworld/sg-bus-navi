@@ -20,6 +20,25 @@
   'use strict';
 
   /* ══════════════════════════════════════════════
+   * ネイティブアプリ(Capacitor)判定とAPIベースURL
+   *
+   * 2026-09-16実機(TestFlight)で発見・修正: ネイティブアプリはCapacitorの
+   * webDir設定により静的アセットをアプリバンドル内にローカル同梱している
+   * (server.urlを指定していないため)。そのためWebViewのoriginは実サーバー
+   * (bus.willoa.net)ではなくcapacitor://localhost相当のローカルオリジンになり、
+   * fetch('/api/...')のような相対パスは実サーバーではなくこのローカル
+   * オリジンに対して発行されてしまい、必ず失敗する(ユーザー指摘「位置情報取れない」
+   * →実際はGPS取得自体は成功しており、後続の/api/bus-stops/nearby呼び出しが
+   * 全滅していたのが真因だった)。SG在住Navi（sg-weekend-app/public/app.js
+   * の_isCapacitorApp/API_BASE）と同じパターンで、ネイティブアプリ内では
+   * 本番オリジンを明示的に絶対URLとして先頭に付与する。
+   * ══════════════════════════════════════════════ */
+  const _isCapacitorApp = Boolean(
+    window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()
+  );
+  const API_BASE = _isCapacitorApp ? 'https://bus.willoa.net' : '';
+
+  /* ══════════════════════════════════════════════
    * 一時デバッグ用: クライアント側エラー・トレースをサーバーに送信する
    * （2026-09-13、目的地保存が実機でのみ再現する不具合の原因究明用。
    *   jsdomでのシミュレーションでは再現できなかったため、実機の実際の
@@ -29,9 +48,9 @@
     try {
       const payload = JSON.stringify({ context, detail, ts: new Date().toISOString(), href: location.href });
       if (navigator.sendBeacon) {
-        navigator.sendBeacon('/api/client-error', new Blob([payload], { type: 'application/json' }));
+        navigator.sendBeacon(API_BASE + '/api/client-error', new Blob([payload], { type: 'application/json' }));
       } else {
-        fetch('/api/client-error', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
+        fetch(API_BASE + '/api/client-error', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
       }
     } catch (e) {
       // 送信自体の失敗は握りつぶす（デバッグ用の仕組みがアプリ本体に影響してはならない）
@@ -520,7 +539,7 @@
     async function fetchDirection(direction) {
       const fromParam = fromStopCode ? `&fromStopCode=${encodeURIComponent(fromStopCode)}` : '';
       const response = await fetch(
-        `/api/bus-routes/summary?serviceNo=${encodeURIComponent(serviceNo)}&direction=${direction}${fromParam}`
+        API_BASE + `/api/bus-routes/summary?serviceNo=${encodeURIComponent(serviceNo)}&direction=${direction}${fromParam}`
       );
       if (!response.ok) return null;
       return response.json();
@@ -562,7 +581,7 @@
     try {
       const stopCodesParam = destinationStopCodes.join(',');
       const response = await fetch(
-        `/api/bus-routes/contains-stop?serviceNo=${encodeURIComponent(serviceNo)}` +
+        API_BASE + `/api/bus-routes/contains-stop?serviceNo=${encodeURIComponent(serviceNo)}` +
           `&direction=${direction}&stopCodes=${encodeURIComponent(stopCodesParam)}` +
           `&fromStopCode=${encodeURIComponent(fromStopCode || '')}`
       );
@@ -702,7 +721,7 @@
         }
 
         const pathResponse = await fetch(
-          `/api/bus-routes/path?serviceNo=${encodeURIComponent(number)}` +
+          API_BASE + `/api/bus-routes/path?serviceNo=${encodeURIComponent(number)}` +
             `&direction=${encodeURIComponent(summary.direction)}` +
             `&fromStopCode=${encodeURIComponent(currentStopCode)}` +
             `&toStopCode=${encodeURIComponent(destinationStopCode)}`
@@ -904,7 +923,7 @@
       // fromStopCode（現在地）を渡し、まだ通過していない（現在地以降にある）
       // 目的地のみを一致対象とする。
       const response = await fetch(
-        `/api/bus-routes/contains-stop?serviceNo=${encodeURIComponent(serviceNo)}` +
+        API_BASE + `/api/bus-routes/contains-stop?serviceNo=${encodeURIComponent(serviceNo)}` +
           `&direction=${summary.direction}&stopCodes=${encodeURIComponent(stopCodesParam)}` +
           `&fromStopCode=${encodeURIComponent(currentStopCode)}`
       );
@@ -1256,7 +1275,7 @@
       }
 
       const response = await fetch(
-        `/api/bus-routes/path?serviceNo=${encodeURIComponent(serviceNo)}` +
+        API_BASE + `/api/bus-routes/path?serviceNo=${encodeURIComponent(serviceNo)}` +
           `&direction=${encodeURIComponent(direction)}` +
           `&fromStopCode=${encodeURIComponent(currentStopCode)}` +
           `&toStopCode=${encodeURIComponent(destinationStopCode)}`
@@ -1989,7 +2008,7 @@
     clearServiceRouteInfoCache();
 
     try {
-      const response = await fetch(`/api/bus-arrival?stopCode=${encodeURIComponent(stopCode)}`);
+      const response = await fetch(API_BASE + `/api/bus-arrival?stopCode=${encodeURIComponent(stopCode)}`);
 
       if (!response.ok) {
         // サーバー側は { error: '...' } 形式の汎用メッセージを返す想定。
@@ -2172,7 +2191,7 @@
   async function pollBusArrivals(stopCode) {
     let response;
     try {
-      response = await fetch(`/api/bus-arrival?stopCode=${encodeURIComponent(stopCode)}`);
+      response = await fetch(API_BASE + `/api/bus-arrival?stopCode=${encodeURIComponent(stopCode)}`);
     } catch (err) {
       return; // ネットワークエラー時は次回ポーリングに委ねる（画面は変更しない）
     }
@@ -2549,7 +2568,7 @@
     let response;
     try {
       response = await fetch(
-        `/api/bus-stops/nearby?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}&limit=${NEARBY_LIMIT}`
+        API_BASE + `/api/bus-stops/nearby?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}&limit=${NEARBY_LIMIT}`
       );
     } catch (err) {
       // ネットワークエラー等でサーバーに到達できない場合
@@ -2792,7 +2811,7 @@
     const versionLabel = document.getElementById('settings-version-label');
     if (!versionLabel) return;
     try {
-      const res = await fetch('/api/version');
+      const res = await fetch(API_BASE + '/api/version');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       versionLabel.textContent = data.version ? `v${data.version}` : '—';
@@ -2819,7 +2838,7 @@
     sendBtn.textContent = 'Sending…';
 
     try {
-      const res = await fetch('/api/feedback', {
+      const res = await fetch(API_BASE + '/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message }),
@@ -3527,7 +3546,7 @@
     if (!stopServiceNumbersCache.has(stopCode)) {
       stopServiceNumbersCache.set(
         stopCode,
-        fetch(`/api/bus-stops/${encodeURIComponent(stopCode)}/services`)
+        fetch(API_BASE + `/api/bus-stops/${encodeURIComponent(stopCode)}/services`)
           .then((res) => (res.ok ? res.json() : { services: [] }))
           .then((data) => (Array.isArray(data.services) ? data.services : []))
           .catch(() => [])
@@ -3709,7 +3728,7 @@
 
     let response;
     try {
-      response = await fetch(`/api/bus-services/${encodeURIComponent(serviceNo)}/stops`);
+      response = await fetch(API_BASE + `/api/bus-services/${encodeURIComponent(serviceNo)}/stops`);
     } catch (err) {
       if (token !== routeStopsRequestToken) return;
       renderRouteStopsMessage('Search failed. Please check your connection.');
@@ -3825,7 +3844,7 @@
     let response;
     try {
       response = await fetch(
-        `/api/bus-stops/nearby?lat=${currentDisplayedStop.Latitude}&lng=${currentDisplayedStop.Longitude}` +
+        API_BASE + `/api/bus-stops/nearby?lat=${currentDisplayedStop.Latitude}&lng=${currentDisplayedStop.Longitude}` +
           `&limit=${NEARBY_DESTINATION_SUGGESTION_LIMIT}`
       );
     } catch (err) {
@@ -3870,7 +3889,7 @@
 
     let response;
     try {
-      response = await fetch(`/api/bus-stops/search?q=${encodeURIComponent(query)}`);
+      response = await fetch(API_BASE + `/api/bus-stops/search?q=${encodeURIComponent(query)}`);
     } catch (err) {
       if (token !== destinationStopRequestToken) return;
       renderDestinationStopMessage('Search failed. Please check your connection.');
@@ -3956,11 +3975,12 @@
    * ヘッダー・app-shell・html/bodyのposition/overflow/heightは一切変更しない。
    *
    * SG在住Naviとの相違点:
-   * - SG在住Naviは_isCapacitorApp（window.Capacitor?.isNativePlatform?.()）で
-   *   ネイティブアプリ起動を判定するが、SGBusNaviはCapacitor非対応のPWAのみ
-   *   のため、window.matchMedia('(display-mode: standalone)').matches ||
-   *   window.navigator.standalone === true で「ホーム画面に追加したPWAとして
-   *   起動しているか（スタンドアロン起動）」を判定する。
+   * - SGBusNaviも2026-09-16以降Capacitorネイティブアプリに対応した(_isCapacitorApp
+   *   は本ファイル冒頭で定義、API_BASEの判定に使用)が、PTRの起動判定自体は
+   *   window.matchMedia('(display-mode: standalone)').matches ||
+   *   window.navigator.standalone === true のままにしている（「ホーム画面に
+   *   追加したPWAとして起動しているか」の判定であり、ネイティブアプリ内での
+   *   PTR有効化は別途未検証・未対応）。
    * - 2026-09-13、Home画面のヘッダー（タイトル・バス停ピル行）を固定表示にする
    *   刷新に伴い、SGBusNaviもSG在住Naviと同じ専用overflow:autoスクロール
    *   コンテナ（#home-scroll-content）を持つ構造に変更した。これにより
