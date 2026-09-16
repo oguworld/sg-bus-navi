@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#6F8F63">
+  <title>SGBusNavi</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" href="/icons/favicon.png">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- 2026-09-13: 視認性重視でInterに変更（フォント比較モック提示のうえユーザー確定指示） -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- ═══════════ Home画面 ═══════════ -->
+    <section class="screen visible" id="screen-home">
+
+      <!-- 2026-09-13デザイン刷新: SG在住Naviのカテゴリフィルターピル(.filter-chip)を
+           参考に、バス停切替UIをドット+スワイプからピル型タブに変更し、ヘッダー全体
+           （タイトル・ピル行）をスクロールに対して固定表示にした（ユーザー指示）。
+           バスカード一覧側だけがスクロールする専用コンテナ(#home-scroll-content)を
+           持つ構造は、姉妹アプリの#home-scroll-content構造と統一している
+           （initPullToReflesh参照、window.scrollY方式から変更済み）。 -->
+      <header class="app-header">
+        <div class="app-header-title-row">
+          <div class="app-header-title">Arrivals</div>
+          <div class="app-header-actions">
+            <button type="button" class="filter-toggle" id="filter-toggle" aria-pressed="false">
+              <i class="ti ti-star" aria-hidden="true"></i>
+              <span>Relevant only</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- バス停ピル行: nearbyStops.length に応じて app.js（buildStopPillRow）が
+             動的に生成する。GPS取得前の初期表示用に1件だけ静的配置している。 -->
+        <div class="stop-pill-row" id="stop-pill-row" role="tablist" aria-label="Nearest bus stops">
+          <button type="button" class="stop-pill stop-pill--active" role="tab" aria-selected="true">Opp The Nexus</button>
+        </div>
+      </header>
+
+      <div class="home-scroll-content" id="home-scroll-content">
+
+        <!-- Pull to Refresh インジケーター（フェーズ5第8-2節）。PWAスタンドアロン起動時のみ
+             有効化される（_initPtr内で判定）。height/opacityのみJSで操作する。 -->
+        <div class="ptr-indicator" id="ptr-indicator-home"><div class="ptr-spinner"></div></div>
+
+        <!-- GPS取得失敗時のフォールバックUI（通常は非表示。app.jsがdisplayを切り替える） -->
+        <div class="gps-fallback" id="gps-fallback" hidden>
+          <i class="ti ti-map-pin-off" aria-hidden="true"></i>
+          <p class="gps-fallback-title" id="gps-fallback-title">Unable to get your location</p>
+          <p class="gps-fallback-message" id="gps-fallback-message">
+            Allow location access for this site in your settings, and the nearest bus stop will be shown automatically.
+          </p>
+        </div>
+
+        <!-- バスカードはapp.js（buildBusCard）が/api/bus-arrivalの実データから動的生成する。
+             以下は#bus-card-listがJavaScript実行前後の一瞬に表示されうる静的プレースホルダー
+             （GPS取得完了後、loadBusArrivals()がcontainer.innerHTMLを上書きする）。
+             マークアップ・クラス名はbuildBusCard()が生成する実カードと同一にしてある
+             （フェーズ4 タスク分解ステップ2、.claude/plan.md 第2-2節〜第2-4節）。 -->
+        <div class="bus-card-list" id="bus-card-list">
+
+          <!-- バスカード1: 目的地一致 -->
+          <div class="bus-card" data-route-from="Eunos Int" data-route-to="Bukit Merah Int" data-route-number="67">
+            <div class="bus-card-row">
+              <div class="bus-badge bus-badge--matched">
+                <span class="bus-badge-number">67</span>
+                <span class="bus-badge-match-icon bus-badge-match-icon--1" style="background: var(--category-color-lime); color: #FAFAF8;">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg>
+                </span>
+              </div>
+              <div class="bus-card-info">
+                <div class="bus-card-dest">
+                  <span class="bus-card-dest-name">Bukit Merah Int</span>
+                </div>
+              </div>
+              <div class="bus-card-eta">
+                <div class="eta-time-row">
+                  <div class="eta-icon-cluster">
+                    <div class="bus-card-vehicle-icon-wrap">
+                      <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20" role="img" aria-label="Single Deck · Seats available">
+                        <rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4"/>
+                        <rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                        <rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                        <rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div>
+                    <span class="eta-value now">Now</span>
+                    <span class="eta-unit">arriving</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="bus-card-actions">
+              <button type="button" class="bus-card-route-btn" aria-label="View route on map">
+                <i class="ti ti-route" aria-hidden="true"></i>
+                <span>Route</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- バスカード2: 通常 -->
+          <div class="bus-card" data-route-from="Opp The Nexus" data-route-to="Clementi Ave 6" data-route-number="74">
+            <div class="bus-card-row">
+              <div class="bus-badge">
+                <span class="bus-badge-number">74</span>
+                <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
+                <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
+              </div>
+              <div class="bus-card-info">
+                <div class="bus-card-dest">
+                  <span class="bus-card-dest-name">Clementi Ave 6</span>
+                </div>
+              </div>
+              <div class="bus-card-eta">
+                <div class="eta-time-row">
+                  <div class="eta-icon-cluster">
+                    <div class="bus-card-vehicle-icon-wrap">
+                      <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--double" viewBox="0 0 34 30" role="img" aria-label="Double Deck · Standing room">
+                        <rect x="1.5" y="1.5" width="31" height="27" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4"/>
+                        <rect x="4" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                        <rect x="13.5" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                        <rect x="23" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                        <rect x="4" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                        <rect x="13.5" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                        <rect x="23" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div>
+                    <span class="eta-value">2</span>
+                    <span class="eta-unit">min</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="bus-card-actions">
+              <button type="button" class="bus-card-route-btn" aria-label="View route on map">
+                <i class="ti ti-route" aria-hidden="true"></i>
+                <span>Route</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- バスカード3: 通常 -->
+          <div class="bus-card" data-route-from="Opp The Nexus" data-route-to="Toa Payoh Int" data-route-number="151">
+            <div class="bus-card-row">
+              <div class="bus-badge">
+                <span class="bus-badge-number">151</span>
+                <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
+                <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
+              </div>
+              <div class="bus-card-info">
+                <div class="bus-card-dest">
+                  <span class="bus-card-dest-name">Toa Payoh Int</span>
+                </div>
+              </div>
+              <div class="bus-card-eta">
+                <div class="eta-time-row">
+                  <div class="eta-icon-cluster">
+                    <div class="bus-card-vehicle-icon-wrap">
+                      <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20" role="img" aria-label="Single Deck · Seats available">
+                        <rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4"/>
+                        <rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                        <rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                        <rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div>
+                    <span class="eta-value">4</span>
+                    <span class="eta-unit">min</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="bus-card-actions">
+              <button type="button" class="bus-card-route-btn" aria-label="View route on map">
+                <i class="ti ti-route" aria-hidden="true"></i>
+                <span>Route</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ Saved画面（目的地登録） ═══════════ -->
+    <section class="screen" id="screen-saved">
+
+      <div class="saved-header">
+        <div class="saved-header-title">Bus Stops</div>
+        <button type="button" class="saved-add-btn" id="destination-add-btn">
+          <i class="ti ti-map-pin-plus" aria-hidden="true"></i>
+          <span>Add Bus Stop</span>
+        </button>
+      </div>
+
+      <div id="destination-list" class="destination-list"></div>
+
+    </section>
+
+    <!-- ═══════════ Settings画面 ═══════════ -->
+    <section class="screen" id="screen-settings">
+
+      <div class="saved-header">
+        <div class="saved-header-title">Settings</div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Profile</div>
+        <div class="settings-item">
+          <span class="settings-item-label">Nickname</span>
+          <input type="text" id="settings-nickname-input" class="settings-item-input" maxlength="20" placeholder="Anonymous">
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">App Settings</div>
+        <div class="settings-item">
+          <span class="settings-item-label">Dark mode</span>
+          <button type="button" class="settings-pill-btn" id="settings-dark-mode-btn">
+            <span id="settings-dark-mode-label">Off</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Website/Contact/Privacy Policyは実URL未確定のため行だけ用意しタップ不可にする
+           （2026-09-13ユーザー指示。URL確定後は.settings-item--disabledを外しhrefを設定する） -->
+      <!-- 2026-09-16ユーザー指摘「アプリの中からウェブサイトやプライバシー
+           ポリシーを開いたとき、戻るボタンがなくて元のアプリに戻れない」対応。
+           ホーム画面追加のPWA(standalone表示)はブラウザの戻るボタン自体が
+           存在しないため、target="_blank"での別タブ起動に頼るのは不安定
+           （iOSのstandalone表示からのtarget="_blank"は新規タブとして確実に
+           分離されるとは限らない）。Website/Privacy Policyはtarget="_blank"を
+           外し同一ウィンドウ内遷移にしたうえで、遷移先ページ自体
+           （public/about.htmlの「Open App →」、willoa.net側の
+           privacy-policyページの明示的な戻りリンク）に確実な戻り導線を
+           用意する方針に統一した。Stripe決済リンク(Support the app)は
+           決済フローという性質上target="_blank"のまま維持する。 -->
+      <div class="settings-section">
+        <div class="settings-section-title">Support &amp; Info</div>
+        <a href="/about" class="settings-item" id="settings-website-link">
+          <span class="settings-item-label">Website</span>
+          <i class="ti ti-chevron-right" aria-hidden="true"></i>
+        </a>
+        <a href="#" class="settings-item settings-item--disabled" id="settings-contact-link" tabindex="-1">
+          <span class="settings-item-label">Contact</span>
+          <i class="ti ti-chevron-right" aria-hidden="true"></i>
+        </a>
+        <a href="https://willoa.net/privacy-policy/en" class="settings-item" id="settings-privacy-link">
+          <span class="settings-item-label">Privacy Policy</span>
+          <i class="ti ti-chevron-right" aria-hidden="true"></i>
+        </a>
+        <div class="settings-item">
+          <span class="settings-item-label">Version</span>
+          <span class="settings-item-value" id="settings-version-label">-</span>
+        </div>
+        <div class="settings-item">
+          <span class="settings-item-label">Share with friends</span>
+          <button type="button" class="settings-pill-btn" id="settings-share-btn">
+            <i class="ti ti-share" aria-hidden="true"></i>
+            <span>Share</span>
+          </button>
+        </div>
+        <!-- 寄付リンク（2026-09-15ユーザー指示「応援する機能...SG在住Naviを参考に
+             つけてほしい」）。sg-weekend-appと同じStripe決済リンクをそのまま
+             流用する（ユーザー選択「SG在住Naviと同じStripeリンクを使い回す」、
+             同じ運営会社WILLOA PTE. LTD.宛のため新規Payment Link作成は不要と判断）。 -->
+        <a href="https://buy.stripe.com/28EfZ9eN56aZaEEbmY4c800" class="settings-item" id="settings-support-link" target="_blank" rel="noopener">
+          <span class="settings-item-label">Support the app</span>
+          <span class="settings-pill-btn">
+            <i class="ti ti-heart" aria-hidden="true"></i>
+            <span>Donate</span>
+          </span>
+        </a>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Feedback</div>
+        <div class="settings-item settings-item--column">
+          <textarea id="settings-feedback-text" class="settings-feedback-textarea" maxlength="2000" placeholder="Bug reports, feature requests, anything is welcome!"></textarea>
+          <button type="button" class="settings-feedback-send-btn" id="settings-feedback-send-btn">Send</button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ═══════════ ボトムナビ ═══════════ -->
+    <nav class="bottom-nav">
+      <button type="button" class="bottom-nav-item active" data-screen="home">
+        <span class="nav-icon"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4 16c0 .7.3 1.3.8 1.7V19a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h8v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1.3c.5-.4.8-1 .8-1.7V7c0-2.5-2.4-3-8.6-3S4 4.5 4 7Zm3 1.5A1.5 1.5 0 1 1 7 15a1.5 1.5 0 0 1 0 3Zm10 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3ZM6 12V7h12v5Z"/></svg></span>
+        <span>Arrivals</span>
+      </button>
+      <button type="button" class="bottom-nav-item" data-screen="saved">
+        <span class="nav-icon"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5 L14.9 8.6 L21.6 9.5 L16.8 14.1 L18 20.8 L12 17.6 L6 20.8 L7.2 14.1 L2.4 9.5 L9.1 8.6 Z"/></svg></span>
+        <span>Bus Stops</span>
+      </button>
+      <button type="button" class="bottom-nav-item" data-screen="settings">
+        <span class="nav-icon"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><circle cx="15" cy="6" r="2.2" fill="currentColor" stroke="none"/><circle cx="8" cy="12" r="2.2" fill="currentColor" stroke="none"/><circle cx="17" cy="18" r="2.2" fill="currentColor" stroke="none"/></svg></span>
+        <span>Settings</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- ═══════════ 経路モーダル ═══════════ -->
+  <div class="route-modal-overlay" id="route-modal-overlay">
+    <div class="route-modal" role="dialog" aria-modal="true" aria-labelledby="route-modal-title">
+
+      <div class="route-modal-header">
+        <div class="bus-badge" id="route-modal-badge">
+          <span class="bus-badge-number" id="route-modal-badge-number">67</span>
+          <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
+          <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
+        </div>
+        <div class="route-modal-title" id="route-modal-title">Eunos Int → Bukit Merah Int</div>
+        <button type="button" class="route-modal-close" id="route-modal-close" aria-label="Close">
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <div class="route-modal-map">
+        <div id="route-modal-status" class="route-modal-status-container"></div>
+        <div id="route-modal-map-el" class="route-modal-map-el" hidden></div>
+      </div>
+
+      <!-- 実際に停車する全てのバス停を停車順に表示するリスト（2026-09-14ユーザー
+           指示「下の3/1はバス停のリストを止まる順に表示してほしい」で、従来の
+           MRT駅・登録済み目的地のみのハイライトリストから置き換えた） -->
+      <div class="route-modal-stop-list" id="route-modal-stop-list" hidden></div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════ 目的地登録モーダル（系統/バス停/地図の3タブ） ═══════════ -->
+  <div class="destination-map-modal-overlay" id="destination-map-modal-overlay">
+    <div class="destination-map-modal" role="dialog" aria-modal="true" aria-labelledby="destination-map-modal-title">
+
+      <div class="destination-map-modal-header">
+        <div class="destination-map-modal-title" id="destination-map-modal-title">Add Bus Stop</div>
+        <button type="button" class="destination-map-modal-close" id="destination-map-modal-close" aria-label="Close">
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <!-- タブ切替（セグメントコントロール、filter-toggleのaria-pressedパターンを踏襲）。
+           By Mapタブは「分かりにくい」との指摘により廃止済み（2026-09-14ユーザー指示）。 -->
+      <div class="destination-tabs" role="tablist">
+        <button type="button" class="destination-tab" id="destination-tab-route" role="tab" aria-selected="true" data-tab="route">By Route</button>
+        <button type="button" class="destination-tab" id="destination-tab-stop" role="tab" aria-selected="false" data-tab="stop">By Bus Stop</button>
+      </div>
+
+      <!-- タブ1: 系統から選ぶ -->
+      <div class="destination-tab-panel" id="destination-panel-route" data-panel="route">
+        <div class="destination-panel-input">
+          <i class="ti ti-route" aria-hidden="true"></i>
+          <input type="text" id="destination-route-input" class="destination-panel-input-field" placeholder="Enter a service number (e.g. 67)" autocomplete="off" inputmode="numeric">
+        </div>
+        <div class="destination-panel-list" id="destination-route-list"></div>
+
+        <!-- 近隣バス停候補: 検索ボックスが空の時のみ表示する（2026-09-14ユーザー指示
+             「Near byは検索ボックスに何も入力がないときだけでいい。何か入力されたら
+             その検索結果を優先して表示して」により、常時表示から条件付き表示に変更）。 -->
+        <div class="destination-nearby-section" id="destination-route-nearby-section">
+          <div class="destination-result-section-label">Nearby bus stops</div>
+          <div class="destination-panel-list" id="destination-route-nearby-list"></div>
+        </div>
+      </div>
+
+      <!-- タブ2: バス停から選ぶ（既存/api/bus-stops/searchを流用） -->
+      <div class="destination-tab-panel" id="destination-panel-stop" data-panel="stop" hidden>
+        <div class="destination-panel-input">
+          <i class="ti ti-search" aria-hidden="true"></i>
+          <input type="search" id="destination-stop-input" class="destination-panel-input-field" placeholder="Search by stop name or number" autocomplete="off">
+        </div>
+        <div class="destination-panel-list" id="destination-stop-list"></div>
+
+        <!-- 近隣バス停候補: 検索ボックスが空の時のみ表示する（2026-09-14ユーザー指示、上記参照） -->
+        <div class="destination-nearby-section" id="destination-stop-nearby-section">
+          <div class="destination-result-section-label">Nearby bus stops</div>
+          <div class="destination-panel-list" id="destination-stop-nearby-list"></div>
+        </div>
+      </div>
+
+
+    </div>
+  </div>
+
+  <!-- ═══════════ シェアシート（Settings画面「Share」ボタンで展開） ═══════════
+       姉妹アプリsg-weekend-appのQR共有シート(#qr-share-sheet)を参考にした
+       ボトムシート。QRコードのリンク先はネイティブアプリが未リリースのため、
+       当面はWeb版URL(bus.willoa.net)に固定する（2026-09-14ユーザー指示
+       「QRコードのURLはまだWeb版のURLでいいです」）。 -->
+  <div class="share-sheet-overlay" id="share-sheet-overlay">
+    <div class="share-sheet" role="dialog" aria-modal="true" aria-labelledby="share-sheet-title">
+      <div class="share-sheet-header">
+        <div class="share-sheet-title" id="share-sheet-title">Share SGBusNavi</div>
+        <button type="button" class="share-sheet-close" id="share-sheet-close" aria-label="Close">
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="share-sheet-qr" id="share-sheet-qr"></div>
+      <div class="share-sheet-desc">Scan this QR code to open SGBusNavi</div>
+      <!-- QRコード下のリンク行（2026-09-15ユーザー指示「シェアするときのQR
+           コードの下も、SG在住Naviのコードを参照する形でアップデートして」
+           対応。sg-weekend-appのQR共有シート(#qr-share-sheet)にある
+           アプリ/紹介ページ/X等のアイコンリンク行を参考にした。SGBusNaviは
+           ネイティブアプリ未リリースのため、現時点ではSettings画面の
+           「Website」と同じ紹介ページ(/about)のみをリンクする。 -->
+      <div class="share-sheet-links">
+        <a href="/about" class="share-sheet-link">
+          <i class="ti ti-world" aria-hidden="true"></i>
+          <span>Website</span>
+        </a>
+      </div>
+      <button type="button" class="share-sheet-btn" id="share-sheet-share-btn">
+        <i class="ti ti-share" aria-hidden="true"></i>
+        <span>Share</span>
+      </button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- QRコード生成（Settings画面のシェアシート用。ローカルバンドル、app.jsより先に読み込む。
+       姉妹アプリsg-weekend-appと同じ自作依存のないMITライセンスライブラリを流用） -->
+  <script src="/qrcode-generator.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

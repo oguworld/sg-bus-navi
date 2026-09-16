@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Card layout patterns</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="https://bus.willoa.net/css/style.css">
+<style>
+  body {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 20px 14px 60px;
+    background: var(--surface-2);
+  }
+  .pattern-label {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 32px 0 6px;
+  }
+  .pattern-note {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+    line-height: 1.5;
+  }
+  .pattern-label:first-of-type { margin-top: 0; }
+
+  /* ---- Pattern A: vehicle info back near header, Route isolated alone ---- */
+  .card-a .bus-card-info-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .card-a .bus-card-info-row .bus-card-vehicle-icon-wrap { width: 28px; height: 22px; }
+  .card-a .bus-card-actions-solo {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
+
+  /* ---- Pattern B: matching divider + vehicle info as a distinct chip ---- */
+  .card-b .bus-card-bottom-divider {
+    border-top: 0.5px solid var(--border);
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  .card-b .bus-card-vehicle-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 5px 10px;
+  }
+
+  /* ---- Pattern C: route band unifies waypoints + action ---- */
+  .card-c .bus-card-route-band {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 0.5px solid var(--border);
+  }
+  .card-c .bus-card-route-band .bus-card-mini-route {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    margin: 0;
+  }
+  .card-c .bus-card-mini-route-tags { flex-wrap: nowrap; overflow: hidden; }
+  .card-c .bus-card-route-band .bus-card-route-btn { flex-shrink: 0; }
+  .card-c .bus-card-vehicle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .card-c .bus-card-vehicle-icon-wrap { width: 28px; height: 22px; }
+</style>
+</head>
+<body>
+
+<h1 style="font-size:20px;">Card layout patterns — comparison</h1>
+
+<div class="pattern-label">Current (production, for reference)</div>
+<div class="bus-card-list">
+  <div class="bus-card">
+    <div class="bus-card-row">
+      <div class="bus-badge">57</div>
+      <div class="bus-card-info">
+        <div class="bus-card-dest"><span class="bus-card-dest-name">Bishan Int</span></div>
+      </div>
+      <div class="bus-card-eta">
+        <span class="eta-value">1</span>
+        <span class="eta-unit">min</span>
+        <div class="eta-next">Next: 23 min</div>
+      </div>
+    </div>
+    <div class="bus-card-mini-route">
+      <div class="bus-card-mini-route-caption">Passes these MRT stations</div>
+      <div class="bus-card-mini-route-tags">
+        <span class="bus-card-mini-route-tag" style="color:#FA9E0D;">Opp Telok Blangah Stn</span>
+        <span class="bus-card-mini-route-tag" style="color:#009645;">Tanjong Pagar Stn Exit C</span>
+      </div>
+    </div>
+    <div class="bus-card-actions">
+      <div class="bus-card-meta-row">
+        <div class="bus-card-wab-tag" aria-label="Wheelchair accessible"><i class="ti ti-wheelchair"></i></div>
+        <div class="bus-card-vehicle-icon-wrap">
+          <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20">
+            <rect x="1" y="1" width="38" height="18" rx="6" fill="var(--bus-icon-body)"/>
+            <rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+            <rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+            <rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+          </svg>
+        </div>
+      </div>
+      <button type="button" class="bus-card-route-btn"><i class="ti ti-route"></i><span>Route</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Pattern A ============ -->
+<div class="pattern-label">Pattern A — Vehicle info back in the header, Route alone at bottom</div>
+<div class="pattern-note">
+  車種・混雑度・車椅子対応は「今来るバスは何か」を表す一目情報なので、行き先の下に戻して headline group にまとめる。
+  MRT経由地はその下の独立したブロック。一番下は Route ボタンだけの単独行にして、"情報"と"操作"を完全に分ける。
+</div>
+<div class="bus-card-list">
+  <div class="bus-card card-a">
+    <div class="bus-card-row">
+      <div class="bus-badge">57</div>
+      <div class="bus-card-info">
+        <div class="bus-card-dest"><span class="bus-card-dest-name">Bishan Int</span></div>
+        <div class="bus-card-info-row">
+          <div class="bus-card-vehicle-icon-wrap">
+            <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20">
+              <rect x="1" y="1" width="38" height="18" rx="6" fill="var(--bus-icon-body)"/>
+              <rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+              <rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+              <rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+            </svg>
+          </div>
+          <div class="bus-card-wab-tag" aria-label="Wheelchair accessible" style="position:static;"><i class="ti ti-wheelchair"></i></div>
+        </div>
+      </div>
+      <div class="bus-card-eta">
+        <span class="eta-value">1</span>
+        <span class="eta-unit">min</span>
+        <div class="eta-next">Next: 23 min</div>
+      </div>
+    </div>
+    <div class="bus-card-mini-route">
+      <div class="bus-card-mini-route-caption">Passes these MRT stations</div>
+      <div class="bus-card-mini-route-tags">
+        <span class="bus-card-mini-route-tag" style="color:#FA9E0D;">Opp Telok Blangah Stn</span>
+        <span class="bus-card-mini-route-tag" style="color:#009645;">Tanjong Pagar Stn Exit C</span>
+      </div>
+    </div>
+    <div class="bus-card-actions-solo">
+      <button type="button" class="bus-card-route-btn"><i class="ti ti-route"></i><span>Route</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Pattern B ============ -->
+<div class="pattern-label">Pattern B — Current position、ただし区切り線を揃えてチップ化</div>
+<div class="pattern-note">
+  位置は現行案(右下)のまま。ただしMRTブロックとの間に区切り線を足してリズムを揃え、車種＋車椅子を1枚のチップ(枠+背景)にまとめて
+  「情報のかたまり」と「Routeボタン(操作)」を視覚的にはっきり分離する。
+</div>
+<div class="bus-card-list">
+  <div class="bus-card card-b">
+    <div class="bus-card-row">
+      <div class="bus-badge">57</div>
+      <div class="bus-card-info">
+        <div class="bus-card-dest"><span class="bus-card-dest-name">Bishan Int</span></div>
+      </div>
+      <div class="bus-card-eta">
+        <span class="eta-value">1</span>
+        <span class="eta-unit">min</span>
+        <div class="eta-next">Next: 23 min</div>
+      </div>
+    </div>
+    <div class="bus-card-mini-route">
+      <div class="bus-card-mini-route-caption">Passes these MRT stations</div>
+      <div class="bus-card-mini-route-tags">
+        <span class="bus-card-mini-route-tag" style="color:#FA9E0D;">Opp Telok Blangah Stn</span>
+        <span class="bus-card-mini-route-tag" style="color:#009645;">Tanjong Pagar Stn Exit C</span>
+      </div>
+    </div>
+    <div class="bus-card-bottom-divider">
+      <div class="bus-card-actions" style="margin-top:0;">
+        <div class="bus-card-vehicle-chip">
+          <i class="ti ti-wheelchair" style="font-size:14px; color: var(--text-secondary);"></i>
+          <div class="bus-card-vehicle-icon-wrap" style="width:26px; height:20px;">
+            <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20">
+              <rect x="1" y="1" width="38" height="18" rx="6" fill="var(--bus-icon-body)"/>
+              <rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+              <rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+              <rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+            </svg>
+          </div>
+        </div>
+        <button type="button" class="bus-card-route-btn"><i class="ti ti-route"></i><span>Route</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Pattern C ============ -->
+<div class="pattern-label">Pattern C — MRT経由地とRouteボタンを1本の帯に統合</div>
+<div class="pattern-note">
+  「経由地」と「経路を見る操作」はどちらも"ルート"の話なので同じ行にまとめ、情報のかたまりを3段→2段に減らす。
+  車種・車椅子はheadline側(行き先の下)に小さく添えるだけにして、最下段はRoute関連の帯1本に集約する。
+</div>
+<div class="bus-card-list">
+  <div class="bus-card card-c">
+    <div class="bus-card-row">
+      <div class="bus-badge">57</div>
+      <div class="bus-card-info">
+        <div class="bus-card-dest"><span class="bus-card-dest-name">Bishan Int</span></div>
+        <div class="bus-card-vehicle-row">
+          <div class="bus-card-vehicle-icon-wrap">
+            <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20">
+              <rect x="1" y="1" width="38" height="18" rx="6" fill="var(--bus-icon-body)"/>
+              <rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+              <rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+              <rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+            </svg>
+          </div>
+          <div class="bus-card-wab-tag" aria-label="Wheelchair accessible" style="position:static;"><i class="ti ti-wheelchair"></i></div>
+        </div>
+      </div>
+      <div class="bus-card-eta">
+        <span class="eta-value">1</span>
+        <span class="eta-unit">min</span>
+        <div class="eta-next">Next: 23 min</div>
+      </div>
+    </div>
+    <div class="bus-card-route-band">
+      <div class="bus-card-mini-route">
+        <div class="bus-card-mini-route-caption">Passes these MRT stations</div>
+        <div class="bus-card-mini-route-tags">
+          <span class="bus-card-mini-route-tag" style="color:#FA9E0D;">Opp Telok Blangah Stn</span>
+          <span class="bus-card-mini-route-tag" style="color:#009645;">Tanjong Pagar Stn Exit C</span>
+        </div>
+      </div>
+      <button type="button" class="bus-card-route-btn"><i class="ti ti-route"></i><span>Route</span></button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

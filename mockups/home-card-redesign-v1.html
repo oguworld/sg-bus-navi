@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SGBusNavi — Home Card Redesign v1 (mockup, not wired to app)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --cream: #FAFAF8; --warm-white: #FFFFFF; --sand: #EAEAE6; --sand-dark: #DCDCD6;
+    --caramel: #6F8F63; --caramel-pale: #EEF3EA;
+    --midnight: #2B2B27; --warm-gray: #767268; --light-gray: #A8A49A;
+    --radius-card: 24px; --shadow-card: 0 4px 18px rgba(43,43,39,0.08);
+    --font-heading: 'Noto Sans JP', sans-serif;
+    --surface-2: var(--cream); --surface-1: var(--warm-white);
+    --text-primary: var(--midnight); --text-secondary: var(--warm-gray); --text-muted: var(--light-gray);
+    --text-accent: var(--caramel); --bg-accent-muted: var(--caramel-pale); --fill-accent: var(--caramel);
+    --border: var(--sand); --border-accent: var(--caramel); --on-accent: var(--warm-white);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; font-family: var(--font-heading); }
+  body { background: var(--surface-2); color: var(--text-primary); padding: 24px 0 80px; }
+  .note { max-width: 480px; margin: 0 auto 20px; padding: 0 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+  .note b { color: var(--text-primary); }
+  .phone { max-width: 480px; margin: 0 auto; }
+  .header { display:flex; align-items:center; justify-content:space-between; padding: 4px 16px 14px; }
+  .header-stop { display:flex; align-items:center; gap:6px; font-size:15px; font-weight:500; }
+  .header-stop i { color: var(--text-accent); font-size:16px; }
+  .filter-pill { display:flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:999px; padding:7px 14px; font-size:14px; color:var(--text-secondary); }
+  .filter-pill i { font-size:13px; }
+
+  .feed { display:flex; flex-direction:column; gap:14px; padding: 0 16px; }
+
+  .feed-time-label { font-size:11px; color: var(--text-muted); letter-spacing:0.04em; padding: 6px 4px 0; text-transform:uppercase; }
+
+  /* ── 1件 = 1本のバス到着（フラットな時系列フィード） ── */
+  .arrival-card {
+    display:flex; align-items:center; gap:14px;
+    background: var(--surface-1);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    padding: 16px;
+  }
+  .arrival-card.match {
+    background: var(--bg-accent-muted);
+    border: 2px solid var(--border-accent);
+  }
+
+  .badge {
+    flex-shrink:0;
+    width:56px; height:56px;
+    border-radius:16px;
+    background: var(--surface-2);
+    display:flex; align-items:center; justify-content:center;
+    font-size:24px; font-weight:800;
+    color: var(--text-primary);
+  }
+  .match .badge {
+    background: var(--fill-accent);
+    color: var(--on-accent);
+  }
+
+  .info { flex:1; min-width:0; }
+  .dest-row { display:flex; align-items:center; gap:6px; }
+  .dest-name { font-size:19px; font-weight:700; line-height:1.25; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .star { font-size:14px; color:var(--text-accent); flex-shrink:0; }
+  .via { font-size:13px; color:var(--text-secondary); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .via i { font-size:11px; margin-right:3px; }
+
+  .eta { flex-shrink:0; text-align:right; }
+  .eta-value { font-size:15px; font-weight:600; color:var(--text-secondary); }
+  .eta-value.now { color: var(--caramel); }
+  .eta-unit { font-size:11px; color:var(--text-muted); display:block; }
+  .deck-icon { flex-shrink:0; opacity:0.55; margin-left:2px; }
+
+  .divider { text-align:center; font-size:11px; color:var(--text-muted); padding: 4px 0; }
+
+  h2.section { max-width:480px; margin: 40px auto 12px; padding:0 16px; font-size:15px; color:var(--text-secondary); border-top:1px solid var(--border); padding-top:20px; }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>Mockup v1 — 「フラット到着フィード」案。</b>実際のアプリには未反映（見た目確認用の独立ファイル）。<br>
+  変更点: (1) 1系統1カードで3本内包 → <b>1件=1本のバス到着</b>を時系列でフラットに並べる方式に変更（同じ系統が複数回出現しうる）。
+  (2) 系統番号バッジを最大化（電光掲示板を意識）。(3) 経由地を実データ化（現状は車種名が誤表示されているバグを修正）。
+  (4) 到着時刻は右側に小さく控えめに。(5) 目的地一致は背景色+枠線+星+バッジ配色の4点で強調。
+</div>
+
+<div class="phone">
+  <div class="header">
+    <div class="header-stop"><i class="ti ti-map-pin"></i> Opp The Nexus</div>
+    <div class="filter-pill"><i class="ti ti-star"></i> Relevant only</div>
+  </div>
+
+  <div class="feed">
+
+    <!-- 到着中 -->
+    <div class="arrival-card match">
+      <div class="badge">67</div>
+      <div class="info">
+        <div class="dest-row">
+          <span class="dest-name">Bukit Merah Int</span>
+          <i class="ti ti-star star"></i>
+        </div>
+        <div class="via"><i class="ti ti-route"></i>via Orchard, City Hall</div>
+      </div>
+      <div class="eta">
+        <span class="eta-value now">Now</span>
+        <span class="eta-unit">arriving</span>
+      </div>
+    </div>
+
+    <div class="arrival-card">
+      <div class="badge">74</div>
+      <div class="info">
+        <div class="dest-row"><span class="dest-name">Clementi Ave 6</span></div>
+        <div class="via"><i class="ti ti-route"></i>via Holland V</div>
+      </div>
+      <div class="eta">
+        <span class="eta-value">2</span>
+        <span class="eta-unit">min</span>
+      </div>
+    </div>
+
+    <div class="arrival-card match">
+      <div class="badge">67</div>
+      <div class="info">
+        <div class="dest-row">
+          <span class="dest-name">Bukit Merah Int</span>
+          <i class="ti ti-star star"></i>
+        </div>
+        <div class="via"><i class="ti ti-route"></i>via Orchard, City Hall</div>
+      </div>
+      <div class="eta">
+        <span class="eta-value">3</span>
+        <span class="eta-unit">min</span>
+      </div>
+    </div>
+
+    <div class="arrival-card">
+      <div class="badge">151</div>
+      <div class="info">
+        <div class="dest-row"><span class="dest-name">Toa Payoh Int</span></div>
+        <div class="via"><i class="ti ti-route"></i>via Newton</div>
+      </div>
+      <div class="eta">
+        <span class="eta-value">4</span>
+        <span class="eta-unit">min</span>
+      </div>
+    </div>
+
+    <div class="arrival-card">
+      <div class="badge">74</div>
+      <div class="info">
+        <div class="dest-row"><span class="dest-name">Clementi Ave 6</span></div>
+        <div class="via"><i class="ti ti-route"></i>via Holland V</div>
+      </div>
+      <div class="eta">
+        <span class="eta-value">7</span>
+        <span class="eta-unit">min</span>
+      </div>
+    </div>
+
+    <div class="arrival-card match">
+      <div class="badge">67</div>
+      <div class="info">
+        <div class="dest-row">
+          <span class="dest-name">Bukit Merah Int</span>
+          <i class="ti ti-star star"></i>
+        </div>
+        <div class="via"><i class="ti ti-route"></i>via Orchard, City Hall</div>
+      </div>
+      <div class="eta">
+        <span class="eta-value">15</span>
+        <span class="eta-unit">min</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<h2 class="section">別案: 現在の「1系統=1カード」構造を保ったまま、優先順位だけ入れ替える場合（参考比較用）</h2>
+<div class="phone">
+  <div class="feed">
+    <div class="arrival-card match">
+      <div class="badge">67</div>
+      <div class="info">
+        <div class="dest-row">
+          <span class="dest-name">Bukit Merah Int</span>
+          <i class="ti ti-star star"></i>
+        </div>
+        <div class="via"><i class="ti ti-route"></i>via Orchard, City Hall</div>
+      </div>
+      <div class="eta">
+        <span class="eta-value now">1</span>
+        <span class="eta-unit">min · 15 · 24</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

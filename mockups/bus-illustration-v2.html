@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGBusNavi — Bus illustration icon v2 (window color = crowding)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --warm-white: #FAFAF8;
+    --cream: #F4F1EA;
+    --caramel: #6F8F63;
+    --midnight: #2B2B27;
+    --warm-gray: #6B675F;
+    --sand-dark: #DCD6C8;
+    --load-green: #4C9A5B;
+    --load-amber: #C79A2E;
+    --load-red: #C0392B;
+    --bus-body: #6F8F63;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--cream); padding: 20px 14px 60px; color: var(--midnight); font-family: 'Inter', sans-serif; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .intro { font-size: 13px; color: var(--warm-gray); margin-bottom: 20px; line-height: 1.6; max-width: 420px; }
+  .section-title { max-width: 420px; margin: 24px auto 10px; font-size: 13px; font-weight: 800; color: var(--caramel); text-transform: uppercase; letter-spacing: 0.04em; }
+  .icon-row { max-width: 420px; margin: 0 auto; display: flex; gap: 18px; align-items: flex-end; flex-wrap: wrap; }
+  .icon-item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .icon-item span { font-size: 12px; color: var(--warm-gray); font-weight: 600; }
+  .icon-item svg { width: 52px; height: 40px; }
+
+  .cards { max-width: 420px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--warm-white); border: 0.5px solid var(--sand-dark); border-radius: 20px; padding: 14px; box-shadow: 0 2px 12px rgba(43,43,39,0.06); }
+  .row { display: flex; align-items: center; gap: 12px; }
+  .badge { flex-shrink: 0; width: 52px; height: 52px; border-radius: 14px; background: var(--cream); color: var(--midnight); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; }
+  .info { flex: 1; min-width: 0; }
+  .dest { font-size: 17px; font-weight: 700; }
+  .meta { font-size: 13px; color: var(--warm-gray); margin-top: 5px; display: flex; align-items: center; gap: 8px; }
+  .meta svg { width: 30px; height: 23px; flex-shrink: 0; }
+  .meta .wab { width: 15px; height: 15px; color: var(--warm-gray); }
+  .eta { text-align: right; flex-shrink: 0; }
+  .eta-value { font-size: 22px; font-weight: 800; }
+  .eta-value.now { color: var(--caramel); }
+  .eta-unit { font-size: 11px; color: var(--warm-gray); font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1>Bus illustration icon v2 — body stays themed, windows show crowding</h1>
+  <p class="intro">
+    Per feedback: a red/yellow bus body was too visually loud in the feed. In this version the bus body is
+    always the app's willow-green accent color (consistent, calm), and only the <b>window color</b> changes
+    (green/amber/red) to show crowding. Shape (single vs. double deck) still shows the vehicle type.
+  </p>
+
+  <div class="section-title">Single deck — 3 crowding levels</div>
+  <div class="icon-row">
+    <div class="icon-item">
+      <svg viewBox="0 0 48 32"><rect x="2" y="4" width="44" height="20" rx="8" fill="#6F8F63"/><rect x="6" y="8" width="9" height="8" rx="2" fill="#4C9A5B"/><rect x="17" y="8" width="9" height="8" rx="2" fill="#4C9A5B"/><rect x="28" y="8" width="9" height="8" rx="2" fill="#4C9A5B"/><circle cx="12" cy="27" r="4" fill="#2B2B27"/><circle cx="36" cy="27" r="4" fill="#2B2B27"/></svg>
+      <span>Seats available</span>
+    </div>
+    <div class="icon-item">
+      <svg viewBox="0 0 48 32"><rect x="2" y="4" width="44" height="20" rx="8" fill="#6F8F63"/><rect x="6" y="8" width="9" height="8" rx="2" fill="#C79A2E"/><rect x="17" y="8" width="9" height="8" rx="2" fill="#C79A2E"/><rect x="28" y="8" width="9" height="8" rx="2" fill="#C79A2E"/><circle cx="12" cy="27" r="4" fill="#2B2B27"/><circle cx="36" cy="27" r="4" fill="#2B2B27"/></svg>
+      <span>Standing room</span>
+    </div>
+    <div class="icon-item">
+      <svg viewBox="0 0 48 32"><rect x="2" y="4" width="44" height="20" rx="8" fill="#6F8F63"/><rect x="6" y="8" width="9" height="8" rx="2" fill="#C0392B"/><rect x="17" y="8" width="9" height="8" rx="2" fill="#C0392B"/><rect x="28" y="8" width="9" height="8" rx="2" fill="#C0392B"/><circle cx="12" cy="27" r="4" fill="#2B2B27"/><circle cx="36" cy="27" r="4" fill="#2B2B27"/></svg>
+      <span>Crowded</span>
+    </div>
+  </div>
+
+  <div class="section-title">Double deck — 3 crowding levels</div>
+  <div class="icon-row">
+    <div class="icon-item">
+      <svg viewBox="0 0 48 40"><rect x="2" y="2" width="44" height="30" rx="8" fill="#6F8F63"/><rect x="6" y="6" width="7" height="6" rx="1.5" fill="#4C9A5B"/><rect x="15" y="6" width="7" height="6" rx="1.5" fill="#4C9A5B"/><rect x="24" y="6" width="7" height="6" rx="1.5" fill="#4C9A5B"/><rect x="33" y="6" width="7" height="6" rx="1.5" fill="#4C9A5B"/><rect x="6" y="16" width="7" height="6" rx="1.5" fill="#4C9A5B"/><rect x="15" y="16" width="7" height="6" rx="1.5" fill="#4C9A5B"/><rect x="24" y="16" width="7" height="6" rx="1.5" fill="#4C9A5B"/><rect x="33" y="16" width="7" height="6" rx="1.5" fill="#4C9A5B"/><circle cx="12" cy="35" r="4" fill="#2B2B27"/><circle cx="36" cy="35" r="4" fill="#2B2B27"/></svg>
+      <span>Seats available</span>
+    </div>
+    <div class="icon-item">
+      <svg viewBox="0 0 48 40"><rect x="2" y="2" width="44" height="30" rx="8" fill="#6F8F63"/><rect x="6" y="6" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="15" y="6" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="24" y="6" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="33" y="6" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="6" y="16" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="15" y="16" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="24" y="16" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="33" y="16" width="7" height="6" rx="1.5" fill="#C79A2E"/><circle cx="12" cy="35" r="4" fill="#2B2B27"/><circle cx="36" cy="35" r="4" fill="#2B2B27"/></svg>
+      <span>Standing room</span>
+    </div>
+    <div class="icon-item">
+      <svg viewBox="0 0 48 40"><rect x="2" y="2" width="44" height="30" rx="8" fill="#6F8F63"/><rect x="6" y="6" width="7" height="6" rx="1.5" fill="#C0392B"/><rect x="15" y="6" width="7" height="6" rx="1.5" fill="#C0392B"/><rect x="24" y="6" width="7" height="6" rx="1.5" fill="#C0392B"/><rect x="33" y="6" width="7" height="6" rx="1.5" fill="#C0392B"/><rect x="6" y="16" width="7" height="6" rx="1.5" fill="#C0392B"/><rect x="15" y="16" width="7" height="6" rx="1.5" fill="#C0392B"/><rect x="24" y="16" width="7" height="6" rx="1.5" fill="#C0392B"/><rect x="33" y="16" width="7" height="6" rx="1.5" fill="#C0392B"/><circle cx="12" cy="35" r="4" fill="#2B2B27"/><circle cx="36" cy="35" r="4" fill="#2B2B27"/></svg>
+      <span>Crowded</span>
+    </div>
+  </div>
+
+  <div class="section-title">In context (real card layout)</div>
+  <div class="cards">
+    <div class="card">
+      <div class="row">
+        <div class="badge">67</div>
+        <div class="info">
+          <div class="dest">Choa Chu Kang Int</div>
+          <div class="meta">
+            <svg viewBox="0 0 48 32"><rect x="2" y="4" width="44" height="20" rx="8" fill="#6F8F63"/><rect x="6" y="8" width="9" height="8" rx="2" fill="#4C9A5B"/><rect x="17" y="8" width="9" height="8" rx="2" fill="#4C9A5B"/><rect x="28" y="8" width="9" height="8" rx="2" fill="#4C9A5B"/><circle cx="12" cy="27" r="4" fill="#2B2B27"/><circle cx="36" cy="27" r="4" fill="#2B2B27"/></svg>
+            <svg class="wab" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="17" r="4"/><circle cx="18" cy="17" r="1.2" fill="currentColor" stroke="none"/><path d="M8 17 L8 8 L14 8 M8 12 L15 12 L18 17"/></svg>
+          </div>
+        </div>
+        <div class="eta"><div class="eta-value now">Now</div><div class="eta-unit">arriving</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <div class="badge">972M</div>
+        <div class="info">
+          <div class="dest">Bt Panjang Int</div>
+          <div class="meta">
+            <svg viewBox="0 0 48 40"><rect x="2" y="2" width="44" height="30" rx="8" fill="#6F8F63"/><rect x="6" y="6" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="15" y="6" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="24" y="6" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="33" y="6" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="6" y="16" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="15" y="16" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="24" y="16" width="7" height="6" rx="1.5" fill="#C79A2E"/><rect x="33" y="16" width="7" height="6" rx="1.5" fill="#C79A2E"/><circle cx="12" cy="35" r="4" fill="#2B2B27"/><circle cx="36" cy="35" r="4" fill="#2B2B27"/></svg>
+          </div>
+        </div>
+        <div class="eta"><div class="eta-value">4</div><div class="eta-unit">min</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <div class="badge">74</div>
+        <div class="info">
+          <div class="dest">Buona Vista Ter</div>
+          <div class="meta">
+            <svg viewBox="0 0 48 32"><rect x="2" y="4" width="44" height="20" rx="8" fill="#6F8F63"/><rect x="6" y="8" width="9" height="8" rx="2" fill="#C0392B"/><rect x="17" y="8" width="9" height="8" rx="2" fill="#C0392B"/><rect x="28" y="8" width="9" height="8" rx="2" fill="#C0392B"/><circle cx="12" cy="27" r="4" fill="#2B2B27"/><circle cx="36" cy="27" r="4" fill="#2B2B27"/></svg>
+          </div>
+        </div>
+        <div class="eta"><div class="eta-value">2</div><div class="eta-unit">min</div></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

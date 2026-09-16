@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGBusNavi — Font comparison</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@500;700;800&family=Inter:wght@500;700;800&family=Manrope:wght@500;700;800&family=Work+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --warm-white: #FAFAF8;
+    --cream: #F4F1EA;
+    --caramel: #6F8F63;
+    --midnight: #2B2B27;
+    --warm-gray: #6B675F;
+    --sand-dark: #DCD6C8;
+    --load-green: #4C9A5B;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--cream);
+    padding: 24px 14px 60px;
+    color: var(--midnight);
+    font-family: 'Noto Sans JP', sans-serif;
+  }
+  h1 {
+    font-size: 18px;
+    margin: 0 0 4px;
+  }
+  .intro {
+    font-size: 13px;
+    color: var(--warm-gray);
+    margin-bottom: 24px;
+    line-height: 1.6;
+  }
+  .section {
+    max-width: 420px;
+    margin: 0 auto 36px;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--caramel);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+    padding-left: 2px;
+  }
+  .card {
+    background: var(--warm-white);
+    border: 0.5px solid var(--sand-dark);
+    border-radius: 20px;
+    padding: 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 2px 12px rgba(43,43,39,0.06);
+  }
+  .badge {
+    flex-shrink: 0;
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: var(--caramel);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 800;
+  }
+  .info { flex: 1; min-width: 0; }
+  .dest {
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .meta {
+    font-size: 13px;
+    color: var(--warm-gray);
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .meta .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--load-green);
+    display: inline-block;
+  }
+  .eta { text-align: right; flex-shrink: 0; }
+  .eta-value {
+    font-size: 26px;
+    font-weight: 800;
+  }
+  .eta-unit {
+    font-size: 12px;
+    color: var(--warm-gray);
+    font-weight: 600;
+  }
+  .stop-name {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 18px 2px 0;
+  }
+  footer {
+    max-width: 420px;
+    margin: 0 auto;
+    font-size: 12px;
+    color: var(--warm-gray);
+    line-height: 1.7;
+    padding-top: 8px;
+    border-top: 0.5px solid var(--sand-dark);
+  }
+</style>
+</head>
+<body>
+  <h1>Font comparison — SGBusNavi</h1>
+  <p class="intro">
+    Same content, 4 candidate fonts. Compare legibility of the bus number badge, destination name, and ETA at real card sizes.
+  </p>
+
+  <div class="section" style="font-family:'Noto Sans JP', sans-serif;">
+    <div class="section-title">1. Noto Sans JP (current)</div>
+    <div class="card">
+      <div class="badge">961M</div>
+      <div class="info">
+        <div class="dest">Woodlands Temp Int</div>
+        <div class="meta"><span class="dot"></span>Single Deck · Seats available</div>
+      </div>
+      <div class="eta"><div class="eta-value">17</div><div class="eta-unit">min</div></div>
+    </div>
+    <div class="stop-name">Opp The Nexus</div>
+  </div>
+
+  <div class="section" style="font-family:'Inter', sans-serif;">
+    <div class="section-title">2. Inter</div>
+    <div class="card">
+      <div class="badge">961M</div>
+      <div class="info">
+        <div class="dest">Woodlands Temp Int</div>
+        <div class="meta"><span class="dot"></span>Single Deck · Seats available</div>
+      </div>
+      <div class="eta"><div class="eta-value">17</div><div class="eta-unit">min</div></div>
+    </div>
+    <div class="stop-name">Opp The Nexus</div>
+  </div>
+
+  <div class="section" style="font-family:'Manrope', sans-serif;">
+    <div class="section-title">3. Manrope</div>
+    <div class="card">
+      <div class="badge">961M</div>
+      <div class="info">
+        <div class="dest">Woodlands Temp Int</div>
+        <div class="meta"><span class="dot"></span>Single Deck · Seats available</div>
+      </div>
+      <div class="eta"><div class="eta-value">17</div><div class="eta-unit">min</div></div>
+    </div>
+    <div class="stop-name">Opp The Nexus</div>
+  </div>
+
+  <div class="section" style="font-family:'Work Sans', sans-serif;">
+    <div class="section-title">4. Work Sans</div>
+    <div class="card">
+      <div class="badge">961M</div>
+      <div class="info">
+        <div class="dest">Woodlands Temp Int</div>
+        <div class="meta"><span class="dot"></span>Single Deck · Seats available</div>
+      </div>
+      <div class="eta"><div class="eta-value">17</div><div class="eta-unit">min</div></div>
+    </div>
+    <div class="stop-name">Opp The Nexus</div>
+  </div>
+
+  <div class="section" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+    <div class="section-title">5. System font (native OS font)</div>
+    <div class="card">
+      <div class="badge">961M</div>
+      <div class="info">
+        <div class="dest">Woodlands Temp Int</div>
+        <div class="meta"><span class="dot"></span>Single Deck · Seats available</div>
+      </div>
+      <div class="eta"><div class="eta-value">17</div><div class="eta-unit">min</div></div>
+    </div>
+    <div class="stop-name">Opp The Nexus</div>
+  </div>
+
+  <footer>
+    1: Current choice, matches sg-weekend-app branding exactly.<br>
+    2 Inter: very high legibility at small sizes, widely used in transit/UI apps, distinct digit shapes (helps tell "1" vs "l" vs "961M" style codes apart).<br>
+    3 Manrope: geometric/rounded, friendly tone, slightly less proven at very small sizes.<br>
+    4 Work Sans: similar to Inter but slightly narrower, good for long destination names in a single line.<br>
+    5 System font: zero download cost (already on device), and each OS's font is already tuned for that OS's legibility, but disagrees with sister app branding.
+  </footer>
+</body>
+</html>

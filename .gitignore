@@ -1,0 +1,23 @@
+.env
+node_modules/
+logs/
+*.log
+data/
+!data/.gitkeep
+.claude/*
+!.claude/plan.md
+!.claude/plan-phase1-initial-setup.md
+!.claude/plan-phase2-gps-search.md
+!.claude/plan-phase3-routes-destinations.md
+!.claude/plan-phase4-home-card-redesign.md
+
+# iOS署名関連（絶対にコミットしない）
+*.p12
+*.p12.b64
+*.pem
+*.key
+*.mobileprovision
+*.cer
+
+# ios-app/ios/ はCI上でnpx cap add iosにより毎回生成される（コミット対象外）
+ios-app/ios/

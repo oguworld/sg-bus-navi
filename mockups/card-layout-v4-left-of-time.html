@@ -1,0 +1,2064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Card layout patterns</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/*
+ * SGBusNavi — デザイントークン
+ *
+ * 姉妹プロジェクト SG在住Navi (sg-weekend-app) の
+ * public/app.css / public/css/about-shared.css の変数体系（柳グリーン配色）を
+ * ベースとしてそのまま踏襲する（CLAUDE.md / plan.md 9.5節 ユーザー決定事項）。
+ *
+ * 構成:
+ *   1. ベース変数（sg-weekend-app実ファイルの値をそのまま移植）
+ *   2. 意味的エイリアス（モックアップ由来の --surface-1 等の変数名をベース変数に紐付け）
+ *      → 今後モックアップのCSSをほぼそのままコピーしても意味的な変数名で解決される
+ *   3. ダークモードオーバーライド（sg-weekend-appと同一方式: html[data-theme="dark"]）
+ *
+ * Tabler Icons（ti ti-*）について:
+ *   今回はCSSトークンのみの作業のため未読み込み。次ステップ（ホーム画面HTML実装）で
+ *   index.html の <head> に以下のCDN <link> を追加すること:
+ *     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+ */
+
+:root {
+  /* ── 1. ベース変数（sg-weekend-app: public/app.css 1〜35行目を移植、値を揃える） ── */
+  --cream: #FAFAF8;
+  --warm-white: #FFFFFF;
+  --sand: #EAEAE6;
+  --sand-dark: #DCDCD6;
+  --caramel: #6F8F63;
+  --caramel-light: #9BB58F;
+  --caramel-pale: #EEF3EA;
+  --sage: #6F8F63;
+  --sage-light: #9BB58F;
+  --sage-pale: #EEF3EA;
+  --terracotta: #52704A;
+  --terracotta-light: #9BB58F;
+  --terracotta-pale: #EEF3EA;
+  --terracotta-light-pale: #EEF3EA;
+  --midnight: #2B2B27;
+  --warm-gray: #767268;
+  --light-gray: #A8A49A;
+  --gold: #6F8F63;
+  --gold-light: #9BB58F;
+  --gold-pale: #EEF3EA;
+  --sky: #6F8F63;
+  --sky-pale: #EEF3EA;
+  --plum: #52704A;
+  --plum-pale: #EEF3EA;
+  --holiday-red: #C0392B;
+  --holiday-red-pale: rgba(192, 57, 43, 0.14);
+  --festival-gold: #B8860B;
+  --festival-gold-pale: rgba(184, 134, 11, 0.14);
+
+  /* バスイラストアイコン（車種+混雑度表示、2026-09-14追加）専用の淡いグリーン。
+     --caramel-lightは既存でホバー状態・チップの縁取りに使う意味を持つため、
+     アイコン本体の塗りには流用せず専用トークンを新設する
+     （design-checkerエージェントでの確認結果を踏まえた判断）。 */
+  --bus-icon-body: #B9CDB0;
+
+  --radius-card: 24px;
+  --radius-btn: 14px;
+  --shadow-soft: 0 2px 12px rgba(43, 43, 39, 0.06);
+  --shadow-card: 0 4px 18px rgba(43, 43, 39, 0.08);
+
+  /*
+   * フォント: 2026-09-13、視認性最優先の方針でInterに変更（ユーザー確定指示）。
+   * 従来はsg-weekend-appと同一の'Noto Sans JP'をブランド統一のため採用していたが、
+   * SGBusNaviのUIは英語オンリーで日本語グリフの必要性がそもそも薄いこと、
+   * Interは数字の判別性が高く英数字混在の系統番号（961M等）や小さいサイズでの
+   * 視認性に優れることから、姉妹アプリとのフォント統一よりも視認性を優先する
+   * 判断に変更した（フォント比較モック(mockups/font-comparison-v1.html)を
+   * ユーザーに提示のうえ決定）。Google Fontsから読み込む（public/index.html参照）。
+   */
+  --font-heading: 'Inter', sans-serif;
+
+  /* ── 2. 意味的エイリアス（モックアップ変数名 → sg-weekend-appベース変数） ──
+   * plan.md 9.5節「ユーザー決定事項」の対応表に準拠。
+   */
+  --surface-2: var(--cream);          /* 画面背景 */
+  --surface-1: var(--warm-white);     /* カード背景・浮いた面 */
+  --text-primary: var(--midnight);    /* 主要テキスト */
+  --text-secondary: var(--warm-gray); /* 副次テキスト */
+  --text-muted: var(--light-gray);    /* 控えめテキスト */
+  --text-accent: var(--caramel);      /* アクセントテキスト（系統番号ハイライト等） */
+  --bg-accent-muted: var(--caramel-pale); /* アクセントの薄い背景（フィルターピル等） */
+  --fill-accent: var(--caramel);      /* アクセントの塗りつぶし（系統番号バッジ背景等） */
+  --border: var(--sand);              /* 枠線 */
+  --border-strong: var(--sand-dark);  /* 強めの枠線 */
+  --border-accent: var(--caramel);    /* 強調カードの枠線 */
+  --on-accent: var(--warm-white);     /* アクセント背景の上に乗る文字色 */
+
+  /*
+   * 混雑状況インジケーター専用トークン（フェーズ4 .claude/plan.md 第2-4節）。
+   * LTA v3/BusArrivalのLoadフィールド（SEA/SDA/LSD）を信号色で直感的に
+   * 示すための色で、既存の柳グリーン系アクセント（--caramel系）とは
+   * 意図的に別系統にする（ブランドカラーへの統一は行わない、ユーザー承認済み）。
+   */
+  --load-green: #4C9A5B;
+  --load-amber: #C79A2E;
+  --load-red: #C0392B;
+}
+
+/* ── 3. ダークモード（sg-weekend-app: public/app.css 1543行目以降のオーバーライドを踏襲） ──
+ * 切り替えトリガーはCSSの対象外（次ステップのJS実装で document.documentElement に
+ * data-theme="dark" 属性を付け外しする想定。sg-weekend-appのapp.js applyTheme()と同一方式）。
+ */
+html[data-theme="dark"] {
+  --cream: #1B1E19;
+  --warm-white: #14160F;
+  --sand: #262B22;
+  --sand-dark: #32382C;
+  --caramel-pale: #1E241A;
+  --sage-pale: #1E241A;
+  --terracotta-pale: #1E241A;
+  --terracotta-light-pale: #1E241A;
+  --gold-pale: #1E241A;
+  --sky-pale: #1E241A;
+  --plum-pale: #1E241A;
+  --midnight: #EDEAE3;
+  --warm-gray: #9C9A8E;
+  --light-gray: #4A4E42;
+  --caramel-light: #7FA075;
+  --sage-light: #7FA075;
+  --terracotta-light: #7FA075;
+  --gold-light: #7FA075;
+  --bus-icon-body: #7FA075;
+  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 6px 28px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+
+  /* --on-accent はダーク時もアクセント背景（--caramel系）に対して読みやすい配色を維持する */
+  --on-accent: var(--warm-white);
+}
+
+/* ── ベースリセット・基本スタイル（sg-weekend-appと同一方針） ── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* [hidden]属性は本来UAスタイルシートのdisplay:noneで隠れるはずだが、
+ * .bus-card-list/.swipe-dots等、同じ要素にdisplay:flexを指定するクラスが
+ * ついていると、著者スタイル(author origin)がUAスタイル(user-agent origin)を
+ * 常に上書きしてしまい、hidden属性を付けても実際には非表示にならない
+ * （2026-09-13実機で発見: GPS取得失敗時、本来hidden=trueで隠れるはずの
+ *   バスカードリスト・スワイプドットが表示されたまま残り、GPSフォールバック
+ *   メッセージと二重表示になっていた）。hidden属性が常に最優先で効くよう
+ *   ここで明示的に!importantで上書きする（MDN推奨の定番対策）。 */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  overscroll-behavior-x: none;
+  background-color: var(--surface-2);
+}
+
+body {
+  overscroll-behavior-y: none;
+  font-family: var(--font-heading);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  min-height: 100dvh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* ══════════════════════════════════════════════
+ * アプリシェル（画面全体のレイアウト）
+ * モックアップは320px幅のプレビューカードとして提示されていたが、
+ * 実アプリでは画面幅いっぱい〜モバイル幅中央寄せのシェルとして扱う。
+ * ══════════════════════════════════════════════ */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  background: var(--surface-2);
+  position: relative;
+}
+
+/* ── 画面切替（.screen / .visible） ── */
+.screen {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  padding-bottom: 84px; /* ボトムナビ分の余白 */
+}
+
+.screen.visible {
+  display: flex;
+}
+
+/* ══════════════════════════════════════════════
+ * ヘッダー（Home画面）
+ * 2026-09-13デザイン刷新: SG在住Naviの「くらし情報」画面（タイトル＋固定の
+ * カテゴリフィルターピル行＋独立スクロールのコンテンツ）を参考に、
+ * Home画面のヘッダー全体（タイトル・バス停ピル行）を固定表示にした
+ * （ユーザー指示）。#screen-homeがflex-directionでheader(flex-shrink:0)+
+ * #home-scroll-content(flex:1, overflow-y:auto)の2段構成になる。
+ * ══════════════════════════════════════════════ */
+.app-header {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 0 4px;
+}
+
+/* Saved/Settings画面の.saved-header-titleと統一するための画面タイトル
+   （2026-09-13ユーザー指示、以前は未実装だった） */
+.app-header-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  padding: 0 14px;
+}
+
+.app-header-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 14px;
+}
+
+/* ヘッダー右側のアクション群（目的地追加ボタン＋「関連のみ」フィルター）。
+   フェーズ5第8-3節: Home画面への目的地追加ボタンを追加。 */
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* バス停切替ピル行（SG在住Naviの.filter-chip行と寸法を一致させる:
+   gap:8px、padding:8px 20px 12px、横スクロール、折り返しなし）。
+   各ピル(.stop-pill)は最寄り/2番目/3番目に近いバス停を表す
+   タブとして機能し、タップでswitchToStopIndex()を呼ぶ（app.js参照）。 */
+.stop-pill-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 20px 12px;
+  flex-shrink: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.stop-pill-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* SG在住Navi .filter-chip と寸法・配色パターンを一致させる
+   （padding:7px 14px、border-radius:50px、font-size:14px、font-weight:500）。 */
+.stop-pill {
+  flex-shrink: 0;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 50px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.stop-pill:active {
+  transform: scale(0.97);
+}
+
+/* SG在住Navi .filter-chip.active と一致（塗りつぶしアクセント＋白文字＋太字）。 */
+.stop-pill--active {
+  background: var(--fill-accent);
+  color: var(--on-accent);
+  border-color: var(--fill-accent);
+  font-weight: 700;
+}
+
+/* Home画面専用スクロールコンテナ。ヘッダー（タイトル・ピル行）を固定表示にし、
+   バスカード一覧のみが独立してスクロールするようにする
+   （姉妹アプリの#home-scroll-content構造と統一）。
+   2026-09-14実機で発見・修正: bodyや.app-shellがmin-height:100dvh（上限なし）の
+   ため、カード一覧が長くなるとページ全体（body）がそのまま伸びてブラウザ側が
+   スクロールしてしまい、ヘッダーごと流れて見えなくなっていた（ユーザー指示
+   「バス停情報より上をヘッダーとして固定して」が実機では効いていなかった
+   根本原因）。#screen-home自体をビューポート1つ分の高さに固定し
+   overflow:hiddenにすることで、内部の.home-scroll-content（flex:1、
+   overflow-y:auto）だけが独立してスクロールするようにした。 */
+#screen-home {
+  padding-bottom: 0; /* 内部に専用スクロールコンテナを持つため、.screen共通のpaddingは無効化する */
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.home-scroll-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: none;
+  padding-bottom: 84px; /* ボトムナビ分の余白（.screenの元のpadding-bottomと同値） */
+}
+
+.filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.filter-toggle i {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.filter-toggle span {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.filter-toggle[aria-pressed="true"] {
+  background: var(--fill-accent);
+  border-color: var(--border-accent);
+}
+
+.filter-toggle[aria-pressed="true"] i,
+.filter-toggle[aria-pressed="true"] span {
+  color: var(--on-accent);
+}
+
+.filter-toggle[aria-pressed="true"] span {
+  font-weight: 700;
+}
+
+/* ══════════════════════════════════════════════
+ * GPS取得失敗時のフォールバックUI
+ * 表示中はバスカードリスト・バス停ピル行を非表示にする
+ * （app.js側でピル行にもhidden属性を付与する）。
+ * ══════════════════════════════════════════════ */
+.gps-fallback {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.gps-fallback[hidden] {
+  display: none;
+}
+
+.gps-fallback i {
+  font-size: 34px;
+  color: var(--text-muted);
+}
+
+.gps-fallback-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.gps-fallback-message {
+  font-size: 14px;
+  color: var(--text-secondary);
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+/* ══════════════════════════════════════════════
+ * バスカードフィード（Home画面）
+ *
+ * フェーズ4 タスク分解ステップ2・3（.claude/plan.md 第2-2節〜第2-4節）で
+ * mockups/home-card-redesign-v3.html（ユーザー承認済みモックアップ）の
+ * マークアップ・寸法・配色をそのまま移植した。密度重視の例外
+ * （CLAUDE.md「密度が重要な画面」節）としてカード間gap等は既存踏襲。
+ * ══════════════════════════════════════════════ */
+.bus-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 14px 14px;
+}
+
+.bus-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface-1);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 18px;
+  /* リボン(.bus-card-ribbon)の絶対配置の基準・角丸コーナーでのクリップ用
+     （2026-09-14追加）。 */
+  position: relative;
+  overflow: hidden;
+  /* opacity/transformは新規到着カードのフェードイン（.bus-card--entering、
+     フェーズ4 タスク分解ステップ6）用。出発演出自体は専用の
+     .bus-card--departing側でanimationにより制御する（.claude/plan.md 第2-6節）。 */
+  transition: transform 0.1s ease, box-shadow 0.15s ease, opacity 0.35s ease, transform 0.35s ease;
+}
+
+/* 2026-09-14ユーザー指示によりカード全体のタップ操作を廃止（.bus-card-route-btn
+   参照）。カード自体はもうインタラクティブではないため、旧:active押下フィード
+   バック（scale(0.98)）は削除した。 */
+
+/* 2026-09-14ユーザー指示「バスに二階建てかどうか、車椅子はrouteの左に置いて」
+   により、メタ行（.bus-card-meta-row、バスイラスト＋WABアイコン）を
+   タイトル下から移動し、Routeボタンと同じ行に並べた（「収まりがよさそう」との
+   こと）。当初は左右にスペースを分けていたが、続く指示「バスと車椅子は右寄せ
+   して。バスが右、車椅子が左の順です。Routeは一番右で」により、メタ行・
+   ボタンともに右寄せクラスタにまとめた（表示順は左から車椅子→バス→Route、
+   車椅子/バスの順序自体はbuildMetaRowHtml側で制御）。 */
+.bus-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.bus-card-route-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border-radius: 50px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  transition: transform 0.1s ease;
+}
+
+.bus-card-route-btn:active {
+  transform: scale(0.96);
+}
+
+.bus-card-route-btn i {
+  font-size: 15px;
+}
+
+.bus-card-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* 系統番号バッジ（mockup v3 .badge相当: 58×58px、電光掲示板を意識した
+   最大の視覚要素として大幅拡大。旧34×34px/13pxから拡大） */
+.bus-badge {
+  flex-shrink: 0;
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.bus-badge--accent {
+  background: var(--fill-accent);
+  color: var(--on-accent);
+}
+
+/* 4文字以上の系統番号（118A、961M等）用。58px角のバッジに24pxだと
+   文字が縁に張り付くため縮小する（2026-09-13実機で発見・修正） */
+.bus-badge--long {
+  font-size: 17px;
+  letter-spacing: -0.5px;
+}
+
+.bus-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.bus-card-dest {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bus-card-dest-name {
+  /* 2026-09-14ユーザー指示: ETAと合わせて少し大きすぎたため20pxから縮小しバランスを取る */
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 経由地表示バグ修正（.claude/plan.md 第1節）で置き換えられた旧.bus-card-viaは、
+   今回のメタ行実装（.bus-card-meta-row）に統合したため廃止した。 */
+
+/* メタ行: バスイラスト＋車椅子対応アイコン（mockup v3 .meta-row相当、
+   .claude/plan.md 第2-2節「2. メタ行」）。当初はタイトル(行き先)の下に配置
+   していたが（一度ETAの左側/下に移動→「タイトルの下に戻そう」で差し戻した
+   経緯あり）、2026-09-14「バスに二階建てかどうか、車椅子はrouteの左に置いて」
+   との指示で.bus-card-actions内（Routeボタンと同じ行の左側）に最終移動した。 */
+.bus-card-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* バスイラストアイコン（2026-09-14ユーザー指示: 車種+混雑度をテキストではなく
+   1つのイラストで表現。形=単一/二階建て、窓の色=混雑度。本体色は
+   --bus-icon-bodyで固定しテーマの落ち着いた印象を保つ。タイヤは廃止し、
+   一階建て(横長)/二階建て(縦長・窓2段)をシルエットの縦横比で瞬時に
+   見分けられるようにした）。
+   2026-09-14追加: 単一/二階建てでSVGの実サイズが異なる(横長 vs 縦長)ため、
+   固定サイズの箱(.bus-card-vehicle-icon-wrap)で囲んで中央揃えし、
+   カードごとにETA列の位置がずれないようにする（ユーザー指摘対応）。 */
+.bus-card-vehicle-icon-wrap {
+  flex-shrink: 0;
+  width: 32px;
+  height: 27px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bus-card-vehicle-icon--single {
+  width: 30px;
+  height: 15px;
+}
+
+/* 2026-09-14ユーザー指摘: 二階建てアイコンの横幅が一階建てより狭く見えたため、
+   横幅を一階建てと揃え(30px)、高さのみ元のviewBox(0 0 34 30)の縦横比に
+   合わせて調整した（横に間延びせず自然な比率を保つ）。 */
+.bus-card-vehicle-icon--double {
+  width: 30px;
+  height: 26px;
+}
+
+/* 車椅子対応車両アイコン（LTA Featureフィールド"WAB"、2026-09-14ユーザー指示で追加） */
+.bus-card-wab-tag {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.bus-card-wab-tag i {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* ETA（mockup v3 .eta/.eta-value/.eta-unit相当、.claude/plan.md 第2-2節
+   「3. ETA」: 主役ではなく補助情報として右側に控えめに配置） */
+.bus-card-eta {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.eta-value {
+  /* 2026-09-13ユーザー指示で18px→28pxに拡大したが、2026-09-14に
+     「大きくなりすぎた」との指摘で22pxに調整しなおした（濃色化は維持）。 */
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.eta-value.now {
+  color: var(--caramel);
+}
+
+.eta-unit {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: block;
+}
+
+/*
+ * フェーズ4 タスク分解ステップ1・2（.claude/plan.md 第2-1節・第2-2節）:
+ * 1カード=1到着インスタンス化に伴い、同一系統の次の到着時刻をETAの
+ * 下に小さく併記する要素（mockup v3 .eta-next相当）。次の到着データが
+ * 無い場合はマークアップ自体を生成しない（buildBusCard参照）ため、
+ * 非表示制御は不要。
+ */
+.bus-card-eta-next {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+/* 目的地一致リボン（2026-09-14変更: 「アイコン+カテゴリ名」タグ →
+   さらに「リボンスタイルがいい」とのユーザー指示で、カード左上の角から
+   生える小さな旗型リボンに変更した。テキストは表示せず、色(目的地の
+   アイコン色)+カテゴリアイコンのみで示す。ラベルはaria-label/titleで
+   補足する。ETA列(数字+Next+バスイラストで縦に長くなりうる)との重なりを
+   避けるため、右上ではなくバス番号バッジ側の左上に配置している
+   （mockups/ribbon-badge-v2.html Option C2で確認済み）。
+   JS側（renderMatchTag）が一致時のみhidden属性を外して内容を差し込む。 */
+.bus-card-ribbon {
+  position: absolute;
+  top: 0;
+  left: 14px;
+  width: 20px;
+  height: 26px;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 76%, 0 100%);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.bus-card-ribbon svg {
+  width: 11px;
+  height: 11px;
+  color: #FAFAF8;
+}
+
+/* ミニ経路図（ピルタグ版、2026-09-13カードデザイン刷新）。JS側（renderMiniRoute）が
+   系統単位のfetchRouteSummary結果（origin/waypoints/destination）を使って
+   経由地名を横並びの丸ピル型タグとして差し込む（折り返しあり）。
+   縦並びドットリスト版は情報が縦に散らばり過ぎるとの指摘を受け、
+   SG在住Naviのカテゴリタグを参考にしたこの形式に置き換えた
+   （mockups/card-redesign-v5.html Option Aをユーザーが選択）。
+   .bus-card-mini-route-hint / .bus-card-map-panel / .bus-card-map-fallback の
+   スタイルは、地図表示機能を将来また使う可能性を踏まえてあえて残してある
+   （JS側のensureMiniRouteMap等と同様、未使用のまま保持する判断）。 */
+.bus-card-mini-route {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* MRT駅タグの一言キャプション（2026-09-14追加: タグだけでは何を示しているか
+   分かりにくいとの指摘のため、「Passes these MRT stations」を一行添える） */
+.bus-card-mini-route-caption {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.bus-card-mini-route-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bus-card-mini-route-tag {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+
+/* タップ開閉ヒント（mockup v4 .mini-route-hint相当）。開いている間は
+   矢印アイコンを180度回転させ、視覚的に開閉状態を示す。 */
+.bus-card-mini-route-hint {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
+.bus-card-mini-route-hint i {
+  font-size: 12px;
+  transition: transform 0.25s ease;
+}
+
+.bus-card-mini-route.open .bus-card-mini-route-hint i {
+  transform: rotate(180deg);
+}
+
+/* 実地図パネル（Leaflet、mockup v4 .map-panel相当）。閉じている間は
+   高さ0で非表示にし、タップで開いたときのみ表示・地図を遅延初期化する
+   （JS側 ensureMiniRouteMap 参照）。 */
+.bus-card-map-panel {
+  display: none;
+  margin-top: 10px;
+  height: 220px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.bus-card-mini-route.open .bus-card-map-panel {
+  display: block;
+}
+
+.bus-card-map-panel .leaflet-container {
+  background: var(--surface-2);
+  font-family: var(--font-heading);
+}
+
+/* 地図読み込み失敗時のフォールバック表示（.claude/plan.md 第4節失敗系:
+   地図パネルは「地図を読み込めませんでした」の表示に留め、カード全体の
+   表示は妨げない）。 */
+.bus-card-map-fallback {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+  background: var(--surface-2);
+}
+
+.bus-card-map-fallback i {
+  font-size: 20px;
+}
+
+/* ══════════════════════════════════════════════
+ * 出発演出（フェーズ4 タスク分解ステップ6、.claude/plan.md 第2-6節・
+ * 第8節リスク6）。
+ *
+ * mockups/home-card-redesign-v2.html の .departing / @keyframes depart を
+ * そのまま移植し、右にスライドしながらフェードアウト＋高さが縮んで消える
+ * アニメーションにする。JS側（playDepartAnimation）が到着インスタンスの
+ * 消失を検出したカードに.bus-card--departingを付与し、animationend後に
+ * DOMから除去する。
+ *
+ * .bus-card は button 要素かつ .bus-card-list の flex gap（14px）で
+ * カード間隔を作っているため、mockup v2の margin-bottom 制御版とは異なり
+ * gap自体は縮まない。そのため overflow: hidden を付与した上で
+ * max-height / padding / opacity / transform を併用し、視覚的に高さが
+ * 縮んで消えるように調整している。
+ * ══════════════════════════════════════════════ */
+.bus-card--departing {
+  animation: bus-card-depart 0.6s ease-in forwards;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+@keyframes bus-card-depart {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+    max-height: 260px;
+  }
+  60% {
+    opacity: 0;
+    transform: translateX(40px);
+    max-height: 260px;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(40px);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    border-width: 0;
+  }
+}
+
+/* 新規到着カードのフェードイン（出発演出と対になる入場演出、plan.md 第2節
+   「新しく出現したキーは新規追加として自然に挿入、フェードイン等の入場演出が
+   あれば良い」に対応）。JS側（applyArrivalDiff）が挿入直後に
+   .bus-card--enteringを付与し、次フレームで除去することでtransitionを発火させる。 */
+.bus-card--entering {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+/*
+ * 旧デザイン（1系統1カード×3時刻内包）で使っていた.bus-time系クラス。
+ * フェーズ4カードデザイン刷新（buildEtaHtml採用）によりbuildBusCard()からは
+ * 呼び出されなくなったが、他箇所からの参照がないか確認の上で削除予定。
+ * 現時点ではCLAUDE.md「スコープ外のファイルを変更しない」の精神に合わせ、
+ * 定義自体は残している。
+ */
+.bus-time {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.bus-time-value {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.bus-time-unit {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bus-time--primary .bus-time-value {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.bus-time--primary .bus-time-unit {
+  color: var(--text-secondary);
+}
+
+.bus-time--accent .bus-time-value,
+.bus-time--accent.bus-time--primary .bus-time-value {
+  color: var(--text-accent);
+}
+
+/* ══════════════════════════════════════════════
+ * バス停検索結果の共通パーツ
+ * （旧Search画面は2026-09-13に削除済み。以下は目的地登録の
+ *   「By Route」「By Bus Stop」タブの結果一覧（.destination-result-item内）
+ *   で子要素として引き続き使用しているため残置）
+ * ══════════════════════════════════════════════ */
+.search-history-message {
+  padding: 16px 4px;
+  font-size: 14px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.search-history-badge {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--surface-1);
+  border: 0.5px solid var(--border);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.search-history-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-history-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.search-history-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* By Route/By Bus Stopの結果一覧・近隣バス停候補に表示する通過系統番号の1行 */
+.destination-result-services {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* 「Nearby bus stops」等のセクション見出し（近隣バス停候補の先頭） */
+.destination-result-section-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  padding: 10px 4px 6px;
+}
+
+/* By Route/By Bus Stopタブ下部の近隣バス停候補セクション。検索結果一覧との
+   区切りとして上に罫線を入れる（2026-09-14ユーザー指示で常時表示に変更）。 */
+.destination-nearby-section {
+  border-top: 0.5px solid var(--border);
+  margin-top: 10px;
+}
+
+/* ══════════════════════════════════════════════
+ * Saved画面（目的地登録）
+ * ══════════════════════════════════════════════ */
+.saved-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 14px 10px;
+}
+
+.saved-header-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.saved-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--fill-accent);
+  color: var(--on-accent);
+  border-radius: var(--radius-btn);
+  padding: 9px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.saved-add-btn:active {
+  transform: scale(0.97);
+}
+
+.saved-add-btn i {
+  font-size: 16px;
+  color: var(--on-accent);
+}
+
+.destination-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.destination-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.destination-empty i {
+  font-size: 32px;
+}
+
+.destination-empty p {
+  font-size: 15px;
+}
+
+.destination-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--surface-1);
+  border: 0.5px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.destination-item-category-badge {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.destination-item-category-badge:active {
+  transform: scale(0.92);
+}
+
+.destination-item-category-badge svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* アイコン色パレット（2026-09-13ユーザー指示。アプリ全体のアクセントカラーは
+   変更せず、カテゴリバッジ専用の少数色パレットとして新規定義する。
+   柔らかい配色トーンで統一し、アプリ全体の温かみのあるトーンを崩さないようにする） */
+:root {
+  --category-color-green: #6F8F63;
+  --category-color-blue: #5B84A8;
+  --category-color-orange: #C08A4E;
+  --category-color-purple: #8B6FA8;
+  --category-color-red: #C0645A;
+  --category-color-teal: #4E9B90;
+}
+
+.destination-item-category-badge--green {
+  background: var(--category-color-green);
+  color: #FAFAF8;
+}
+
+.destination-item-category-badge--blue {
+  background: var(--category-color-blue);
+  color: #FAFAF8;
+}
+
+.destination-item-category-badge--orange {
+  background: var(--category-color-orange);
+  color: #FAFAF8;
+}
+
+.destination-item-category-badge--purple {
+  background: var(--category-color-purple);
+  color: #FAFAF8;
+}
+
+.destination-item-category-badge--red {
+  background: var(--category-color-red);
+  color: #FAFAF8;
+}
+
+.destination-item-category-badge--teal {
+  background: var(--category-color-teal);
+  color: #FAFAF8;
+}
+
+/* アイコン+色の編集パネル（Savedのバス停一覧、バッジタップで展開）。
+   .destination-itemはflex-wrapにしてあるため、flex-basis:100%で
+   強制的に次の行に折り返させ、行全体の幅で表示する。 */
+.destination-item-editor {
+  flex-basis: 100%;
+  padding-top: 10px;
+  margin-top: 2px;
+  border-top: 0.5px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* カスタムタイトル入力欄（2026-09-14ユーザー指示: よく訪れる場所に
+   「日本人会」等の分かりやすい名前を付けられるようにする） */
+.destination-item-title-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  border: 0.5px solid var(--border);
+  background: var(--surface-2);
+  font-family: var(--font-heading);
+  font-size: 16px; /* iOS自動ズーム防止のため16px以上必須 */
+  color: var(--text-primary);
+  outline: none;
+}
+
+.destination-color-picker {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 4px 4px 8px;
+}
+
+.destination-color-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  transition: transform 0.1s ease;
+}
+
+.destination-color-btn:active {
+  transform: scale(0.9);
+}
+
+.destination-color-btn--active {
+  border-color: var(--border-strong);
+}
+
+.destination-color-btn--green { background: var(--category-color-green); }
+.destination-color-btn--blue { background: var(--category-color-blue); }
+.destination-color-btn--orange { background: var(--category-color-orange); }
+.destination-color-btn--purple { background: var(--category-color-purple); }
+.destination-color-btn--red { background: var(--category-color-red); }
+.destination-color-btn--teal { background: var(--category-color-teal); }
+
+.destination-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.destination-item-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.destination-item-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.destination-item-services {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
+.destination-item-delete {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+
+.destination-item-delete i {
+  font-size: 18px;
+  color: var(--text-muted);
+}
+
+/* ══════════════════════════════════════════════
+ * 目的地登録: 地図モーダル
+ * ══════════════════════════════════════════════ */
+.destination-map-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+
+.destination-map-modal-overlay.visible {
+  display: flex;
+}
+
+.destination-map-modal {
+  position: relative;
+  background: var(--surface-2);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 400px;
+  overflow: hidden;
+  border: 0.5px solid var(--border-strong);
+  box-shadow: var(--shadow-card);
+}
+
+.destination-map-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 10px;
+}
+
+.destination-map-modal-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.destination-map-modal-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.destination-map-modal-close i {
+  font-size: 19px;
+  color: var(--text-muted);
+}
+
+/* タブ切替（セグメントコントロール）。filter-toggleのaria-pressed
+   パターン（非活性=ニュートラル、活性=アクセント塗り+太字）を踏襲する。 */
+.destination-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+
+.destination-tab {
+  flex: 1;
+  text-align: center;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.destination-tab[aria-selected="true"] {
+  background: var(--fill-accent);
+  border-color: var(--border-accent);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+
+.destination-tab-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 0 14px 14px;
+}
+
+.destination-tab-panel[hidden] {
+  display: none;
+}
+
+.destination-panel-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-1);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.destination-panel-input i {
+  font-size: 16px;
+  color: var(--text-muted);
+}
+
+.destination-panel-input-field {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  /* 16px未満だとiOS Safariがフォーカス時に自動ズームしてしまうため16px以上にする
+     （不具合修正、2026-09-13）。系統検索・バス停検索の両方で使われている。 */
+  font-size: 16px;
+  color: var(--text-primary);
+  padding: 0;
+}
+
+.destination-panel-input-field::placeholder {
+  color: var(--text-muted);
+}
+
+.destination-panel-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 目的地登録タブの結果一覧項目は検索画面のsearch-history-itemを流用しつつ、
+   右端に登録専用ボタンを追加する。行本体(.destination-result-row)とカテゴリ
+   ピッカー(.destination-category-picker、＋ボタン押下時にインライン展開)を
+   縦に積めるよう、.destination-result-item自体はcolumn方向のflexにする。 */
+.destination-result-item {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.destination-result-item:last-child {
+  border-bottom: none;
+}
+
+.destination-result-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+}
+
+.destination-result-add-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--fill-accent);
+  color: var(--on-accent);
+  transition: transform 0.1s ease;
+}
+
+.destination-result-add-btn:active {
+  transform: scale(0.92);
+}
+
+.destination-result-add-btn i {
+  font-size: 17px;
+  color: var(--on-accent);
+}
+
+/* ══════════════════════════════════════════════
+ * 目的地カテゴリピッカー（フェーズ5第7節）
+ * By Route/By Bus Stopの結果行インライン展開、By Mapの確認ダイアログの
+ * 双方で共用する。既存の.filter-chip（非活性=ニュートラル、
+ * 活性=--fill-accent塗り+--on-accent文字色）のパターンを踏襲する。
+ * ══════════════════════════════════════════════ */
+.destination-category-picker {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 4px 12px;
+}
+
+.destination-category-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  border: 0.5px solid var(--border);
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.destination-category-btn:active {
+  transform: scale(0.94);
+}
+
+.destination-category-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.destination-category-btn--active {
+  background: var(--fill-accent);
+  color: var(--on-accent);
+  border-color: var(--border-accent);
+}
+
+/* ══════════════════════════════════════════════
+ * Saved / Settings プレースホルダー
+ * ══════════════════════════════════════════════ */
+.placeholder-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-muted);
+}
+
+.placeholder-screen i {
+  font-size: 32px;
+}
+
+.placeholder-screen p {
+  font-size: 15px;
+}
+
+/* ══════════════════════════════════════════════
+ * Settings画面
+ * ══════════════════════════════════════════════ */
+.settings-section {
+  padding: 0 14px;
+  margin-bottom: 24px;
+}
+
+.settings-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--surface-1);
+  border: 0.5px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.settings-item:last-child {
+  margin-bottom: 0;
+}
+
+/* URL未確定など、まだ機能しないリンク/項目に使う表示のみの無効状態 */
+.settings-item--disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.settings-item--column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.settings-item-label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.settings-item-value {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.settings-item i {
+  color: var(--text-muted);
+  font-size: 18px;
+}
+
+.settings-item-input {
+  border: none;
+  background: transparent;
+  font-family: var(--font-heading);
+  font-size: 16px; /* iOS自動ズーム防止のため16px以上必須（CLAUDE.md参照） */
+  color: var(--text-primary);
+  text-align: right;
+  outline: none;
+  width: 140px;
+}
+
+.settings-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 50px;
+  border: 0.5px solid var(--border);
+  background: var(--surface-2);
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.settings-pill-btn:active {
+  transform: scale(0.96);
+}
+
+.settings-feedback-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 0.5px solid var(--border);
+  background: var(--surface-2);
+  font-family: var(--font-heading);
+  font-size: 16px; /* iOS自動ズーム防止のため16px以上必須 */
+  color: var(--text-primary);
+  resize: none;
+  height: 96px;
+  outline: none;
+  line-height: 1.6;
+}
+
+.settings-feedback-send-btn {
+  padding: 12px;
+  border-radius: var(--radius-btn);
+  background: var(--fill-accent);
+  color: var(--on-accent);
+  border: none;
+  font-family: var(--font-heading);
+  font-size: 15px;
+  font-weight: 700;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.settings-feedback-send-btn:active {
+  transform: scale(0.98);
+}
+
+.settings-feedback-send-btn:disabled {
+  opacity: 0.5;
+}
+
+/* ══════════════════════════════════════════════
+ * ボトムナビ
+ * ══════════════════════════════════════════════ */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -2px 16px rgba(42, 37, 32, 0.06);
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.bottom-nav-item .nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  border-radius: 50px;
+  padding: 2px 14px;
+}
+
+.nav-icon-svg {
+  width: 26px;
+  height: 26px;
+}
+
+.bottom-nav-item span {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.bottom-nav-item.active .nav-icon,
+.bottom-nav-item.active span {
+  color: var(--text-accent);
+}
+
+.bottom-nav-item.active .nav-icon {
+  background: var(--bg-accent-muted);
+}
+
+.bottom-nav-item.active span {
+  font-weight: 700;
+}
+
+/* ══════════════════════════════════════════════
+ * 経路モーダル
+ * 2026-09-14ユーザー指示「地図もうちょっと大きく表示してほしい、画面いっぱいに」
+ * により、小さな中央カード型モーダルからフルスクリーンシートに変更した。
+ * ヘッダー(固定)+地図(残りの縦スペースいっぱい、flex:1)+経由地リスト(下部、
+ * 内容に応じてスクロール)の3段構成。
+ * ══════════════════════════════════════════════ */
+.route-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--surface-2);
+  z-index: 100;
+}
+
+.route-modal-overlay.visible {
+  display: flex;
+}
+
+.route-modal {
+  background: var(--surface-2);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.route-modal-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(14px + env(safe-area-inset-top)) 14px 10px;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.route-modal-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-modal-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.route-modal-close i {
+  font-size: 19px;
+  color: var(--text-muted);
+}
+
+.route-modal-map {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: var(--surface-1);
+}
+
+.route-modal-status-container:empty {
+  display: none;
+}
+
+.route-modal-status-container:not(:empty) {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--surface-1);
+}
+
+.route-modal-map-el {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* CartoDB Positron（要APIキー化のため使用不可になった、2026-09-14実機で発見）
+   の代わりに、標準OSMタイル+CSSフィルターで薄いグレースケール調を再現する
+   （ユーザー指示「地図の色をもっと薄くして」）。実機確認で当初の値
+   （grayscale 0.55等）では地名・道路のラベルが多く経路線が埋もれて
+   見えたため、2026-09-14さらに強めた（ユーザー指示「地図をもっと薄い色に
+   して経路とMRTの表示を目立たせて」）。
+   当初は.route-modal-map-el全体（コンテナ）にfilterをかけていたが、これだと
+   Leafletの重ね合わせ構造上、経路線（overlay-pane）・MRTマーカー（marker-pane）
+   まで一緒に薄まってしまい、「経路を柳グリーンにしたのにMRTの文字色が路線色に
+   なって見えない」原因になっていた（2026-09-14実機で発見）。タイル画像を描画する
+   .leaflet-tile-paneだけにfilterを絞ることで、地図タイルだけを薄くしつつ
+   経路線・マーカーは本来の色のまま表示されるようにした。 */
+.route-modal-map-el .leaflet-tile-pane {
+  filter: grayscale(0.85) brightness(1.35) saturate(0.35) contrast(0.9);
+}
+
+/* Leafletのズーム操作は無効化済みだが、標準の＋/－コントロールが
+   残っていた場合に備え念のため非表示化（route-modal-map内で使用） */
+.route-modal-map-el .leaflet-control-zoom {
+  display: none;
+}
+
+.route-modal-map-el .leaflet-control-attribution {
+  font-size: 9px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+/* MRT駅マーカー（L.divIcon、2026-09-14ユーザー指示「路線の色の駅名＋路線の色の〇」）。
+   Leafletの.leaflet-div-icon既定スタイル（白背景・枠線）を打ち消し、
+   丸+ラベルのみのシンプルな見た目にする。 */
+.route-modal-mrt-marker {
+  background: none;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.route-modal-mrt-dot {
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--surface-2);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+.route-modal-mrt-label {
+  /* 2026-09-14ユーザー指摘「文字を少し大きくしてきちんと見えるように」
+     対応で10px→12pxに拡大。 */
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 0 3px var(--surface-2), 0 0 3px var(--surface-2);
+}
+
+/* 終点（ゴール）マーカー（2026-09-14ユーザー指示「出発地点とゴール地点が色だけだと
+   分かりづらい」対応）。出発点（青い丸）と色・形の両方で見分けられるよう、
+   丸ではなくピン型のアイコンにしている。 */
+.route-modal-end-marker {
+  color: var(--midnight);
+  font-size: 26px;
+  line-height: 1;
+  text-shadow: 0 0 2px var(--surface-2), 0 0 4px var(--surface-2);
+}
+
+/* 出発点(最寄バス停)・終点のラベル(2026-09-14ユーザー指示「現在地点(最寄駅)と
+   終点も黒い文字で表示して」対応)。Leaflet標準のツールチップ吹き出し
+   (背景・枠線・矢印)を打ち消し、MRT駅ラベルと同様の縁取りだけの黒文字にする。 */
+.route-modal-endpoint-tooltip {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  color: var(--midnight);
+  font-size: 12px;
+  font-weight: 800;
+  text-shadow: 0 0 3px var(--surface-2), 0 0 3px var(--surface-2), 0 0 3px var(--surface-2);
+}
+
+.route-modal-endpoint-tooltip::before {
+  display: none;
+}
+
+/* 登録済み目的地に一致する経由地のマーカー（2026-09-14ユーザー指示
+   「自分の目的地がある場合はそこもハイライトしてほしい」）。ラベルを
+   少し大きく・太くして他のMRT駅マーカーと視覚的に区別する。 */
+.route-modal-mrt-marker--dest .route-modal-mrt-label {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+/* 上記だけでは「太字か何かでもっと目立たせて」という指摘に対し弱かったため
+   （2026-09-14）、通常のMRT駅ラベル（文字色のみ）とは別に、登録済み目的地に
+   一致するラベルだけは塗りつぶしの実心バッジにして地図上でも一目で分かる
+   ようにした（下部の経由地リストの強調表示と統一感を持たせる狙いもある）。 */
+.route-modal-mrt-label--dest {
+  color: #FAFAF8;
+  padding: 2px 7px;
+  border-radius: 999px;
+  text-shadow: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* 地図下部の経由地リスト（2026-09-14ユーザー指示「経由していく主要な場所、
+   MRTも含めて表示していい」）。内容が多い場合はこの領域内でスクロールし、
+   地図の高さ(flex:1)を圧迫しないようにする。 */
+.route-modal-waypoints {
+  flex-shrink: 0;
+  max-height: 32vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+  border-top: 0.5px solid var(--border);
+  background: var(--surface-2);
+}
+
+.route-modal-waypoints-caption {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.route-modal-waypoints-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.route-modal-waypoint-tag {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  border: 0.5px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+
+/* 登録済み目的地に一致する経由地は、そのアイコン色で塗りつぶし+
+   カテゴリアイコンを添えて強調する（他はMRT路線色の文字のみの控えめな表示）。 */
+.route-modal-waypoint-tag--dest {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #FAFAF8;
+  border: none;
+  font-weight: 800;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.route-modal-waypoint-tag--dest svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* 経路モーダル内のローディング・エラーフォールバック表示
+ * （/api/bus-routes/summary 取得中・取得失敗時） */
+.route-modal-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 16px;
+  color: var(--text-muted);
+}
+
+.route-modal-status i {
+  font-size: 26px;
+}
+
+.route-modal-status i.ti-loader-2 {
+  animation: route-modal-spin 1s linear infinite;
+}
+
+.route-modal-status p {
+  font-size: 14px;
+  text-align: center;
+}
+
+@keyframes route-modal-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ══════════════════════════════════════════════
+ * PULL TO REFRESH（フェーズ5第8-2節、Home画面限定・PWAスタンドアロン時のみ）
+ * スクロールコンテナ先頭に置く子要素。height/opacityのみJSで操作する。
+ * ヘッダー・app-shell・html/bodyのposition/overflow/heightには一切触れない
+ * （SG在住Navi _initPtr の設計方針を踏襲）。
+ * ══════════════════════════════════════════════ */
+.ptr-indicator {
+  height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.ptr-indicator .ptr-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid var(--sand-dark);
+  border-top-color: var(--caramel);
+  border-radius: 50%;
+  animation: ptr-spin 0.7s linear infinite;
+}
+
+@keyframes ptr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+  body {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 20px 14px 60px;
+    background: var(--surface-2);
+  }
+  .pattern-label {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 32px 0 6px;
+  }
+  .pattern-note {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+    line-height: 1.5;
+  }
+  .pattern-label:first-of-type { margin-top: 0; }
+  .icon-inline { display: inline-flex; }
+  .icon-inline svg { display: block; }
+
+  .bus-card-actions-solo {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
+
+  /* 時間のすぐ左に固定表示するパターン */
+  .eta-time-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .eta-icon-cluster {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+
+<h1 style="font-size:20px;">時間のすぐ左に固定表示</h1>
+<p style="font-size:13px; color:var(--text-secondary); max-width:440px;">
+  「1 min」の大きな数字のすぐ左に、車種・車椅子アイコンを固定表示。ETA列(右端)の中に収まるため、
+  タイトルの長さに関係なく位置は動きません。Routeボタンは引き続き最下段に独立表示。
+</p>
+
+<div class="pattern-label">現行(参考): タイトル下+Routeボタン隣</div>
+<div class="bus-card-list">
+  <div class="bus-card">
+    <div class="bus-card-row">
+      <div class="bus-badge">57</div>
+      <div class="bus-card-info">
+        <div class="bus-card-dest"><span class="bus-card-dest-name">Bishan Int</span></div>
+      </div>
+      <div class="bus-card-eta">
+        <span class="eta-value">1</span>
+        <span class="eta-unit">min</span>
+        <div class="bus-card-eta-next">Next: 23 min</div>
+      </div>
+    </div>
+    <div class="bus-card-mini-route">
+      <div class="bus-card-mini-route-caption">Passes these MRT stations</div>
+      <div class="bus-card-mini-route-tags">
+        <span class="bus-card-mini-route-tag" style="color:#FA9E0D;">Opp Telok Blangah Stn</span>
+        <span class="bus-card-mini-route-tag" style="color:#009645;">Tanjong Pagar Stn Exit C</span>
+      </div>
+    </div>
+    <div class="bus-card-actions">
+      <div class="bus-card-meta-row">
+        <div class="bus-card-wab-tag" aria-label="Wheelchair accessible"><span class="icon-inline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="17" cy="17" r="4"></circle><circle cx="9" cy="5" r="1"></circle><path d="M9 7v6l4 4m-4 -4h5.5"></path></svg></span></div>
+        <div class="bus-card-vehicle-icon-wrap">
+          <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20">
+            <rect x="1" y="1" width="38" height="18" rx="6" fill="var(--bus-icon-body)"/>
+            <rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+            <rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+            <rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+          </svg>
+        </div>
+      </div>
+      <button type="button" class="bus-card-route-btn"><span class="icon-inline"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2"></circle><circle cx="18" cy="5" r="2"></circle><path d="M8 19h5a2 2 0 0 0 2 -2v-2a2 2 0 0 1 2 -2h1"></path></svg></span><span>Route</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ New: fixed left of time, grouped right-aligned ============ -->
+<div class="pattern-label">新パターン — 時間の左に固定、時間とまとめて右寄せ</div>
+<div class="bus-card-list">
+  <div class="bus-card">
+    <div class="bus-card-row">
+      <div class="bus-badge">57</div>
+      <div class="bus-card-info">
+        <div class="bus-card-dest"><span class="bus-card-dest-name">Bishan Int</span></div>
+      </div>
+      <div class="bus-card-eta">
+        <div class="eta-time-row">
+          <div class="eta-icon-cluster">
+            <span class="icon-inline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="17" cy="17" r="4"></circle><circle cx="9" cy="5" r="1"></circle><path d="M9 7v6l4 4m-4 -4h5.5"></path></svg></span>
+            <div class="bus-card-vehicle-icon-wrap" style="width:24px; height:18px;">
+              <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20">
+                <rect x="1" y="1" width="38" height="18" rx="6" fill="var(--bus-icon-body)"/>
+                <rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                <rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                <rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+              </svg>
+            </div>
+          </div>
+          <div>
+            <span class="eta-value">1</span>
+            <span class="eta-unit">min</span>
+          </div>
+        </div>
+        <div class="bus-card-eta-next">Next: 23 min</div>
+      </div>
+    </div>
+    <div class="bus-card-mini-route">
+      <div class="bus-card-mini-route-caption">Passes these MRT stations</div>
+      <div class="bus-card-mini-route-tags">
+        <span class="bus-card-mini-route-tag" style="color:#FA9E0D;">Opp Telok Blangah Stn</span>
+        <span class="bus-card-mini-route-tag" style="color:#009645;">Tanjong Pagar Stn Exit C</span>
+      </div>
+    </div>
+    <div class="bus-card-actions-solo">
+      <button type="button" class="bus-card-route-btn"><span class="icon-inline"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2"></circle><circle cx="18" cy="5" r="2"></circle><path d="M8 19h5a2 2 0 0 0 2 -2v-2a2 2 0 0 1 2 -2h1"></path></svg></span><span>Route</span></button>
+    </div>
+  </div>
+
+  <!-- second example: double-deck, no WAB, to check icon-only spacing -->
+  <div class="bus-card">
+    <div class="bus-card-row">
+      <div class="bus-badge">131</div>
+      <div class="bus-card-info">
+        <div class="bus-card-dest"><span class="bus-card-dest-name">St. Michael's Ter</span></div>
+      </div>
+      <div class="bus-card-eta">
+        <div class="eta-time-row">
+          <div class="eta-icon-cluster">
+            <div class="bus-card-vehicle-icon-wrap" style="width:24px; height:20px;">
+              <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--double" viewBox="0 0 34 30">
+                <rect x="1" y="1" width="32" height="28" rx="6" fill="var(--bus-icon-body)"/>
+                <rect x="4" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                <rect x="13.5" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                <rect x="23" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                <rect x="4" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                <rect x="13.5" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                <rect x="23" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+              </svg>
+            </div>
+          </div>
+          <div>
+            <span class="eta-value">1</span>
+            <span class="eta-unit">min</span>
+          </div>
+        </div>
+        <div class="bus-card-eta-next">Next: 17 min</div>
+      </div>
+    </div>
+    <div class="bus-card-mini-route">
+      <div class="bus-card-mini-route-caption">Passes these MRT stations</div>
+      <div class="bus-card-mini-route-tags">
+        <span class="bus-card-mini-route-tag" style="color:#9900AA;">HarbourFront Stn Exit A</span>
+        <span class="bus-card-mini-route-tag" style="color:#009645;">Tanjong Pagar Stn Exit C</span>
+      </div>
+    </div>
+    <div class="bus-card-actions-solo">
+      <button type="button" class="bus-card-route-btn"><span class="icon-inline"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2"></circle><circle cx="18" cy="5" r="2"></circle><path d="M8 19h5a2 2 0 0 0 2 -2v-2a2 2 0 0 1 2 -2h1"></path></svg></span><span>Route</span></button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

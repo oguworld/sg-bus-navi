@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGBusNavi — Card redesign v5 (category-style stop tags)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --warm-white: #FAFAF8;
+    --cream: #F4F1EA;
+    --caramel: #6F8F63;
+    --caramel-pale: #EEF3EA;
+    --midnight: #2B2B27;
+    --warm-gray: #6B675F;
+    --light-gray: #A19C8F;
+    --sand-dark: #DCD6C8;
+    --load-green: #4C9A5B;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--cream);
+    padding: 20px 14px 60px;
+    color: var(--midnight);
+    font-family: 'Inter', sans-serif;
+  }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .intro {
+    font-size: 13px;
+    color: var(--warm-gray);
+    margin-bottom: 20px;
+    line-height: 1.6;
+    max-width: 420px;
+  }
+  .option-title {
+    max-width: 420px;
+    margin: 28px auto 8px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--caramel);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .cards {
+    max-width: 420px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .card {
+    background: var(--warm-white);
+    border: 0.5px solid var(--sand-dark);
+    border-radius: 20px;
+    padding: 14px;
+    box-shadow: 0 2px 12px rgba(43,43,39,0.06);
+  }
+  .row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .badge {
+    flex-shrink: 0;
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: var(--cream);
+    color: var(--midnight);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 800;
+  }
+  .info { flex: 1; min-width: 0; }
+  .dest {
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .meta {
+    font-size: 13px;
+    color: var(--warm-gray);
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .meta .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--load-green);
+    display: inline-block;
+  }
+  .eta { text-align: right; flex-shrink: 0; }
+  .eta-value { font-size: 24px; font-weight: 800; }
+  .eta-value.now { color: var(--caramel); }
+  .eta-unit { font-size: 11px; color: var(--warm-gray); font-weight: 600; }
+  .eta-next { font-size: 11px; color: var(--light-gray); margin-top: 1px; }
+
+  /* ── Option A: horizontal wrapped pill tags, all stops ── */
+  .stop-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 0.5px solid var(--sand-dark);
+  }
+  .stop-tag {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--warm-gray);
+    background: var(--cream);
+    padding: 5px 10px;
+    border-radius: 999px;
+  }
+  .stop-tag--dest {
+    color: var(--caramel);
+    background: var(--caramel-pale);
+    font-weight: 700;
+  }
+
+  /* ── Option B: compact single-line, key stops only + count ── */
+  .stop-tags-compact {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 0.5px solid var(--sand-dark);
+    overflow: hidden;
+  }
+  .stop-tags-compact .stop-tag { flex-shrink: 0; }
+  .stop-tag-more {
+    font-size: 12px;
+    color: var(--light-gray);
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  /* match tag (existing pattern, kept) */
+  .match-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--caramel);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+  <h1>Card redesign v5 — category-style stop tags</h1>
+  <p class="intro">
+    The vertical 5-line via-stop list was taking a lot of vertical space and making the feed feel cluttered.
+    Both options below replace it with small rounded "tag" chips, matching SG在住Navi's category-pill style
+    from the reference screenshot. Option A shows all stops (wraps to multiple lines); Option B keeps it to
+    one line with a "+N more" count for max density.
+  </p>
+
+  <div class="option-title">Option A — all stops as wrapped tags</div>
+  <div class="cards">
+    <div class="card">
+      <div class="row">
+        <div class="badge">77</div>
+        <div class="info">
+          <div class="dest">Bt Batok Int</div>
+          <div class="meta"><i class="ti ti-bus" style="font-size:14px;"></i>Single Deck <span class="dot"></span>Seats available</div>
+        </div>
+        <div class="eta"><div class="eta-value now">Now</div><div class="eta-unit">arriving</div><div class="eta-next">Next: 13 min</div></div>
+      </div>
+      <div class="stop-tags">
+        <span class="stop-tag">The Nexus</span>
+        <span class="stop-tag">Dhoby Ghaut Stn Exit B</span>
+        <span class="stop-tag">Opp Orchard Blvd Stn</span>
+        <span class="stop-tag">Beauty World Stn Exit C</span>
+        <span class="stop-tag stop-tag--dest">Bt Batok Int</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div class="badge">961M</div>
+        <div class="info">
+          <div class="dest">Woodlands Temp Int</div>
+          <div class="meta"><i class="ti ti-bus" style="font-size:14px;"></i>Single Deck <span class="dot"></span>Seats available</div>
+        </div>
+        <div class="eta"><div class="eta-value">1</div><div class="eta-unit">min</div><div class="eta-next">Next: 9 min</div></div>
+      </div>
+      <div class="match-tag"><i class="ti ti-star-filled" aria-hidden="true" style="font-size:12px;"></i>Passes The Nexus</div>
+      <div class="stop-tags">
+        <span class="stop-tag">The Nexus</span>
+        <span class="stop-tag">Kallang Stn/Opp Blk 2C</span>
+        <span class="stop-tag">Sixth Ave Stn</span>
+        <span class="stop-tag">Marsiling Stn</span>
+        <span class="stop-tag stop-tag--dest">Woodlands Temp Int</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="option-title">Option B — compact single-line, key stops only</div>
+  <div class="cards">
+    <div class="card">
+      <div class="row">
+        <div class="badge">77</div>
+        <div class="info">
+          <div class="dest">Bt Batok Int</div>
+          <div class="meta"><i class="ti ti-bus" style="font-size:14px;"></i>Single Deck <span class="dot"></span>Seats available</div>
+        </div>
+        <div class="eta"><div class="eta-value now">Now</div><div class="eta-unit">arriving</div><div class="eta-next">Next: 13 min</div></div>
+      </div>
+      <div class="stop-tags-compact">
+        <span class="stop-tag">The Nexus</span>
+        <span class="stop-tag-more">→</span>
+        <span class="stop-tag">Dhoby Ghaut Stn</span>
+        <span class="stop-tag-more">+2</span>
+        <span class="stop-tag stop-tag--dest">Bt Batok Int</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div class="badge">961M</div>
+        <div class="info">
+          <div class="dest">Woodlands Temp Int</div>
+          <div class="meta"><i class="ti ti-bus" style="font-size:14px;"></i>Single Deck <span class="dot"></span>Seats available</div>
+        </div>
+        <div class="eta"><div class="eta-value">1</div><div class="eta-unit">min</div><div class="eta-next">Next: 9 min</div></div>
+      </div>
+      <div class="match-tag"><i class="ti ti-star-filled" aria-hidden="true" style="font-size:12px;"></i>Passes The Nexus</div>
+      <div class="stop-tags-compact">
+        <span class="stop-tag">The Nexus</span>
+        <span class="stop-tag-more">→</span>
+        <span class="stop-tag">Kallang Stn</span>
+        <span class="stop-tag-more">+2</span>
+        <span class="stop-tag stop-tag--dest">Woodlands Temp Int</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

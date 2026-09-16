@@ -1,0 +1,190 @@
+# CLAUDE.md
+
+このファイルは、このリポジトリで作業する Claude Code (claude.ai/code) への指針です。
+
+## プロジェクト概要
+
+**SGBusNavi** — Willoaブランドの新規アプリ。SG在住Naviとは別プロジェクトとして独立させるが、デザインシステム(柳グリーン系配色・カードUI・PWA構成)は完全踏襲する。
+
+- **ブランド**: Willoaの一環(SG在住Naviの姉妹アプリという位置づけ)
+- **ドメイン**: `bus.willoa.net`(willoa.netのサブドメイン)
+- **プロジェクトパス**: `/home/masahiko/sg-bus-navi/`
+- **対象ユーザー**: シンガポール在住者全員(日本人限定ではない)
+- **UI言語**: 英語のみ(i18n機構は導入しない、2026-09-13ユーザー確定指示)。新規UI実装時、ユーザー向け文字列(HTML内テキスト・JS内のメッセージ)は最初から英語で書くこと。サーバーログ・コードコメントは開発者向けのため日本語のままで良い
+
+## 開発コマンド
+
+- 起動: `npm start`（`node server.js`）、開発時ホットリロード: `npm run dev`
+- ポート: `.env`の`PORT`（デフォルト3010）
+- ローカル確認: `http://localhost:3010`
+- 本番: PM2プロセス名`sg-bus-navi`（VPS上、`bus.willoa.net`にnginx経由で公開）。動作確認は別ポート（例: `PORT=3099 node server.js`）で一時起動して行い、本番PM2プロセスの再起動（`pm2 restart sg-bus-navi`）はユーザー承認後に実施する
+- **重要**: `public/index.html`/`public/css/style.css`/`public/js/app.js`等の静的アセットを変更してデプロイする際は、必ず`public/sw.js`の`CACHE_VERSION`をインクリメントすること。上げ忘れると、Service Workerのcache-first戦略により既訪問ユーザーのブラウザには変更が反映されない（2026-09-13、複数回のデプロイでバージョンを上げ忘れていたことが判明）
+- **重要(2026-09-15実機で発見)**: このキャッシュ戦略は`PRECACHE_URLS`に列挙したファイルだけでなく、`/api/*`以外の同一オリジンGETリクエスト全てに適用される(`sw.js`の`fetch`イベントハンドラ参照)。そのため`public/about.html`のような`PRECACHE_URLS`未掲載のページも、一度訪問されると実行時キャッシュ(cache-first)の対象になる。`about.html`を修正してデプロイした直後、`CACHE_VERSION`を上げ忘れたため実機で修正前のバージョンがキャッシュから返され続ける不具合が発生した(ユーザー指摘「下がまだ切れてるね」に対し、サーバー側は既に修正済みなのに実機では反映されていなかった)。**`public/`配下のどのファイルを変更した場合でも、対象がPRECACHE_URLSに載っているかどうかに関わらず`CACHE_VERSION`を上げること**。加えて`about.html`は`app.js`を読み込まないスタンドアロンページのため、新SW有効化時の自動リロード処理(`controllerchange`リスナー、`public/js/app.js`参照)が効かず、ユーザーが手動でページを再読み込みしないと新バージョンに切り替わらない点にも注意
+- **PWA更新の反映タイミングに関する既知の罠（2026-09-13解決済み）**: `CACHE_VERSION`を上げても、新しいService Workerは`skipWaiting`+`clients.claim()`だけでは「今まさに開いているページ」への反映を保証しない。ブラウザはSW更新チェックをページ読み込み後（`register()`実行時）に行うため、更新が実際に有効化されるのは早くても「次回」のページ読み込み以降になる。これに対応するため、`public/js/app.js`に`navigator.serviceWorker.addEventListener('controllerchange', ...)`で新SW有効化時に自動リロードする処理を追加済み。これにより、デプロイ後ユーザーがアプリを開き直せば1回で最新版が表示される（それでも反映されない場合はブラウザ/OS側のHTTPキャッシュやCDN等、他の層のキャッシュを疑うこと）
+
+## コアコンセプト
+
+「一目でわかる」を最優先。日常利用でタップ操作を極力発生させない。
+
+既存のバスアプリ(SingBus等)は系統番号ごとの時刻表型UIで、見たい情報にたどり着くまでの確認項目が多い。本アプリはGPSで自動検出したバス停の情報をカード形式でそのまま表示し、探す・選ぶ操作を排除する。
+
+## データソース
+
+- **LTA DataMall** (`https://datamall.lta.gov.sg`) 公式・無料API。ベースURL: `https://datamall2.mytransport.sg/ltaodataservice/`
+  - `v3/BusArrival`(旧`BusArrivalv2`は廃止済み・404を返す): バス停コード指定でリアルタイム到着時刻取得。**`v3/`が必要なのはこのAPIのみの特例**。`OriginCode`/`DestinationCode`は`Services[]`直下ではなく`NextBus`/`NextBus2`/`NextBus3`配下にのみ存在(誤って`Services[].DestinationCode`を参照するとundefinedになるバグを過去に作り込んだので注意)。`DestinationCode`は`BusStops`の`BusStopCode`と直接突き合わせ可能(解決率100%確認済み)。行き先地名表示に`BusServices`/`BusRoutes`は不要。**`Direction`フィールドはこのAPIのレスポンスに一切存在しない**(要注意、確認済み)
+  - `BusStops`(無印パス。v3系は404): バス停マスタ。`BusStopCode`/`RoadName`/`Description`/`Latitude`/`Longitude`。全5,207件、`$skip`で500件ずつページング(全11回)
+  - `BusServices`(無印パス。v3系は404): 系統マスタ。`ServiceNo`/`Operator`/`Direction`(数値1/2)/`Category`/`OriginCode`/`DestinationCode`/`LoopDesc`等。全801件(全2回)。同一`ServiceNo`で`Direction`違いの複数レコードが存在する。`LoopDesc`が非空なら循環路線(全体の約32%が該当、無視できない頻度)。`Category`はBusRoutesには存在しない
+  - `BusRoutes`(無印パス。v3系は404): 系統の経由停留所情報(ルート図描画用)。`ServiceNo`/`Direction`/`StopSequence`/`BusStopCode`/`Distance`等。全26,823件(全54回、`data/bus-routes.json`実測約2.27MB)。**`StopSequence`には欠番がある**(配列インデックス=StopSequenceという前提を置かないこと)。`direction`不明な場合はBusArrivalの`OriginCode`/`DestinationCode`とBusServicesの`origin`/`destination`を突き合わせて判定する(フロント側2回fetch方式で解決済み、`public/js/app.js`参照)。**同一`ServiceNo`でも`Direction`1/2で経由する`BusStopCode`は基本的に別物**(往路・復路で異なるバス停を使うのが一般的。両方向マージ時は単純に約2倍の件数になりうる、実測: 67番は片道81件→マージ後163件)
+  - `Train Service Alerts`(無印パス。v3系は404): MRT運行障害情報。レスポンスの`value`は配列ではなく単一オブジェクト。`Status:1`(平常)でも`Message`に計画工事等のお知らせが入ることがあるため、バナー表示は`Status`だけでなく`Message`内容の種別判定が必要
+  - 全エンドポイント共通: リクエストヘッダー`AccountKey`で認証。明示的なレート制限ヘッダーはレスポンスに含まれないが、バッチ取得時はリクエスト間隔を空ける配慮が無難(2026-09-12実キーで疎通確認済み)
+  - **`v3/BusArrival`の`EstimatedArrival`は同一の実バスでもポーリングのたびに数十秒〜1分程度前後に変動する**(GPSベースの再計算のため。2026-09-13、同一バス停に45秒間隔で2回リクエストして実データ確認済み)。到着インスタンスの同一性判定(出発検出等)に`EstimatedArrival`の完全一致・分単位丸めを使うと誤検出が頻発する。**系統番号・起点(OriginCode)が同じ中で最も時刻が近いものを同一実体とみなす近似マッチング(許容誤差3分程度)が必要**(`public/js/app.js`の`matchArrivalAcrossPolls()`参照)
+  - **サーバー側レート制限は2段構成(2026-09-14実機で発見・修正)**: 実際にLTA DataMallへ問い合わせるのは`/api/bus-arrival`のみで、`/api/bus-routes/*`・`/api/bus-stops/*`・`/api/bus-services/*`は全てインメモリキャッシュのみで完結し外部通信を伴わない。Home画面の経路情報エンリッチメント(星ハイライト・ミニ経路図判定)だけでバス停1件につき系統数×方向数分のリクエストが発生し、旧`/api/*`一律30リクエスト/分の制限では1回の表示だけで枠の大半〜全てを消費し、直後の「Add Bus Stop」操作等が`429 Too many requests`で失敗する実害があった。`/api/bus-arrival`のみ30リクエスト/分、それ以外のインメモリ完結エンドポイントは300リクエスト/分に分離済み(`server.js`の`busArrivalLimiter`/`generalApiLimiter`参照)
+  - **`/api/bus-routes/contains-stop`は方向だけでなく「現在地からまだ通過していないか」も判定する(2026-09-14実機で発見・修正)**: 目的地一致ハイライト(バッジ角アイコン・ミニ経路図タグ・経路モーダル)は当初、指定した方向(direction)の経路上に目的地バス停が存在するかだけで判定していたため、その系統の同方向の経路のどこかに目的地があれば、乗車前にすでに通過済みの区間にある目的地まで「一致」扱いになり、実際には向かっていないのにハイライトされる不具合があった(ユーザー指摘「逆方向(すでに保存バス停は通り過ぎてる)のに光ってます。これからいくときだけハイライトさせたい」)。`fromStopCode`(現在地のバス停コード)パラメータを追加し、指定時はそのStopSequence(配列内の出現順)以降にある停留所のみを一致対象とする(`server.js`の`isAheadMatch()`)。`cardMatchesAnyDestination()`(カード側)・`fetchMatchedSavedDestinationStopCodes()`(経路モーダル側)双方から`data-current-stop-code`を渡すよう修正済み。この不具合は経路モーダルの地図上で顕著に現れていた: 地図の描画区間は現在地→終点のみのため、区間外の目的地マーカーは経路線から浮いた位置に表示されていた
+  - **MRT路線色マッピングは独自の静的データ(LTA提供ではない)**: LTA DataMallにはMRT路線・公式色の情報が一切含まれないため、`server.js`の`MRT_STATION_LINES`/`MRT_LINE_COLORS`はシンガポールMRT/LRT路線図の公式配色を元にした自作の静的マッピング(2026-09-14追加)。バス停`Description`から`Bef `/`Aft `/`Opp `接頭辞と` Stn`以降を除去して駅名を推定し(`resolveMrtLineColor()`)、複数路線が乗り入れる乗換駅は配列の先頭を代表路線・代表色として扱う簡略化をしている。全駅を公式データで検証したものではなくベストエフォートのため、誤り・抜けがあれば`MRT_STATION_LINES`を直接修正すること。「Fire Stn」「Police Stn」等MRT駅ではない誤マッチ(既存の`MRT_STATION_PATTERN`ヒューリスティックの限界)はこのマッピングに存在しないため自然に無色にフォールバックする
+
+## 画面構成
+
+### メイン画面(ホーム)
+
+1. GPSで現在地から最寄りのバス停を自動検出し、即座に表示(バス停選択の操作なし)
+2. 横スワイプで「2番目に近い」以降のバス停に移動。上部にバス停名入りピル行を表示(タップでも切替可、`buildStopPillRow()`)。近傍バス停の取得件数(`NEARBY_LIMIT`)は当初3件固定だったが、ユーザー指摘「反対側もあるし3つだとちょっと少ないかも」により5件に増やした(2026-09-14)。道路を挟んだ反対方向のバス停も別エントリとして候補に挙がるため、3件だと実質1〜2箇所分ですぐ埋まってしまっていた。ピル行は元々`overflow-x:auto`の横スクロール実装のため、件数を増やしてもCSS変更は不要だった(`/api/bus-stops/nearby`の`NEARBY_MAX_LIMIT`上限は10)。**バス停番号の表示(2026-09-14追加)**: ピルのテキストはバス停名のみだったが、ユーザー指示「Arrivalの上部のバス停名の前にバス停の番号も表示して」により`${BusStopCode} ${Description}`の形式(番号が前)に変更した。**ボトムナビ「Arrivals」タップ時のスクロール位置リセット(2026-09-14追加)**: 「Arrivals」タップで最寄り(0番目)のバス停表示に戻す処理(`switchToStopIndex(0)`)は元々あったが、`switchToStopIndex()`は`currentStopIndex`が既に0の場合早期returnするため、ピル行自体の横スクロール位置(2番目以降のピルを見るため右にスクロールした状態)はリセットされず右にずれたまま残る不具合があった(ユーザー指摘「Arrivalを押した時に上のバス停の横スクロールも一番左に戻して」)。`switchToScreen()`の'home'分岐で`switchToStopIndex()`の早期returnとは独立に`#stop-pill-row`へ`scrollTo({left:0, behavior:'smooth'})`を直接呼ぶようにして解消した。**カード一覧の横スワイプでピル行がずれる不具合(2026-09-16実機で発見・修正)**: バス停カード一覧自体にも横スワイプでバス停を切り替えるジェスチャーがあり(`initSwipeGesture()`、`#bus-card-list`のtouchstart/touchend、ピルタップと同じ`switchToStopIndex()`を呼ぶ)、これでピル行の表示範囲外のバス停に切り替わると、`updateStopPillActiveState()`がactiveクラスの付け替えのみでピル行自体のスクロール位置を一切動かしていなかったため、どのピルがアクティブか画面外で分からなくなる不具合があった(ユーザー指摘「バス停名をスワイプで切り替えたときに上の横スクロールがずれます」)。`updateStopPillActiveState()`内でactiveピルに対し`scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'})`を呼び、常にピル行の表示範囲内に入るようにして解消した。
+3. ヘッダー右上に「関連のみ」トグル(星アイコン)。ONにすると登録済み目的地行きの系統のみに絞り込み表示、再タップで全件表示に復帰
+4. MRT運行障害発生時のみ、画面最上部に赤い警報バナーを表示(平常時は非表示)
+5. **ヘッダー(タイトル「Arrivals」+バス停切替ピル行)はバスカード一覧より上に固定表示**(SG在住Naviの「くらし情報」画面と同じパターン)。`#screen-home`が`.app-header`(flex-shrink:0)+`#home-scroll-content`(flex:1, overflow-y:auto)の2段構成になっており、バスカード一覧側だけが独立してスクロールする。**重要な不具合修正(2026-09-14)**: `body`/`.app-shell`が`min-height:100dvh`(上限なし)だったため、カード一覧が長くなるとページ全体がそのまま伸びてブラウザ側がスクロールしてしまい、ヘッダーごと画面外に流れて見えなくなっていた(実装したつもりが実機では効いていなかった根本原因)。`#screen-home`自体に`height: 100dvh; overflow: hidden;`を指定し、ビューポート1つ分の高さに固定することで解消した。この`#screen-home`専用の固定高さはHome画面だけの措置で、Saved/Settings画面は従来通りページ全体(body)がスクロールする方式のまま(それぞれ独立した内部スクロールコンテナを持たないため)。**スクロール最下部でカードがボトムナビに隠れる不具合(2026-09-15実機で発見・修正)**: `.home-scroll-content`/`.screen`共通のボトムナビ分余白が固定`84px`だったため、ボトムナビの実高さに含まれる`env(safe-area-inset-bottom)`(ホームインジケーターのある機種で約34px)分が不足し、リストを一番下までスクロールすると最後のカードの下側がボトムナビに隠れて見えなくなっていた(ユーザー指摘「スクロールを一番下にしたとき、カードの下側が見えない」)。経路モーダル(`.route-modal-overlay`)で先に発見・修正した同種の不具合(2026-09-14「ボトムメニュー隠れてます」)と同じ原因のため、両方とも`padding-bottom: calc(84px + env(safe-area-inset-bottom))`に統一して解消した。
+
+### バスカード(フィード形式、1件=1到着インスタンスをフラットに時刻順で表示、フェーズ4で再設計)
+
+「実際にバス停でバスを待つ感覚」の再現がコアコンセプト。到着予測の時刻表ではなく、今まさに到着していくバスの一覧として見せる。
+
+- **データ構造**: `Services[]`ごとに1カードではなく、`NextBus`/`NextBus2`/`NextBus3`を個別の到着インスタンスとして展開し、全系統混在で到着時刻の昇順にフラット表示する。同一系統番号のカードが複数回出現してよい
+- 系統番号(バッジ、拡大・電光掲示板を意識した最大の視覚要素)
+- 行き先(終点)
+- メタ行: 車両タイプ+混雑状況を1つのバスイラストSVGで表現(2026-09-14変更、`buildBusIllustrationSvg()`)。従来はテキストラベル(「Single Deck」+「Seats available」等)だったが目立ちすぎる・分かりにくいとの指摘があり、バスの"形"(単一/二階建て)で車種を、"窓の色"(`Load`フィールド: SEA=緑/SDA=黄/LSD=赤、`--load-green`/`--load-amber`/`--load-red`)で混雑度を示すイラストに統一した。バス本体の色は混雑度に関わらず固定し、本体自体が赤・黄になって目立ちすぎることを防いでいる。当初は`--bus-icon-body`(淡いテーマグリーン、design-checkerエージェント確認済み。`--caramel-light`は既存でホバー/チップ縁取りの意味を持つため転用せず専用トークンを新設)の単色だったが、2026-09-14ユーザー指示「本体色はグリーンじゃなくて実車に近いグレーで、窓の色(混雑度)は引き続き踏襲、本体はそこまで目立たせなくていい」により`--bus-icon-gradient-start`/`--bus-icon-gradient-end`(グレーの縦グラデーション、上が明るく下がやや濃い)に変更した。ボーダー線での輪郭強調も試作したが「輪郭は微妙」との指摘で不採用、代わりに系統番号バッジと同系統の「浮遊感」を意識したグラデーション表現(モック比較`mockups/bus-icon-shadow-v1.html`パターンG)を採用した。SVGの`linearGradient`要素はid参照がドキュメント全体で解決されるため、カードごとに一意なid(`bus-icon-gradient-{連番}`)を振って衝突を防いでいる(`buildBusIllustrationSvg()`参照)。車椅子対応(WAB)アイコンはこの横に併記。**位置はETA(時間)のすぐ左、時間とまとめて1つの右寄せブロック**(`.eta-time-row`内、`.eta-icon-cluster`が`.bus-card-eta`の中で大きな分数の直前に入る、`buildEtaBlockHtml()`参照)。ETA列はもともと右端の固定スロットのため、行き先タイトルの長さに関係なく位置が動かない。表示順は左から車椅子→バスイラスト→時間(2026-09-14ユーザー指示「バスと車椅子は右寄せして。バスが右、車椅子が左の順」を踏襲、`buildMetaRowHtml()`参照)。「Route」ボタンは`.bus-card-actions`内で単独・右寄せの最下段行として独立している。位置の変遷: 行き先タイトルの下(`.bus-card-info`内、初期)→ETAの左側/下(試験)→タイトル下(差し戻し)→「Route」ボタン新設に合わせてボタンの左(`.bus-card-actions`内、左右分割→右寄せクラスタ)→2026-09-14「タイトルのすぐ下って邪魔」との指摘を受けモックアップ比較(`mockups/card-layout-v3-patternA-variants.html`/`v4-left-of-time.html`)のうえ、ETAのすぐ左固定(現行)に最終決定。タイヤ(円)は「不要・バス感が薄い」との指摘で廃止し、一階建て(横長シルエット)/二階建て(窓2段の縦長シルエット)を形の縦横比だけで瞬時に見分けられるようにしてある
+- 目的地一致インジケーター(`renderMatchTag()`): 表現方法の変遷: 「アイコン+カテゴリ名」タグ(目立ちすぎるとの指摘)→カード左上(バス番号バッジの角)から生える小さな旗型リボン→2026-09-14ユーザー指示「リボンはカードそのものじゃなくて、経路番号のように色として表示したい。バッジの右上の方には小さくアイコンを表示するような形がいい」により系統番号バッジ右上角に色付きアイコンの小さな丸バッジ(`.bus-badge-match-icon`)を重ねる方式に変更した(モック比較`mockups/badge-corner-match-v1.html`パターンB)。テキストラベルは表示せず`aria-label`/`title`属性でカテゴリ名またはカスタムタイトルを補足する。`.bus-badge`には`position: relative;`が必要(角アイコンの絶対配置の基準用)。旧`.bus-card-ribbon`(カード角から生えるリボン)は完全に廃止済み。**バッジ本体の色連動は最終的に廃止(2026-09-14)**: 当初はバッジ全体を目的地のアイコン色で塗りつぶしていた(濃色ベタ塗り→「目立ちすぎる」指摘で薄い色付き背景に変更)が、その後カードのミニ経路図タグの色連動も「系統の色付けをやめる、バッジだけでいい」で廃止した流れを受け、ユーザーから改めて「経路の色連動が残ってます」との指摘があり、**バッジ本体(背景・文字色)の色連動も完全に廃止**した。現在バッジは未一致時と同じニュートラル配色(クリーム背景+黒文字)のままで、右上の角アイコンだけが目的地一致を示す唯一の色付き要素になっている。**複数一致時の表示(2026-09-14追加)**: 「アイコンを2個重ねることできる?」との指示で、1つのバスが複数の登録済み目的地を経由する場合、バッジ右上角に最大2件まで表示できるようにした(`.bus-badge-match-icon--1`/`--2`、3件以上一致しても先頭2件のみ)。配置は当初、右上を起点に縦積みだったが、「バッジは右上から横に並べて」との指示で右上を起点に横並び(--1が右端、--2がその左に少し重なる)に変更した。角アイコンのサイズは「もうちょっと大きくして」との指示で20px→24pxに拡大した(唯一のインジケーターになったため視認性を優先)
+- ETA(1本のみ、控えめな視覚ウェイト) + 同一系統の次到着時刻を小さく併記(例:「Next: 15 min」)
+- 登録済み目的地に一致する到着には、一致した目的地のカテゴリアイコン+カテゴリ名(例:「Home」)をその目的地のアイコン色で表示する(2026-09-14変更)。当初はカード全体の背景・枠線・バッジ色・星アイコン・「Passes {バス停名}」の塗りつぶしタグと視覚要素が多く「カードが目立ちすぎる」との指摘があったため、カード自体の見た目は変えず色付きの小さなアイコン+ラベルのみを表示するトーンダウンしたデザインに変更した(`renderMatchTag()`参照。`.bus-card--highlight`/`.bus-card-star`クラスは廃止済み)
+- Home画面フィードの表示件数は最大10件(到着時刻が早い順、`MAX_DISPLAYED_ARRIVALS`)。系統数が多いバス停で経路情報エンリッチメントのAPI呼び出しが膨らむのを抑えるための制限(2026-09-14ユーザー指示)
+- **重要な不具合修正(2026-09-14)**: 現在表示中のバス停自体が登録済み目的地の場合、そのバス停は定義上どの系統の経路にも(出発点として)含まれるため、目的地一致判定が常にtrueになり全カードが無条件でハイライトされてしまう不具合があった(自宅最寄りのバス停をSaveした場合に顕著)。ハイライトは「このバスが目的地を通るか」を示すものであり「今立っている場所がSave済みか」ではないため、`applyRouteEnrichment()`/`applyRelatedOnlyFilter()`双方で現在表示中のバス停を判定対象の目的地一覧から除外するよう修正済み(`public/js/app.js`参照)
+- ミニ経路図(`renderMiniRoute()`): その系統が経由するMRT駅(`summary.waypoints`のうち`mrtColor`が解決できたもの)を丸ピル型タグで表示する。始点(現在地バス停)・終点(行き先)のタグ、MRT駅ではないランドマーク経由地は表示しない(2026-09-14ユーザー指示「出発点と到着先の情報は要らない、MRTの駅の情報だけでいい」)。該当MRT駅が0件かつ登録済み目的地の一致もない系統ではセクション自体を非表示にする。**登録済み目的地の強制表示(2026-09-14追加)**: サーバー側`selectWaypoints()`はMRT駅・ランドマークしか選定しないため、登録済み目的地が普通のバス停(MRT駅ではない)だった場合、実際に経路上を通っていても従来は一切表示されなかった(ユーザー指摘「経由地はMRTの情報だけになっているが、セーブしているバス停がある場合はそれも必ず表示したい。経由地も経路図の地図についても同じ」)。`mergeSavedDestinationWaypoints()`が`/api/bus-routes/contains-stop`で実際に一致した登録済み目的地(`reason: 'saved_destination'`)をwaypoints配列に追加でマージし、表示件数上限(3件)で埋もれないよう目的地一致分を優先して先頭に詰める。キャプションは目的地一致を含む場合「Passes along the way」、MRT駅のみの場合は従来通り「Passes these MRT stations」。経路モーダルの地図(`addMrtWaypointMarkers()`)・経由地リスト(`renderRouteModalWaypointsList()`)も同じ仕組みで登録済み目的地を必ずマーカー表示する(`openModal()`内で`fetchMatchedSavedDestinationStopCodes()`を呼び出し)。**タグの色連動は最終的に維持(2026-09-14、方針が一往復した)**: 目的地一致タグは経路モーダルの強調タグと同じ「アイコン色で塗りつぶし+カテゴリアイコン」の実心バッジ(`.bus-card-mini-route-tag--dest`、「目立ちすぎるので薄めのラベルに」との指摘を受け淡色化済み)。一度「系統の色付けをやめる、バッジだけでいい」との指示でこのタグの色連動を廃止しMRT駅タグと同じグレー表示にしたが、直後に「ごめん逆です、経路のピルの色はそのままでいいです。経路の番号(バッジ)の方の色連動がグレーでいい」との訂正があり、**タグの色連動(`buildMiniRouteTagHtml()`)は復活・維持**、代わりに系統番号バッジ側(`renderMatchTag()`、下記参照)の方をニュートラルにする方針に確定した。**MRT駅タグの路線色は最終的にカード上では廃止(2026-09-14)**: MRT-safeパレット刷新後の実機確認で、目的地一致タグの塗りつぶし色と実際のMRT路線色(赤・青等)が同一カード内に同時に出て「色が多すぎる」との指摘があった(ユーザー「ちょっと色多いかな。どう思う？」)。対応としてカード上のMRT駅タグ(`buildMiniRouteTagHtml()`の非目的地分岐)から`wp.mrtColor`によるテキスト色付けを削除し、ニュートラル表示に統一した。**この変更はカードのミニ経路図タグ限定で、経路モーダル(`renderRouteModalWaypointsList()`・地図の`addMrtWaypointMarkers()`)のMRT路線色は明示指示により維持している**(ユーザー「ルートを押した時の画面ではやっぱりMRTの色付きの情報は残してください」)。結果、カード上で色を持つのは目的地一致タグとバッジ角アイコンのみになった。**waypoints選定自体の現在地考慮漏れ(2026-09-14追加で発見・修正)**: 上記の色つき対応後、経路モーダルで実機確認したところ、地図・経由地リストに現在地(乗車バス停)より手前(すでに通過済み)のMRT駅が依然として表示される不具合が見つかった(ユーザー指摘「このケースでも逆方向のMRTの情報は表示されないようにして」、例: 現在地「Opp The Nexus」なのに手前の「Opp Beauty World Stn」が地図・リスト双方に出ていた)。これは`/api/bus-routes/contains-stop`の`fromStopCode`位置判定(登録済み目的地の一致判定のみに適用)とは別に、`/api/bus-routes/summary`が返す`waypoints`(MRT駅・ランドマーク選定)自体がそもそも経路全体(起点〜終点)から選ばれており、現在地の概念を一切考慮していなかったことが原因。`/api/bus-routes/summary`に`fromStopCode`パラメータを追加し、指定時は`middleStops`を「現在地(除く)〜終点の手前」に絞ってから`selectWaypoints()`に渡すよう修正した(未指定・route上に見つからない場合は従来通り経路全体、後方互換)。クライアント側`fetchRouteSummary()`も`fromStopCode`引数を追加し、`cardMatchesAnyDestination()`(カードのミニ経路図用)・`openModal()`(経路モーダル用)の両方から`currentStopCode`(現在地のバス停コード)を渡すよう修正した。これによりMRT駅waypoints自体が最初から「現在地より後」のみに絞られるため、地図マーカー・経由地リスト・ミニ経路図タグの全てで手前のMRT駅が一切現れなくなる(個別にフィルタする対症療法ではなく、選定元データを正す根本修正)。**タグの表示順が実際の経由順と無関係だった不具合(2026-09-14追加で発見・修正)**: 上記の現在地考慮修正後もなお、ユーザー指摘「このArrival画面の経路って通っていく順番に並べて欲しい」で発見。原因は表示順の組み立て方自体にあった: カード側`renderMiniRoute()`は「目的地一致タグを必ず先頭に詰め、残り枠をMRT駅タグで埋める」処理(`destWaypoints.concat(mrtWaypoints)`)をそのまま表示順として使っており、経路モーダルも`mergeSavedDestinationWaypoints()`が返す「MRT駅タグの後ろに目的地タグを追加」した順のまま表示していたため、どちらも実際の経由順(StopSequence順)とは無関係な順序になっていた(例: 現在地の直後にある「Home」が実際には手前のMRT駅より先に通過するにも関わらず、カードでは先頭固定、モーダルでは逆に最後尾に表示されていた)。根本修正として、`/api/bus-routes/summary`のwaypointsに`stopIndex`(stops配列内の絶対位置)を追加し、`/api/bus-routes/contains-stop`のpositions(複数判定時のレスポンスに追加)にも同じ`stops`配列基準の位置を持たせることで、MRT駅由来・登録済み目的地由来のどちらのwaypointも直接比較可能な位置情報を持つようにした。クライアント側は新設の`sortWaypointsByStopIndex()`で最終表示直前に必ずstopIndex昇順へ並べ替える(カード側は表示件数上限3件を確保するための「目的地優先選定」ロジック自体は維持しつつ、選定後の表示順だけをこの関数で正す。経路モーダルはマージ直後に適用)。
+- **経路モーダルの起動ボタン(2026-09-14変更)**: 当初は`.bus-card`自体がbutton要素でカード全体タップで経路モーダルを開いていたが、ユーザー指示「カードタップでなくバスカードの右下にボタンをつけてそこをタップすると表示される形にして」により、カード右下に専用の`.bus-card-route-btn`(ラベル「Route」)を追加し、これをタップした場合のみモーダルを開く方式に変更した。これに伴い`.bus-card`自体はもうインタラクティブではないためbutton要素ではなく`div`に変更済み(内部の`.bus-card-route-btn`と合わせてbutton内buttonという不正なHTMLになるのを避ける意味もある)。カード全体タップでの起動・`event.stopPropagation()`は廃止済み
+
+### 絞り込みフィルター(ヘッダー右上)
+
+- 星アイコンのトグルボタン。ONで登録済み目的地行きの系統のみに絞り込み表示、再タップで全件表示に復帰
+- タップ1回で完結、設定画面等への遷移は不要
+
+**モーダルのバッジにも目的地一致アイコンを表示(2026-09-14追加)**: 経路モーダルの系統番号バッジ(`#route-modal-badge`)は当初、Arrivals画面のカードバッジと配色を揃えただけで、目的地一致時の角アイコン(`.bus-badge-match-icon`)が一切表示されなかった(ユーザー指摘「この画面にもバッジ表示されるようにして」)。タップ元のカードは`applyRouteEnrichment()`で既に一致判定・角アイコン描画済みのため、モーダル側で改めて判定・フェッチはせず、`openModal()`内でタップ元カードの`.bus-badge`のDOM状態(`bus-badge--matched`クラス・`aria-label`/`title`・角アイコンの`style.background`/`innerHTML`)をそのままモーダルのバッジへ複製する方式にした(同一系統は常に同じ一致結果になるため複製で視覚的に一致する、再フェッチ不要)。バッジのHTML構造もカードと同じ`.bus-badge-number`+`.bus-badge-match-icon--1`/`--2`の3要素構成に変更した(従来は`textContent`直書きで角アイコン用のspanが存在しなかった)。
+
+### 経路モーダル(バスカード右下の「Route」ボタンで展開)
+
+2026-09-14時点でフルスクリーンシート化(ユーザー指示「地図もうちょっと大きく表示してほしい、画面いっぱいに」)。ヘッダー(系統番号バッジ・区間・閉じるボタン、固定)+地図+バス停リスト(下部)の3段構成。起動方法は`.bus-card`右下の専用ボタン(`.bus-card-route-btn`)タップ(2026-09-14変更、上記バスカード節参照)。
+
+**ボトムナビの表示(2026-09-14追加)**: 当初`.route-modal-overlay`は`inset:0`で画面全体を覆い、他画面共通のボトムナビ(Home/Bus Stops/Settings)が隠れて操作できなかった(ユーザー指示「この画面にもボトムメニュー出すようにして」)。`inset:0`を`top/left/right:0; bottom:calc(84px + env(safe-area-inset-bottom))`に変更し、オーバーレイがナビの高さ分だけ下を開けることで、常時`position:fixed; bottom:0`のボトムナビがその隙間から自然に見えるようにした(ナビ自体のz-index操作は不要、覆う要素がその領域に存在しないだけで表示される)。**実機バグ修正**: 当初`bottom`を単純に`84px`固定にしていたが、`.bottom-nav`自体の実高さは`padding`に`env(safe-area-inset-bottom)`を含む(ホームインジケーターのある機種で+約34px)ため、固定84pxだとナビ上部(アイコン・ラベル行)がオーバーレイの下端に隠れ、セーフエリアの余白部分だけが覗く状態になっていた(ユーザー指摘「ボトムメニュー隠れてます」)。`calc(84px + env(safe-area-inset-bottom))`に変更し、`.bottom-nav`の高さ計算と揃えて解消した。ナビタップ時は`initBottomNav()`の共通クリックハンドラで`route-modal-overlay`の`visible`クラスも同時に外し、モーダルを開いたまま背後の画面だけ切り替わる不整合を防いでいる。
+
+**地図:バス停リストの比率(2026-09-14変更)**: 当初は地図`flex:1`(残り領域を全て占有)+リスト`max-height:32vh`(内容量に応じて可変、内容が少なければ地図がその分大きくなる)だったが、ユーザー指示「地図のサイズを画面の2/3くらいにして、下の1/3はバス停のリストを止まる順に表示してほしい」により、両方をflexアイテム化し`flex:2`(地図)/`flex:1`(リスト)の固定比率に変更した。これによりリストの内容量に関わらず常に画面の約2/3:1/3を維持する。
+
+**下部リストを「代表ウェイポイントのみ」から「全停車バス停」に変更(2026-09-14)**: 従来の下部リストはサーバー側`selectWaypoints()`が選ぶMRT駅・登録済み目的地の代表2〜3件のみをピルタグで横並び表示していたが、ユーザー指示「下の1/3はバス停のリストを止まる順に表示してほしい」により、区間内の実際に停車する全バス停を停車順の縦積みリスト(`renderRouteModalStopList()`)に置き換えた。データソースは`/api/bus-routes/path`のレスポンスに新設した`stops`配列(`path`と同じ区間の全停留所、`BusStopCode`/`Description`/`Latitude`/`Longitude`に加え`resolveMrtLineColor()`を停留所ごとに個別適用した`mrtLine`/`mrtColor`を含む。従来`resolveMrtLineColor()`は`selectWaypoints()`内の代表点選定にしか使っていなかったが、ここで全停留所に汎用適用する初のケースとなった)。表示は路線図のような縦の連結線+ドットのステップリスト(`.route-modal-stop-connector`の`::before`で行を跨いで連続した線に見せる、各行のドットだけ`z-index`で前面に出す)。MRT駅名の停留所は路線色、登録済み目的地に一致する停留所はそのアイコン色+カテゴリアイコンで強調し、現在地の行には「You are here」、終点の行には「Destination」の小タグを添える。**地図側(`addMrtWaypointMarkers()`、MRTマーカー+登録済み目的地のみの代表点)はこの変更の対象外で、従来通り代表点のみをプロットする**(下部リストとは別データ・別関心事のため)。
+
+**現在地ラベルの重なり・文字切れ対策(2026-09-14実機で発見・修正)**: 上記の変更と並行して、ユーザー指摘「ラベルの重なり・文字切れ」で発見。現在地(青い丸)マーカーの黒文字ラベルが`direction:'right'`(右方向に吹き出す)だったため、現在地の座標が近隣のMRT駅と地理的に近い場合(MRT駅ラベルも同じくドットの右側に伸びる作り)、両者のラベルが重なって読めなくなっていた(例:「The Nexus」のラベルが「Beauty World Stn Exit C」に重なる)。現在地ラベルの方向を`direction:'top'`に変更し、右方向に伸びるMRT駅ラベルとの衝突を回避した。加えて、地図の表示範囲を決める`map.fitBounds()`の`padding`を`[24,24]`から`[50,60]`に拡大し、ラベルがビューポート端で文字切れする問題も緩和した。
+
+- **系統番号バッジ**: `.bus-badge`(Home画面のカードと同じニュートラル配色、`--fill-accent`緑ではない)。当初`bus-badge--accent`固定で常に緑にしていたが、ユーザー指示「路線番号は前の画面とあわせて」でHome画面のバッジと統一。4文字以上の系統番号は`bus-badge--long`で縮小するルールもHome画面と共通化済み
+- **地図**: `/api/bus-routes/path`で取得した乗車区間の実座標をLeaflet地図上にポリライン表示。**表示区間は「現在地(今表示中のバス停)→終点」(2026-09-14修正)**: 当初はLTAの`NextBus.OriginCode`(＝そのバスの発車地点＝路線全体の起点、必ずしもユーザーの現在地ではない)を`fromStopCode`に使っていたため、ユーザーの現在地より手前の区間まで含む無駄に長い地図になっていた(ユーザー指摘「出発から終点までじゃなくて現在地から終点までにして欲しい」)。`data-current-stop-code`(今画面に表示中のバス停コード)を`fromStopCode`に使うよう修正し、タイトル・青い丸マーカーのラベルも「現在地(表示中のバス停)→終点」に統一した。`/api/bus-routes/path`サーバー側は元々任意の区間(乗車区間)を受け付ける汎用実装だが、この変更で**循環路線(LoopDesc非空)を起点以外の停留所から乗車するケースで実際に404/400エラーが発生する不具合を発見・修正した**(サーバー側`selectWaypoints`/`stops`配列は循環路線でも起点(`stops[0]`)を1回しか保持しておらず「起点への帰還」を終端に含まないため、`fromStopCode`が起点以外・`toStopCode`が起点自身の場合にStopSequence比較で「逆順」と誤判定されていた。以前は`fromStopCode`が常に路線全体の起点=`toStopCode`と一致していたためこの分岐は通らず、今回の変更で初めて顕在化した)。`toIndex === 0`(＝`toStopCode`が配列の先頭＝循環路線の起点自身)の場合は「ループの残り区間」とみなし`stops.slice(fromIndex)`(現在地から配列末尾まで)を返すよう`server.js`の`/api/bus-routes/path`に分岐を追加した。非循環路線での本当に不正な逆順指定は引き続きエラーになる。タイルは標準OSM(無認証)+CSSフィルター(`grayscale`/`brightness`/`saturate`/`contrast`)で薄いグレースケール調にしている。**白さの微調整(2026-09-14)**: 「経路地図の背景もうちょい白くできる?」でgrayscale/brightness等を強めた結果、地図が非常に白くなった反動で、地図の直後にあるバッジ等のニュートラル背景(`--surface-2`)が同時対比で濃く見えるとの指摘があった(ユーザー自身が「地図が白すぎるから錯覚でグレーが濃く見えるみたい」と結論)。「もうちょい白を落としても大丈夫？文字が見えにくくならない程度で」との指示を受け、`brightness(1.55→1.4)`・`opacity(0.82→0.88)`に調整して白さをわずかに戻した。MRT駅ラベル・経路線は`.leaflet-tile-pane`とは別レイヤーで独自にコントラストを確保している(ラベルはtext-shadowの縁取り、経路線は白いケーシング線)ため、タイルの明るさを下げても文字の視認性には影響しない。**CartoDB Positron(`basemaps.cartocdn.com`)は使用しない**(2026-09-14実機で「API KEY REQUIRED」の透かし入りで配信されることが判明、CARTOの無認証アクセスが制限された模様)。**重要**: このCSSフィルターは`.route-modal-map-el`コンテナ全体ではなく`.leaflet-tile-pane`だけに適用すること。コンテナ全体にかけると経路線・MRTマーカーの色まで一緒に薄まり、「経路を柳グリーンにしたのにMRTの文字色が路線色に見えない」という実害が出た(2026-09-14実機で発見・修正)。経路線の色は柳グリーン(`--fill-accent`、系統番号バッジ等と同じ)。MRT東西線の緑と紛らわしいとの指摘で一度`--midnight`に変更したが、その後ユーザーから改めて柳グリーンに戻す指示があった。地図タイルを大きく薄くした分、経路線が背景に埋もれないよう白い縁取り(ケーシング、経路線の下に一回り太い白線)を敷いてコントラストを出している
+- **出発点・終点マーカー**: 出発点(現在地の最寄バス停)=青い丸(`--category-color-blue`)、終点=`--midnight`のピン型アイコン(`ti-map-pin`)。色と形の両方で区別できるようにしている(2026-09-14、当初は色だけで区別していたが「色だけだと分かりづらい」との指摘で変更)。両マーカーには黒文字ラベル(バス停名、Leafletのpermanentツールチップ`.route-modal-endpoint-tooltip`)を添えている(2026-09-14ユーザー指示「現在地点(最寄駅)と終点も黒い文字で表示して」)。**実機バグ修正(2026-09-14)**: 終点ピンに当初`ti-map-pin-filled`を指定していたが、読み込んでいる`@tabler/icons-webfont`パッケージにはアウトライン系アイコンしか収録されておらず`-filled`系のクラスが一切存在しないため、グリフが描画されず終点ピンが実機で見えなくなっていた(ユーザー指摘「地図上のピン・ラベルが表示されてない」で発覚)。実在する`ti-map-pin`(アウトライン)に修正し、視認性確保のため`-webkit-text-stroke`で縁取りを太らせた。新規アイコンを追加する際は事前にこのCDN配信のCSSで該当クラスが実在するか確認すること
+- **MRT駅マーカー**: 経由地点のうちMRT駅と判定できたもの(`resolveMrtLineColor()`)を、その路線の公式色の丸+ラベルで地図上にプロット。ラベルの文字サイズは12px(登録済み目的地に一致するものは13px+塗りつぶしバッジ)。当初10px/11pxだったが「文字を少し大きくしてきちんと見えるように」との指摘で拡大。**MRT駅ラベル同士の重なり対策(2026-09-14実機で発見・修正)**: ラベルは常に丸の右側に伸びる作りのため、地理的に近接する駅同士(例: The Nexus付近のKing Albert Pk StnとBeauty World Stn Exit C)でラベルが重なって読めなくなる不具合があった(ユーザー指摘「見にくいところない？」)。`addMrtWaypointMarkers()`が直前のマーカーとの近接度を判定し、近い場合はラベルを反対側(左、`.route-modal-mrt-marker--label-left`、`flex-direction:row-reverse`)に出して交互に切り替える対応を追加した。判定は当初、実距離(メートル、Haversine簡易版)ベースで実装したが、King Albert Pk StnとBeauty World Stn Exit Cは実距離約930mも離れているにも関わらずこの経路のズーム倍率では画面上わずか数十pxしか離れておらずラベルが重なる実例があり、経路ごとに`fitBounds()`が動的に決めるズーム倍率次第で同じ実距離でも画面上の重なり方が大きく変わることが判明したため、`map.latLngToContainerPoint()`で求めた画面上のピクセル距離(しきい値70px)による判定に修正した。この変更に伴い、`addMrtWaypointMarkers()`の呼び出し順序も`map.fitBounds()`の**後**に変更した(ズーム・中心が確定してからでないと`latLngToContainerPoint()`が正しい値を返さないため)。
+- **経由地リスト(地図下部)**: MRT駅含む主要経由地をピルタグで一覧表示。MRT駅は路線色の文字色、登録済み目的地に一致する経由地はそのアイコン色で塗りつぶし+カテゴリアイコンを添えて強調(地図上のマーカーも同様に強調)。「Saveした地点は太字か何かでもっと目立たせて」との指摘でfont-weight 800+box-shadowを追加済み
+- 選定ロジック(waypoints、サーバー側`selectWaypoints()`)は優先順位順に: 1. MRT駅・インターチェンジがある停留所 2. 認知度の高い主要な行き先(Orchard、Chinatown等の地名)。全停留所を列挙せず、目印になる地点のみに絞る(「一目で」の原則を経路表示でも維持)
+- 閉じるボタンのみ(拡大・現在地表示等の追加操作はなし。地図自体はドラッグのみ可能、ズームコントロールは非表示)
+
+### 目的地登録
+
+2つの入口をタブで切替(フェーズ5で追加、CLAUDE.md初版の「地図タップのみ・手動検索不要」方針から変更。当初はBy Mapを含む3入口だったが、2026-09-14ユーザー指示「By Mapはやっぱり要らない、分かりにくい」により地図タップでの登録フロー(Leaflet地図・`ensureDestinationMap`等)自体を完全に廃止した):
+
+- **By Route**: 系統番号を入力→`GET /api/bus-services/:serviceNo/stops`でその系統が通る全バス停(両方向マージ)を一覧表示→選んで登録
+- **By Bus Stop**: バス停名・番号で検索(既存`/api/bus-stops/search`を流用)→選んで登録
+
+いずれのタブにも下部に「Nearby bus stops」候補セクションがあるが、**検索ボックスが空の時のみ表示**する(2026-09-14ユーザー指示「Near byは検索ボックスに何も入力がないときだけでいい。何か入力されたらその検索結果を優先して表示して」)。当初は検索状態に関わらず常時表示していたが、何か入力すると検索結果セクションの`.destination-nearby-section`(`#destination-route-nearby-section`/`#destination-stop-nearby-section`)自体を`hidden`にして隠すよう変更した。
+
+一覧から明示的に1件選ぶため確認ダイアログなしで直接登録(登録後は+ボタンがチェックマークに変化)。
+
+**重複登録の防止(2026-09-14実機で発見・修正)**: 当初は同一バス停を複数回登録できてしまう不具合があった(plan.mdでは重複可否が未確定のまま単純追加のみの実装だったため)。`saveDestination()`が保存前に同一`busStopCode`の既存エントリを`loadDestinations()`でチェックし、重複時は追加せず`'duplicate'`を返す。呼び出し元(`registerDestinationFromResult()`)はこれを検知すると「This bus stop is already saved to your list.」と案内しつつ+ボタンをチェックマークに変える(既に望む状態が達成されているため、エラー扱いにはしない)。加えて`loadDestinations()`側でも読み込み時に同一`busStopCode`の重複を自動でクリーンアップし書き戻すようにしており、修正前に紛れ込んだ既存の重複データも次回読み込み時に自然に解消される。
+
+**登録時のアイコン選択は廃止(2026-09-14)**: By Route/By Bus Stopいずれも登録時にはカテゴリピッカーを出さず直接登録する(カテゴリは`other`固定で保存される)。アイコン種類・アイコン色・カスタムタイトルは全てSaved画面で登録後に編集する(`destination-item-category-badge`タップでインライン編集パネルを展開)。**編集パネルを閉じる明示的な手段(2026-09-14追加)**: 当初はバッジ再タップで`toggleDestinationEditor()`がパネルを開閉するだけで、閉じる操作自体を示す視覚的ヒントが一切なかったため「この画面が閉じられません」との指摘があった。パネル上部に常時表示の「Done」ボタン(`.destination-item-editor-done`)を追加し、タップで同じ`toggleDestinationEditor()`を呼んで閉じられるようにした。**Doneボタンの視認性強化(2026-09-14)**: 追加当初はテキストのみ(背景・枠線なし)で、ユーザー指摘「Doneをもうちょっと目立たせたい」により、アクセントカラー塗りつぶしの丸ピルボタン(`.bus-card-route-btn`等、アプリ内の他の主要ボタンと同じ「押せるボタン」の見た目)に変更した。**Doneボタンの配置変更(2026-09-14)**: 当初パネル最上部の右寄せだったが、ユーザー指摘「Doneは色のパレットの右下において」により、カラーピッカー(`buildIconColorPickerHtml()`)の直後・パネル最下部の右寄せ(`.destination-item-editor-footer`)に移動した。**カスタムタイトル欄にラベル追加(2026-09-14)**: 当初は`placeholder`のみで、値を入力すると何のフィールドか分からなくなる問題があった(ユーザー指摘「Custome Tilteはフィールドの左にラベルをつけて、何のフィールドかわかるようにして」)。入力欄を`.destination-item-title-row`(flex行)で囲み、左に常時表示の`<span class="destination-item-title-label">Title</span>`を追加した(`<label for>`は同一パネルが複数同時展開されうるためid衝突を避け、視覚的なラベル+入力欄への`aria-label="Custom title"`で対応)。
+
+**カテゴリ一覧(2026-09-14変更)**: `Home`/`Office`/`Mall`/`School`/`Other`の5種(`DESTINATION_CATEGORIES`)。当初は`Home`/`Work`(カバンアイコン)/`Lessons`(本棚アイコン、見た目が一時停止ボタンに見えて分かりづらいとの指摘)/`Other`だったが、ユーザー指示「カバンとか一時停止とかはよく分からないので消して」によりWork/Lessonsを廃止し、より直感的なMall(ショッピングバッグ)/School(卒業帽)に差し替えた(モック比較`mockups/category-icons-v1.html`)。その後Mallのアイコンが「鞄」に見えるとの指摘を受け、「鞄の代わりにオフィスビルで、あとショッピングモール追加して」との指示でOffice(オフィスビル)を新設し、Mallは分かりやすいショッピングカートのアイコンに差し替えた(mallキー自体は既存データ互換のため維持、アイコンのみ変更)。既存データで`category`が`work`/`lessons`等の廃止済み値だった場合は`normalizeDestinationCategory()`のフォールバックにより自動的に`other`扱いになる(マイグレーション処理は不要)。
+
+**アイコン色パレット(2026-09-14刷新)**: `Gold`/`Lime`/`Turquoise`/`Indigo`/`Magenta`/`Rose`の6色(`DESTINATION_ICON_COLORS`)。当初は`Green`/`Blue`/`Orange`/`Purple`/`Red`/`Teal`だったが、ユーザー指摘「MRTの色と保存したバッジの色がどうしても被る。青のバッジとブルーラインが紛らわしい」を受け、MRT7路線色(赤/緑/紫/橙/青/茶/灰)とほぼ同系統だった旧パレットを、MRTが使っていない色相中心の新パレットに全面差し替えた(モック比較`mockups/destination-palette-mrt-safe-v1.html`)。既存データの旧キー(green/blue/orange/purple/red/teal)は`LEGACY_DESTINATION_ICON_COLOR_MAP`で対応する新キーに1:1で読み替える(green→lime、blue→indigo、orange→gold、purple→magenta、red→rose、teal→turquoise。ユーザーが元々色分けしていた区別自体は保つ設計)。経路モーダルの「現在地」丸マーカーは以前`--category-color-blue`を流用していたが、パレット刷新でblueキーが廃止されたため専用の`--current-location-blue`トークンに切り替えた(目的地カテゴリ色とは無関係の別概念のため独立させた)。
+
+**カスタムタイトル(2026-09-14追加)**: よく訪れる場所に「日本人会」等の分かりやすい名前を付けられる自由入力欄(`title`フィールド、`destination-item-title-input`)。設定するとSaved画面の表示名・Arrivals画面の一致タグ(アイコン+ラベル)の両方でバス停の正式名称の代わりにこのタイトルが使われる(未設定時は従来通りカテゴリ名「Home」等にフォールバック)。ユーザー自由入力のため、innerHTML挿入時は`escapeHtml()`で必ずエスケープすること(XSS対策)。**発見しやすさの改善(2026-09-14)**: 当初はカテゴリバッジをタップしないと入力欄の存在に気づけなかった(ユーザー指摘「タイトルをつけられるようにして。どこか分かるようにです。タイトルが重要です」)。タイトル未設定の目的地には常時表示の「+ Add a title」プロンプト(`destination-item-add-title-btn`、アクセントカラー)を追加し、タップでバッジタップと同じ編集パネルが開くようにした(`toggleDestinationEditor()`に共通化)。タイトルが設定されるとこのプロンプトは自動的に隠れる。
+
+**ドラッグ&ドロップでの並べ替え(2026-09-14追加)**: 各行の左端に3本線ハンドル(`.destination-item-drag-handle`、`ti-menu-2`)を追加し、掴んで上下にドラッグすると順番を入れ替えられる(ユーザー指示「順番をドラッグ&ドロップで変えれるようにしたい。3本線で動かすやつ」)。実装はSortableJS等でも使われる標準的なプレースホルダー方式(`initDestinationListDragReorder()`): ドラッグ中の行を`position:fixed`で画面上に浮かせて指の動きに追従させ、元の位置には高さだけ持つプレースホルダーを残して他の行が自然に詰める/開くようにする。ハンドルには`touch-action: none`が必須(無いとiOS Safariで意図せずページスクロールが発生し、ドラッグを奪えない)。確定(pointerup)時にDOM上の最終順序から`destinations`配列を再構築し`persistDestinations()`で保存する。一覧は`renderDestinationList()`のたびに`innerHTML`で作り直されるため、行ごとにリスナーを貼らず`#destination-list`への`pointerdown`委譲で1回だけ初期化している。
+
+タブ切替のUIパターン: `.filter-toggle`の`aria-pressed`パターン(非活性=ニュートラル、活性=`--fill-accent`塗り+太字)を踏襲したセグメントコントロール。今後同様のタブUIもこのパターンを再利用する。
+
+### Settings画面
+
+sg-weekend-app(姉妹アプリ)のSettings画面のロジックをベースに実装(2026-09-13)。SGBusNaviには認証機構がないため、5節構成のうち「アカウント」は大幅に縮小している。
+
+- **Profile**: ニックネーム入力のみ(`sgbusnavi_nickname`)。アバター絵文字ピッカーはSGBusNavi側に表示先(コメント機能等)がないため未実装
+- **Account**: 実装しない方針(2026-09-13ユーザー確定指示「アカウント連携はやらないと思うので、設定から消しちゃっていい」)。当初は空のプレースホルダー行を用意していたが、セクションごと削除した
+- **App Settings**: ダークモード切替のみ(`sgbusnavi_theme`、Auto/On/Offの3値循環、sg-weekend-appの`cycleTheme()`と同一方式)。プッシュ通知トグルは対象外(ユーザー指示により除外)。CSS側の`html[data-theme="dark"]`変数オーバーライドは元々用意済みだった(JS実装のみ今回追加)
+- **Support & Info**: Website/Contact/Privacy Policyの3行は実URLが未確定のため、行は表示しつつ`.settings-item--disabled`でタップ不可にしてある(URL確定後は`public/index.html`の該当`<a>`から`settings-item--disabled`クラスと`tabindex="-1"`を外し`href`を設定する)。バージョン表示は`GET /api/version`(`package.json`の`version`をそのまま返す)。**Website/Privacy Policyリンクの有効化(2026-09-15)**: `public/about.html`(紹介ページ)公開に伴い、`#settings-website-link`を`/about`にリンクする形で有効化した。Privacy Policyは`https://willoa.net/privacy-policy`(willoa-siteリポジトリに新設、SG在住Navi・SGBusNavi両方をカバーする共通ポリシーページ、日本語)にリンクして有効化したが、ユーザー指示「英語版も用意できる？SGBusNaviはそっちに誘導して」により英語版`https://willoa.net/privacy-policy/en`を追加作成し、SGBusNaviのリンク先はそちらに変更した(SGBusNaviのUIが英語オンリーのため、日本語話者限定ではない対象ユーザー層に合わせた判断)。Contactは対応するページが未整備のため引き続き無効のまま。**target="_blank"の廃止(2026-09-16実機で発見・修正)**: 当初はWebsite/Privacy Policyとも`target="_blank"`で別タブ起動していたが、ユーザー指摘「アプリの中からウェブサイトやプライバシーポリシーを開いたとき、戻るボタンがなくて元のアプリに戻れない」により発覚。原因はホーム画面に追加したPWA(standalone表示)にはブラウザの戻るボタン自体が存在せず、かつiOSのstandalone表示からの`target="_blank"`は必ずしも安定して別タブに分離されない(実質的に同一ウィンドウ内遷移になり、遷移先に戻る手段がないと詰む)ことだった。`target="_blank"`を外し同一ウィンドウ内遷移に統一したうえで、遷移先ページ自体(`about.html`の「Open App →」、willoa.net側privacy-policyページの明示的な戻りリンク、後述)に確実な戻り導線を用意する方針に変更した。Stripe決済リンク(Support the app)は決済フローという性質上`target="_blank"`のまま維持する。
+- **Feedback**: テキストエリア+送信ボタン→`POST /api/feedback`→sg-weekend-appと同じLINE Messaging API(Push)で開発者個人のLINEに通知(2026-09-13ユーザー指示「同じline通知でお願いします」)。`LINE_CHANNEL_ACCESS_TOKEN`/`LINE_USER_ID`は`.env`にsg-weekend-appと同一の値を設定済み(同じ開発者宛のため使い回し)。サーバー側にはデータを保存しない(ログファイルへの永続化なし)
+- **Share(2026-09-14追加)**: Support & Info内「Share with friends」ボタン(`#settings-share-btn`)タップでボトムシート(`#share-sheet-overlay`)を開く。姉妹アプリsg-weekend-appのQR共有シートを参考に実装(ユーザー指示「SG在住Naviの設定を参考に、シェアをつけて」)。中身はQRコード(`qrcode-generator.js`、Kazuhiko Arase氏のMITライセンス自己完結ライブラリ、sg-weekend-appと同一ファイルを流用・`app.js`より前に`<script>`読み込み)+説明文+「Share」ボタン(`navigator.share`優先、非対応環境は`navigator.clipboard`でURLコピー、コピー成功・失敗いずれも`window.alert`で通知しサイレント失敗にしない)。QRコード・シェア本文のリンク先はネイティブアプリが未リリースのため、当面Web版URL(`https://bus.willoa.net`、`initShareSheet()`内の`SHARE_URL`定数)固定(2026-09-14ユーザー指示「QRコードのURLはまだWeb版のURLでいいです」、ネイティブアプリ公開後に差し替え予定)。UIパターンは`route-modal`(フルスクリーン)・`destination-map-modal`(中央配置カード)とは異なる、画面下からスライドインするボトムシート(`.share-sheet-overlay`/`.share-sheet`)として新設した。**QRコード下のリンク行(2026-09-15追加)**: ユーザー指示「シェアするときのQRコードの下も、SG在住Naviのコードを参照する形でアップデートして」により、sg-weekend-appのQR共有シートにあるアイコン+小ラベルのリンク行(`.share-sheet-links`/`.share-sheet-link`)を追加した。sg-weekend-app側はApp Store/紹介ページ/Xの3リンクだが、SGBusNaviはネイティブアプリ未リリース・X アカウント未整備のため、現時点ではSettings画面の「Website」と同じ紹介ページ(`/about`)へのリンクのみを表示する。
+- **Support the app(2026-09-15追加)**: Support & Info内「Support the app」行(`#settings-support-link`)。sg-weekend-appの「アプリを応援する」($5 SGD程度の任意寄付)を参考に追加(ユーザー指示「応援する機能...SG在住Naviを参考に一応つけてほしい」)。Stripe決済リンクはsg-weekend-appと**同一のもの(`https://buy.stripe.com/28EfZ9eN56aZaEEbmY4c800`)をそのまま流用**しており、SGBusNavi専用のPayment Linkは新規作成していない(ユーザー選択「SG在住Naviと同じStripeリンクを使い回す」、両アプリとも同じ運営会社WILLOA PTE. LTD.宛のため。トレードオフとして、どちらのアプリ経由の寄付かはStripe側では区別できない)。
+
+### バス停検索(GPSに依らない手動検索) — 廃止済み
+
+- ボトムナビの「Search」タブおよびSearch画面(`#screen-search`)は2026-09-13にユーザー指示で削除した(「実質searchのメニュー使わない」ため)。ボトムナビはHome/Saved/Settingsの3タブ構成に変更済み
+- 「最近見たバス停」のlocalStorageキー(`sgbusnavi_recent_stops`)自体・読み書きロジックは削除したが、既存データはlocalStorage上に残りうる(実害なし、新規書き込みは行われない)
+- バス停名・番号での検索機能自体は、目的地登録モーダルの「By Bus Stop」タブ(`/api/bus-stops/search`)として独立して存続している。こちらは削除対象外(別機能)
+- GPS拒否時のフォールバックUI(`#gps-fallback`)にあった「Search for a bus stop」ボタンも、遷移先のSearch画面がなくなったため削除した。フォールバックメッセージのみで案内する
+
+### 一時デバッグ機構(目的地保存バグ調査用) — 原因特定後は削除してよい
+
+- 2026-09-13、「Savedタブの目的地登録モーダル(By Bus Stopタブ等)から保存すると実機でのみ保存されない」という不具合の原因調査のため、一時的なクライアントエラー収集の仕組みを追加した(jsdomでの正確なE2E再現では再現せず、実機ログが必要と判断したため)
+- `server.js`: `POST /api/client-error` エンドポイント。受け取ったJSONを`data/client-errors.log`に追記するだけ(認証なし、20KB制限)
+- `public/js/app.js`: `reportClientError(context, detail)`ヘルパーと、`window.onerror`/`unhandledrejection`のグローバルハンドラ、および`saveDestination()`/`registerDestinationFromResult()`/カテゴリボタンクリックハンドラへのトレース呼び出し
+- 原因特定後はこれらを全て削除すること(本番エンドポイントとして残す意図はない)
+
+## デザイン方針
+
+- SG在住Naviの実運用中の本体`public/app.css`(`about-shared.css`ではない。実装時にこちらの値を採用済み)のデザイントークン(柳グリーン配色、カード角丸、フォント)をそのまま流用
+- フォントファミリーは`'Inter', sans-serif`(Google Fontsから読み込み、`public/index.html`参照)。2026-09-13、視認性最優先の方針に変更(ユーザー確定指示)。従来はSG在住Naviと完全一致の`'Noto Sans JP'`をブランド統一目的で採用していたが、UIが英語オンリーで日本語グリフの必要性が薄いこと・Interは数字の判別性が高く系統番号(961M等)や小サイズでの視認性に優れることから、姉妹アプリとのフォント統一より視認性を優先する判断に変更(`mockups/font-comparison-v1.html`で比較モックを提示のうえ決定)。ボトムナビ・カードUI等の寸法(font-size, padding, gap等)はSG在住Naviと一致させる方針自体は継続
+- ボトムナビ・カードUI等の共通コンポーネントは、寸法(font-size, padding, gap, border-radius, box-shadow等)までSG在住Naviと一致させる。デザインの一貫性チェックには`design-checker`エージェント(ユーザー共通設定)を使う。**実施例(2026-09-14)**: ユーザー指示「全体的にどう？統一できていないところない？」を受けdesign-checkerエージェントでSG在住Navi(`app.css`)と比較したところ、`.bottom-nav-item span`(ボトムナビのラベル文字)が14pxでSG在住Navi側(13px)と1pxズレていたのを発見・修正。またSGBusNavi内部の一貫性チェックとして、新設した`.share-sheet-title`(16px)が既存の`.route-modal-title`/`.destination-map-modal-title`(いずれも15px)と揃っていなかったのも発見・修正した
+- 密度が重要な画面(バスカードリスト等、「一目でわかる」コンセプトに直結する箇所)では、SG在住Navi基準のpadding/gapがカード表示密度を下げすぎる場合、意図的に値を縮小する例外を許容する(例外を作る場合はここに記録すること)
+- **バスカードの密度調整(2026-09-15)**: ユーザー指摘「カードが大きくなりすぎてる」を受け、`mockups/card-density-v1.html`で3段階(Pattern A控えめ/B しっかり/C 最も密)のモックを提示し、Pattern A(控えめ)を採用した。変更値: `.bus-card`padding 18px→14px、`.bus-badge`58px/24px→50px/20px(`border-radius`16px→14px、経路モーダルヘッダーと共有のためそちらも連動して縮小)、`.bus-card-dest-name`18px→16px、`.bus-card-row`gap 14px→12px、`.eta-value`22px→19px(`.now`は18px→16px)、`.eta-unit`13px→12px、`.bus-card-mini-route-tag`12px→11px(padding 5px 10px→4px 9px)、`.bus-card-mini-route-caption`12px→11px、`.bus-card-route-btn`13px→12px(padding 7px 14px→6px 12px)、`.bus-card-mini-route`のmargin/padding-top 12px→10px。
+- フィルターピル/チップ系コンポーネント(例: ヘッダーの「関連のみ」トグル)は、SG在住Naviの`.filter-chip`パターン(非活性=ニュートラル背景+枠線、活性=アクセント塗り+太字)で統一する。新規にピルUIを追加する際もこのパターンを踏襲する
+- CSS変数のエイリアス対応(`--surface-1`→`--warm-white`、`--surface-2`→`--cream`等)は`public/css/style.css`冒頭の「2. 意味的エイリアス」ブロックにコメント付きで一覧化されている。新規実装時にSG在住Navi側のどの変数に対応するか迷ったら、このブロックを参照する
+- ボトムナビ: Home / Saved / Settings の3タブ構成(2026-09-13、Searchタブ廃止によりHome/Search/Saved/Settingsの4タブ構成から変更)
+- PWA化。アイコン・マニフェストもSG在住Naviの制作フローを踏襲
+- **`<input>`要素のfont-sizeは必ず16px以上にする**（iOS Safariはfont-sizeが16px未満だとフォーカス時に自動ズームする仕様があり、2026-09-13の実機テストで検索欄・目的地登録の入力欄が15pxだったため発生・修正済み）
+- localStorageへの書き込み関数（`persistDestinations()`等）は成功可否をboolean等で返し、呼び出し元は失敗時に必ずユーザーに通知すること（サイレント失敗の禁止。2026-09-13、目的地保存が断続的にSaved画面へ反映されない不具合の原因候補として発見・修正）
+- **ボタン押下時の前提条件チェックで早期returnする場合は、必ずユーザーに理由を伝えること**（サイレント失敗の禁止、上記と同じ原則）。2026-09-13、Home画面の目的地追加ボタンが`currentDisplayedStop`未確定（GPS取得前）時に何のフィードバックもなく無反応になる不具合を発見・修正（jsdomでのE2Eシミュレーションにより発見。実機ブラウザが使えない開発環境では、静的コードレビューだけでなく`jsdom`パッケージで実際にDOM操作・クリックイベントを再現するテストが有効）
+
+## モックアップ(参考実装)
+
+以下のモックアップHTMLがデザインの参照実装として存在する(アップロード資料より):
+
+- **メイン画面フルスクリーン**: ヘッダーに最寄りバス停名+「関連のみ」フィルター、スワイプドット、車種イラスト付きバスカード3件、ボトム4タブナビ
+- **バス停検索タブ**: 検索欄+「最近見たバス停」履歴リスト、ボトムナビのSearchタブがアクティブ
+- **経路モーダル**: バスカードタップで開く、始点・終点+Orchard等の主要経由地2〜3箇所をラベル付きで表示する簡易ルート線図
+
+いずれもCSS変数(`--surface-1`, `--surface-2`, `--text-primary`, `--text-accent`, `--fill-accent`, `--border` 等)を用いたデザイントークンベースの実装。Tabler Icons(`ti ti-*`)を使用。
+
+## 未決事項(今後詰める)
+
+- サーバー構成(dosuru-appと同一VPS内で別Node.jsプロセス+PM2、nginx側でbus.willoa.net用serverブロック追加)
+- Obsidianボルトの`willoa`配下に本プロジェクト用サブディレクトリを新設するか検討
+- LTA DataMall APIキーの新規登録
+- GPS取得の許可フロー・エラー時(位置情報オフ)のフォールバック表示
+
+## iOSネイティブアプリ化(2026-09-16着手)
+
+Capacitorでラップし、姉妹アプリSG在住Navi(sg-weekend-app)と同じ「`release`ブランチへのpush→GitHub Actions(macOSランナー)→Fastlane→TestFlight」方式でビルド・配信する計画。詳細な手順は`ios-app/README.md`参照。
+
+- **App Store Connect登録済み(2026-09-16)**: アプリ名`SGBusNavi`、プライマリ言語English(UK)、バンドルID`net.willoa.bus`(SG在住Naviの`app.dosuru`と同じ逆ドメイン命名規則)、SKU`sgbusnavi`、ユーザアクセス制限なし。詳細はauto memoryの`project_appstore_registration`参照
+- **ローカルスカフォールド作成済み(2026-09-16)**: `ios-app/`配下に`capacitor.config.js`(appId: `net.willoa.bus`)・`package.json`・`Gemfile`・`fastlane/`(Appfile/Fastfile)・`resources/`(icon.png 1024×1024・splash.png/splash-dark.png 2732×2732、いずれも`assets/icons/app-icon-light.png`から生成)を配置。`.github/workflows/ios-deploy.yml`も作成済み
+- **sg-weekend-appからの簡略化**: SGBusNaviはログイン・プッシュ通知・Google/Apple認証を一切使わないため、sg-weekend-app側にある複雑な処理(APNs bridge注入`ensure-apns-bridge.py`、Google Sign-InのURL Scheme注入、プライバシーマニフェスト`ensure-privacy-manifests.py`、通知アイコン対応の18サイズ手動生成、App.entitlements)は全て不要と判断し省略した。`ensure-min-ios-version.py`(ITMS-90068対応、iOS 15.0引き上げ)のみ汎用処理のため`scripts/`にそのまま移植した
+- **SGBusNavi固有の追加**: GPSで最寄りバス停を自動検出する機能があるため、`NSLocationWhenInUseUsageDescription`をCIワークフロー内でInfo.plistに追加する処理を新規に加えた(sg-weekend-appは位置情報の用途が限定的でこの設定自体が不要だったため元のワークフローには存在しない)
+- **証明書管理方式**: `fastlane match`は使わず、手動作成した証明書(.p12)・プロビジョニングプロファイル(.mobileprovision、名前は`sgbusnavi_appstore`固定)をBase64化してGitHub Secretsに登録する方式(sg-weekend-app実際の`ios-deploy.yml`/`Fastfile`もこの方式で動いている。README.md上はmatch方式の記載もあるが実態と乖離しているドキュメント負債と判明したため、SGBusNavi側は実態に合わせて書いた)
+- **未完了**: (1) GitHubリポジトリ未作成・初期コミット未実施、(2) Distribution証明書・プロビジョニングプロファイル・App Store Connect APIキーの発行(Apple Developer portalでの手動作業、ユーザー側で実施が必要)、(3) 上記をGitHub Secretsへ登録、(4) `release`ブランチへのpushによる初回ビルド確認

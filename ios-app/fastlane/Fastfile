@@ -1,0 +1,61 @@
+require 'base64'
+require 'tmpdir'
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Build and upload to TestFlight for beta testing"
+  lane :deploy do
+    setup_ci if ENV['CI']
+
+    cert_path = File.join(Dir.tmpdir, "dist.p12")
+    File.binwrite(cert_path, Base64.decode64(ENV['DIST_CERT_BASE64']))
+    import_certificate(
+      certificate_path:     cert_path,
+      certificate_password: ENV['DIST_CERT_PASSWORD'],
+      keychain_name:        "fastlane_tmp_keychain",
+      keychain_password:    ""
+    )
+
+    profile_path = File.join(Dir.tmpdir, "profile.mobileprovision")
+    File.binwrite(profile_path, Base64.decode64(ENV['PROVISION_PROFILE_BASE64']))
+    install_provisioning_profile(path: profile_path)
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      team_id:               ENV['APPLE_TEAM_ID'],
+      bundle_identifier:     "net.willoa.bus",
+      code_sign_identity:    "Apple Distribution",
+      profile_name:          "sgbusnavi_appstore",
+      path:                  "ios/App/App.xcodeproj"
+    )
+
+    app_version   = ENV['APP_VERSION'] || "1.0.0"
+    release_notes = ENV['RELEASE_NOTES'] || "Initial release."
+
+    build_app(
+      workspace:      "ios/App/App.xcworkspace",
+      scheme:         "App",
+      export_method:  "app-store",
+      xcargs:         "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} CODE_SIGN_STYLE=Manual CURRENT_PROJECT_VERSION=#{ENV['BUILD_NUMBER']} MARKETING_VERSION=#{app_version}",
+      export_options: {
+        teamID:               ENV['APPLE_TEAM_ID'],
+        provisioningProfiles: { "net.willoa.bus" => "sgbusnavi_appstore" }
+      }
+    )
+
+    api_key = app_store_connect_api_key(
+      key_id:      ENV['ASC_KEY_ID'],
+      issuer_id:   ENV['ASC_ISSUER_ID'],
+      key_content: ENV['ASC_PRIVATE_KEY']
+    )
+
+    upload_to_testflight(
+      api_key:                           api_key,
+      app_identifier:                    "net.willoa.bus",
+      skip_waiting_for_build_processing: true,
+      distribute_external:               false,
+      notify_external_testers:           false
+    )
+  end
+end

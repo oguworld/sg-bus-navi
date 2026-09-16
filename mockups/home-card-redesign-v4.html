@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SGBusNavi — Home Card Redesign v4 (mockup, not wired to app)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --cream: #FAFAF8; --warm-white: #FFFFFF; --sand: #EAEAE6; --sand-dark: #DCDCD6;
+    --caramel: #6F8F63; --caramel-pale: #EEF3EA;
+    --midnight: #2B2B27; --warm-gray: #767268; --light-gray: #A8A49A;
+    --radius-card: 24px; --shadow-card: 0 4px 18px rgba(43,43,39,0.08);
+    --font-heading: 'Noto Sans JP', sans-serif;
+    --surface-2: var(--cream); --surface-1: var(--warm-white);
+    --text-primary: var(--midnight); --text-secondary: var(--warm-gray); --text-muted: var(--light-gray);
+    --text-accent: var(--caramel); --bg-accent-muted: var(--caramel-pale); --fill-accent: var(--caramel);
+    --border: var(--sand); --border-accent: var(--caramel); --on-accent: var(--warm-white);
+    --load-green: #4C9A5B; --load-amber: #C79A2E; --load-red: #C0392B;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; font-family: var(--font-heading); }
+  body { background: var(--surface-2); color: var(--text-primary); padding: 24px 0 80px; }
+  .note { max-width: 480px; margin: 0 auto 20px; padding: 0 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+  .note b { color: var(--text-primary); }
+  .note ol { padding-left: 18px; margin-top: 6px; }
+  .phone { max-width: 480px; margin: 0 auto; }
+  .header { display:flex; align-items:center; justify-content:space-between; padding: 4px 16px 14px; }
+  .header-stop { display:flex; align-items:center; gap:6px; font-size:15px; font-weight:500; }
+  .header-stop i { color: var(--text-accent); font-size:16px; }
+  .filter-pill { display:flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:999px; padding:7px 14px; font-size:14px; color:var(--text-secondary); }
+  .filter-pill i { font-size:13px; }
+
+  .feed { display:flex; flex-direction:column; gap:14px; padding: 0 16px; }
+
+  .arrival-card {
+    background: var(--surface-1);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    padding: 18px;
+  }
+  .arrival-card.match {
+    background: var(--bg-accent-muted);
+    border: 2px solid var(--border-accent);
+  }
+
+  .top-row { display:flex; align-items:center; gap:14px; }
+
+  .badge {
+    flex-shrink:0;
+    width:58px; height:58px;
+    border-radius:16px;
+    background: var(--surface-2);
+    display:flex; align-items:center; justify-content:center;
+    font-size:24px; font-weight:800;
+    color: var(--text-primary);
+  }
+  .match .badge {
+    background: var(--fill-accent);
+    color: var(--on-accent);
+  }
+
+  .info { flex:1; min-width:0; }
+  .dest-row { display:flex; align-items:center; gap:6px; }
+  .dest-name { font-size:19px; font-weight:700; line-height:1.25; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .meta-row { display:flex; align-items:center; gap:10px; margin-top:4px; }
+  .deck-tag { font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:4px; }
+  .deck-tag i { font-size:12px; }
+
+  .load-tag { font-size:11px; display:flex; align-items:center; gap:4px; color: var(--text-secondary); }
+  .load-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .load-dot.green { background: var(--load-green); }
+  .load-dot.amber { background: var(--load-amber); }
+  .load-dot.red { background: var(--load-red); }
+
+  .eta { flex-shrink:0; text-align:right; }
+  .eta-value { font-size:16px; font-weight:700; color:var(--text-secondary); }
+  .eta-value.now { color: var(--caramel); }
+  .eta-unit { font-size:11px; color:var(--text-muted); display:block; }
+  .eta-next { font-size:10px; color: var(--text-muted); margin-top:4px; white-space:nowrap; }
+
+  .match-tag {
+    display:inline-flex; align-items:center; gap:5px;
+    background: var(--fill-accent); color: var(--on-accent);
+    font-size:12px; font-weight:700;
+    padding:4px 10px; border-radius:999px;
+    margin-top:10px;
+  }
+  .match-tag i { font-size:12px; }
+
+  /* ── ミニ経路図（タップで実地図に展開） ── */
+  .mini-route {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(0,0,0,0.06);
+    cursor: pointer;
+  }
+  .mini-route-header { display:flex; align-items:center; justify-content:space-between; }
+  .mini-route-hint { font-size:10px; color: var(--text-muted); display:flex; align-items:center; gap:3px; }
+  .mini-route-hint i { font-size:11px; transition: transform 0.25s ease; }
+  .mini-route.open .mini-route-hint i { transform: rotate(180deg); }
+  .mini-route svg { display:block; width:100%; height:32px; margin-top:4px; }
+  .mini-route-label { font-size:10px; fill: var(--text-secondary); }
+  .mini-route-label.hi { fill: var(--text-primary); font-weight:700; }
+
+  .map-panel {
+    display:none;
+    margin-top:10px;
+    height:220px;
+    border-radius:14px;
+    overflow:hidden;
+    border:1px solid var(--border);
+  }
+  .mini-route.open .map-panel { display:block; }
+  .map-panel .leaflet-container { background: var(--surface-2); font-family: var(--font-heading); }
+
+  h2.section { max-width:480px; margin: 32px auto 4px; padding:0 16px 16px; font-size:14px; color:var(--text-secondary); }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>Mockup v4</b> — 実データを使った「タップで実地図表示」プロトタイプ。実際のアプリには未反映ですが、<b>地図部分は本物のLeaflet+OpenStreetMapで、実際の67番系統(Choa Chu Kang Int発 → Tampines Int行き)の実座標</b>を使っています。
+  <ol>
+    <li>1枚目のカードの経路欄（点線区切りの下）を<b>タップすると実地図が開閉</b>します。全停留所の緯度経度をBusRoutesデータから取得し、実際のルートを線で描画しています</li>
+    <li>ETA右下に、同じ系統の<b>次の到着時刻を小さく併記</b>（例:「Next: 15 min」）。1件=1到着のフラット表示にしつつ、「次はいつか」もすぐ分かるようにしました</li>
+  </ol>
+</div>
+
+<div class="phone">
+  <div class="header">
+    <div class="header-stop"><i class="ti ti-map-pin"></i> Opp The Nexus</div>
+    <div class="filter-pill"><i class="ti ti-star"></i> Relevant only</div>
+  </div>
+
+  <div class="feed">
+
+    <div class="arrival-card match">
+      <div class="top-row">
+        <div class="badge">67</div>
+        <div class="info">
+          <div class="dest-row"><span class="dest-name">Tampines Int</span></div>
+          <div class="meta-row">
+            <div class="deck-tag"><i class="ti ti-bus"></i>Single Deck</div>
+            <div class="load-tag"><span class="load-dot green"></span>Seats available</div>
+          </div>
+        </div>
+        <div class="eta">
+          <span class="eta-value now">Now</span>
+          <span class="eta-unit">arriving</span>
+          <span class="eta-next">Next: 15 min</span>
+        </div>
+      </div>
+      <div class="match-tag"><i class="ti ti-star"></i>Passes Bukit Merah Int</div>
+
+      <div class="mini-route" id="route-toggle-1">
+        <div class="mini-route-header">
+          <svg viewBox="0 0 230 32" style="flex:1;">
+            <line x1="6" y1="16" x2="224" y2="16" stroke="var(--caramel)" stroke-width="3" stroke-linecap="round"/>
+            <circle cx="6" cy="16" r="5" fill="var(--caramel)"/>
+            <text x="6" y="29" class="mini-route-label" text-anchor="middle">Nexus</text>
+            <circle cx="115" cy="16" r="3.5" fill="var(--warm-gray)"/>
+            <text x="115" y="10" class="mini-route-label" text-anchor="middle">Newton</text>
+            <circle cx="224" cy="16" r="5" fill="var(--midnight)"/>
+            <text x="215" y="29" class="mini-route-label hi" text-anchor="middle">Tampines</text>
+          </svg>
+          <span class="mini-route-hint">Map <i class="ti ti-chevron-down"></i></span>
+        </div>
+        <div class="map-panel" id="map-1"></div>
+      </div>
+    </div>
+
+    <div class="arrival-card">
+      <div class="top-row">
+        <div class="badge">74</div>
+        <div class="info">
+          <div class="dest-row"><span class="dest-name">Clementi Ave 6</span></div>
+          <div class="meta-row">
+            <div class="deck-tag"><i class="ti ti-bus-double"></i>Double Deck</div>
+            <div class="load-tag"><span class="load-dot amber"></span>Standing room</div>
+          </div>
+        </div>
+        <div class="eta">
+          <span class="eta-value">2</span>
+          <span class="eta-unit">min</span>
+          <span class="eta-next">Next: 17 min</span>
+        </div>
+      </div>
+      <div class="mini-route" id="route-toggle-2">
+        <div class="mini-route-header">
+          <svg viewBox="0 0 230 32" style="flex:1;">
+            <line x1="6" y1="16" x2="224" y2="16" stroke="var(--warm-gray)" stroke-width="3" stroke-linecap="round"/>
+            <circle cx="6" cy="16" r="5" fill="var(--warm-gray)"/>
+            <text x="6" y="29" class="mini-route-label" text-anchor="middle">Nexus</text>
+            <circle cx="130" cy="16" r="3.5" fill="var(--light-gray)"/>
+            <text x="130" y="10" class="mini-route-label" text-anchor="middle">Holland V</text>
+            <circle cx="224" cy="16" r="5" fill="var(--midnight)"/>
+            <text x="215" y="29" class="mini-route-label" text-anchor="middle">Clementi</text>
+          </svg>
+          <span class="mini-route-hint">Map <i class="ti ti-chevron-down"></i></span>
+        </div>
+        <div class="map-panel" id="map-2"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<h2 class="section">※地図は実際のBusRoutes/BusStopsデータ(67番系統、全81停留所)から実座標を抽出して描画しています。カード2枚目(74番)は座標データが無いためダミーの直線のみです。</h2>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  // 実データ: 服务67番(Choa Chu Kang Int -> Tampines Int)、Opp The Nexus以降の実座標
+  // (data/bus-routes.json + data/bus-stops.json から抽出した本物の緯度経度)
+  const route67Coords = [
+    [1.33474752657285,103.7877986922408],  // Opp The Nexus
+    [1.33325151466609,103.79206171859214],
+    [1.33170368135595,103.79657033601987],
+    [1.33044921085796,103.79993319513187],
+    [1.32940305598521,103.80304777797754],
+    [1.32652777798065,103.80758583296918],
+    [1.32469500003392,103.81026249997407],
+    [1.32333331915013,103.81630566925632],
+    [1.32267444098276,103.82025232877241],
+    [1.32185235205471,103.82344007494515],
+    [1.320510556,103.8273903],
+    [1.3197216415795,103.8299145659947],
+    [1.31889734253426,103.83249521257974],
+    [1.31830398893217,103.83435129198834],
+    [1.31662138896806,103.83634361100417],
+    [1.31402305600959,103.83884638900086],  // Newton
+    [1.31230305602353,103.8407255559936],
+    [1.31142305600915,103.84265999998345],
+    [1.30981925741503,103.8460393043403],
+    [1.30664404460339,103.84920416709382],
+    [1.30572083298412,103.85120583303191],  // Little India
+    [1.30879366465919,103.8531751994068],
+    [1.31313747728456,103.8563561439714],
+    [1.315368056,103.8594669],
+    [1.31368253065979,103.86071451807119],
+    [1.31140805601851,103.86237888899062],
+    [1.31017336740849,103.86338225534827],
+    [1.30972720802554,103.86737828692955],
+    [1.31107705658993,103.8713149052975],   // Kallang
+    [1.31251499997324,103.87326194447365],
+    [1.31380009198455,103.87655394006379],
+    [1.31489775184137,103.88095141640784],
+    [1.31532318660502,103.88335173265862],
+    [1.31580283030533,103.88604854571838],
+    [1.31662343087312,103.89033436777706],
+    [1.31736957951855,103.89480000904068],
+    [1.31776416388008,103.89719868894],
+    [1.31876162629115,103.9022689641617],   // Eunos
+    [1.31971491091921,103.90725404505461],
+    [1.32027026937212,103.91000032422843],
+    [1.32096859171096,103.9133277893385],
+    [1.32138694232025,103.91736615804473],
+    [1.32257749632692,103.92233358172962],
+    [1.32338320435233,103.92508721683168],
+    [1.32428292329305,103.93003627080394],  // Bedok
+    [1.3246905167586,103.93468799273933],
+    [1.32566318975139,103.93533757051014],
+    [1.33012,103.93447],
+    [1.33230500002897,103.93393805556471],
+    [1.336576,103.933159],
+    [1.33832204097015,103.933861255669],
+    [1.3402645,103.9361875],
+    [1.342039,103.937243],
+    [1.3450165,103.940188],
+    [1.3482019444416,103.94189805552267],
+    [1.35313809279079,103.9412639409046],
+    [1.35407552367477,103.94339098473914]   // Tampines Int
+  ];
+
+  function initMap(elId, coords, color) {
+    const map = L.map(elId, { zoomControl: false, attributionControl: false, scrollWheelZoom: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    const line = L.polyline(coords, { color: color, weight: 4 }).addTo(map);
+    L.circleMarker(coords[0], { radius:6, color: color, fillColor: color, fillOpacity:1 }).addTo(map);
+    L.circleMarker(coords[coords.length-1], { radius:6, color:'#2B2B27', fillColor:'#2B2B27', fillOpacity:1 }).addTo(map);
+    map.fitBounds(line.getBounds(), { padding: [20,20] });
+    return map;
+  }
+
+  let map1;
+  document.getElementById('route-toggle-1').addEventListener('click', () => {
+    const el = document.getElementById('route-toggle-1');
+    el.classList.toggle('open');
+    if (el.classList.contains('open') && !map1) {
+      setTimeout(() => {
+        map1 = initMap('map-1', route67Coords, '#6F8F63');
+      }, 50);
+    } else if (map1) {
+      setTimeout(() => map1.invalidateSize(), 300);
+    }
+  });
+
+  document.getElementById('route-toggle-2').addEventListener('click', () => {
+    document.getElementById('route-toggle-2').classList.toggle('open');
+  });
+</script>
+
+</body>
+</html>

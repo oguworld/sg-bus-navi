@@ -1,0 +1,4 @@
+app_identifier("net.willoa.bus")
+apple_id(ENV["APPLE_ID"] || "oguworld@gmail.com")
+itc_team_id(ENV["ITC_TEAM_ID"])
+team_id(ENV["TEAM_ID"])

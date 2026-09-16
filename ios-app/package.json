@@ -1,0 +1,23 @@
+{
+  "name": "sgbusnavi-ios",
+  "version": "1.0.0",
+  "description": "SGBusNavi iOS App (Capacitor)",
+  "private": true,
+  "scripts": {
+    "sync": "npx cap sync ios",
+    "open": "npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/splash-screen": "^6.0.0",
+    "@capacitor/status-bar": "^6.0.0",
+    "@capacitor/keyboard": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/ios": "^6.0.0"
+  },
+  "releaseNotes": "Initial release."
+}
