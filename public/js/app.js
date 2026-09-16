@@ -2596,14 +2596,53 @@
   }
 
   // GPS取得のエントリーポイント。成功/拒否/タイムアウト/非対応を分岐する。
-  function initGpsLocation() {
+  //
+  // 2026-09-16実機(TestFlight)で発見・修正: ネイティブアプリ(Capacitor)内で
+  // 標準のnavigator.geolocationを使うと、WKWebView内蔵のWebKitレベルの権限
+  // ダイアログ（"'localhost' would like to use your current location. This
+  // website will use your precise location because 'SGBusNavi' currently has
+  // access..."）が表示され、「localhost」「website」という開発者向けの表記が
+  // そのままユーザーに見えてしまっていた(ユーザー指摘「App版これがでます」)。
+  // ネイティブアプリ内では@capacitor/geolocationプラグイン(iOSのネイティブ
+  // CLLocationManagerに直接橋渡しする)を使うことで、OS標準の自然な権限
+  // ダイアログ（"SGBusNavi" Would Like to Use Your Location）になる。
+  // Web版(PWA、bus.willoa.net)ではCapacitorのプラグインは存在しないため、
+  // 従来通りnavigator.geolocationを使う（window.Capacitorの有無で分岐）。
+  async function initGpsLocation() {
+    renderGpsLoadingState();
+
+    const isNativeApp = Boolean(
+      window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()
+    );
+
+    if (isNativeApp && window.Capacitor.Plugins && window.Capacitor.Plugins.Geolocation) {
+      try {
+        const position = await window.Capacitor.Plugins.Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: GPS_TIMEOUT_MS,
+        });
+        const { latitude, longitude } = position.coords;
+        loadNearbyStopsAndArrivals(latitude, longitude);
+      } catch (error) {
+        const msg = (error && error.message) || '';
+        let message = 'Unable to get your location.';
+        if (/denied/i.test(msg)) {
+          message = 'Location access was denied. Please allow location access in your device Settings.';
+        } else if (/disabled|unavailable/i.test(msg)) {
+          message = 'Location Services appear to be turned off. Please turn on Location Services in your device Settings.';
+        } else if (/timeout/i.test(msg)) {
+          message = 'Getting your location timed out. Please check your signal and try again.';
+        }
+        showGpsFallback(message);
+      }
+      return;
+    }
+
     if (!('geolocation' in navigator)) {
       // 位置情報API非対応ブラウザ
       showGpsFallback('Your browser does not support location services.');
       return;
     }
-
-    renderGpsLoadingState();
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
