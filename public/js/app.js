@@ -2900,9 +2900,27 @@
     applyTheme();
   }
 
+  // 2026-09-17ユーザー指摘「アプリの方はビルド番号が表示されてないです」で追加:
+  // /api/versionはpackage.jsonのマーケティングバージョン(例: 1.0.0)のみを返し、
+  // ビルド番号(CI実行のたびにgithub.run_numberで自動採番、TestFlight上で
+  // 「1.0.0 (11)」のように表示される値)はサーバー側にはそもそも存在しない
+  // （ネイティブバンドルのInfo.plistにのみ焼き込まれるCI時点の値のため）。
+  // ネイティブアプリ内では@capacitor/appの App.getInfo() でInfo.plistから
+  // 直接読み取り、Web版は従来通りバージョンのみ表示する。
   async function loadAppVersion() {
     const versionLabel = document.getElementById('settings-version-label');
     if (!versionLabel) return;
+
+    if (_isCapacitorApp && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+      try {
+        const info = await window.Capacitor.Plugins.App.getInfo();
+        versionLabel.textContent = info.version ? `v${info.version} (${info.build})` : '—';
+        return;
+      } catch (err) {
+        // ネイティブ側取得に失敗した場合はWeb版と同じ/api/versionのフォールバックに委ねる
+      }
+    }
+
     try {
       const res = await fetch(API_BASE + '/api/version');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
