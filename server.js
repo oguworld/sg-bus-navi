@@ -62,27 +62,7 @@ app.get('/about', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'about.html'));
 });
 
-/* ══════════════════════════════════════════════
- * 一時デバッグ用: クライアント側エラー受信エンドポイント
- * （2026-09-13、目的地保存が実機でのみ再現する不具合の原因究明用。
- *   原因特定後は削除してよい一時的な仕組み）
- * ══════════════════════════════════════════════ */
 app.use(express.json({ limit: '20kb' }));
-
-const CLIENT_ERROR_LOG_PATH = path.join(__dirname, 'data', 'client-errors.log');
-app.post('/api/client-error', (req, res) => {
-  try {
-    const entry = {
-      receivedAt: new Date().toISOString(),
-      userAgent: req.get('User-Agent') || '',
-      body: req.body,
-    };
-    fs.appendFileSync(CLIENT_ERROR_LOG_PATH, JSON.stringify(entry) + '\n');
-  } catch (err) {
-    console.error('[client-error] ログ書き込み失敗:', err);
-  }
-  res.status(204).end();
-});
 
 /* ══════════════════════════════════════════════
  * CORS（iOSネイティブアプリ/Capacitorからのクロスオリジンfetch許可）

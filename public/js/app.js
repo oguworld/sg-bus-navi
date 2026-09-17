@@ -75,41 +75,6 @@
     });
   }
 
-  /* ══════════════════════════════════════════════
-   * 一時デバッグ用: クライアント側エラー・トレースをサーバーに送信する
-   * （2026-09-13、目的地保存が実機でのみ再現する不具合の原因究明用。
-   *   jsdomでのシミュレーションでは再現できなかったため、実機の実際の
-   *   例外・実行トレースを取得する目的の一時的な仕組み。原因特定後は削除してよい）
-   * ══════════════════════════════════════════════ */
-  function reportClientError(context, detail) {
-    try {
-      const payload = JSON.stringify({ context, detail, ts: new Date().toISOString(), href: location.href });
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(API_BASE + '/api/client-error', new Blob([payload], { type: 'application/json' }));
-      } else {
-        fetch(API_BASE + '/api/client-error', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
-      }
-    } catch (e) {
-      // 送信自体の失敗は握りつぶす（デバッグ用の仕組みがアプリ本体に影響してはならない）
-    }
-  }
-
-  window.addEventListener('error', (event) => {
-    reportClientError('window.onerror', {
-      message: event.message,
-      filename: event.filename,
-      lineno: event.lineno,
-      colno: event.colno,
-      stack: event.error && event.error.stack,
-    });
-  });
-
-  window.addEventListener('unhandledrejection', (event) => {
-    reportClientError('unhandledrejection', {
-      reason: event.reason && (event.reason.stack || event.reason.message || String(event.reason)),
-    });
-  });
-
   // GPSタイムアウト（ミリ秒）。plan.md 4節の「8〜10秒案」を踏まえ10秒に設定。
   const GPS_TIMEOUT_MS = 10000;
 
@@ -3335,21 +3300,12 @@
   // 戻り値: 'duplicate'（既に登録済み）/ true（保存成功）/ false（保存失敗、
   // 呼び出し元でUIフィードバックに使う）。
   function saveDestination(stop, lat, lng, category = 'other') {
-    // 一時デバッグ用トレース（2026-09-13、実機のみで再現する保存不具合の原因究明用）
-    reportClientError('saveDestination:enter', {
-      hasStop: !!stop,
-      busStopCode: stop && stop.BusStopCode,
-      lat, lng, category,
-    });
-
     if (!stop || !stop.BusStopCode) {
-      reportClientError('saveDestination:early-return-invalid-stop', { stop });
       return false;
     }
 
     const before = loadDestinations();
     if (before.some((dest) => dest.busStopCode === stop.BusStopCode)) {
-      reportClientError('saveDestination:duplicate', { busStopCode: stop.BusStopCode });
       return 'duplicate';
     }
 
@@ -3366,14 +3322,6 @@
 
     const updated = [...before, entry];
     const ok = persistDestinations(updated);
-    const after = loadDestinations();
-    reportClientError('saveDestination:result', {
-      entry, ok,
-      beforeCount: before.length,
-      updatedCount: updated.length,
-      afterReadCount: after.length,
-      afterReadHasNewEntry: after.some((d) => d.id === entry.id),
-    });
     return ok;
   }
 
@@ -3845,22 +3793,12 @@
   // （地図タブの確認ダイアログとは異なり、一覧からの選択は曖昧さがないため
   // 確認ステップなしの直接登録とする。理由は本ブロック冒頭コメント参照）。
   function registerDestinationFromResult(stop, addBtn, category) {
-    reportClientError('registerDestinationFromResult:enter', {
-      hasStop: !!stop,
-      busStopCode: stop && stop.BusStopCode,
-      category,
-    });
     if (!stop || !stop.BusStopCode) {
-      reportClientError('registerDestinationFromResult:early-return', { stop });
       return;
     }
 
     const saved = saveDestination(stop, stop.Latitude, stop.Longitude, category);
     renderDestinationList();
-    reportClientError('registerDestinationFromResult:after-render', {
-      saved,
-      destinationListChildCount: (document.getElementById('destination-list') || {}).childElementCount,
-    });
 
     if (saved === 'duplicate') {
       // 2026-09-14実機で発見・修正: 同じバス停が複数回登録される不具合の対応。

@@ -142,12 +142,10 @@ sg-weekend-app(姉妹アプリ)のSettings画面のロジックをベースに�
 - バス停名・番号での検索機能自体は、目的地登録モーダルの「By Bus Stop」タブ(`/api/bus-stops/search`)として独立して存続している。こちらは削除対象外(別機能)
 - GPS拒否時のフォールバックUI(`#gps-fallback`)にあった「Search for a bus stop」ボタンも、遷移先のSearch画面がなくなったため削除した。フォールバックメッセージのみで案内する
 
-### 一時デバッグ機構(目的地保存バグ調査用) — 原因特定後は削除してよい
+### 一時デバッグ機構(目的地保存バグ調査用) — 2026-09-17削除済み
 
-- 2026-09-13、「Savedタブの目的地登録モーダル(By Bus Stopタブ等)から保存すると実機でのみ保存されない」という不具合の原因調査のため、一時的なクライアントエラー収集の仕組みを追加した(jsdomでの正確なE2E再現では再現せず、実機ログが必要と判断したため)
-- `server.js`: `POST /api/client-error` エンドポイント。受け取ったJSONを`data/client-errors.log`に追記するだけ(認証なし、20KB制限)
-- `public/js/app.js`: `reportClientError(context, detail)`ヘルパーと、`window.onerror`/`unhandledrejection`のグローバルハンドラ、および`saveDestination()`/`registerDestinationFromResult()`/カテゴリボタンクリックハンドラへのトレース呼び出し
-- 原因特定後はこれらを全て削除すること(本番エンドポイントとして残す意図はない)
+- 2026-09-13、「Savedタブの目的地登録モーダル(By Bus Stopタブ等)から保存すると実機でのみ保存されない」という不具合の原因調査のため、一時的なクライアントエラー収集の仕組み(`server.js`の`POST /api/client-error`、`public/js/app.js`の`reportClientError()`+`window.onerror`/`unhandledrejection`グローバルハンドラ+`saveDestination()`/`registerDestinationFromResult()`へのトレース呼び出し)を追加していた
+- **App Store申請準備(2026-09-17)でユーザー指示により削除**: この仕組みはエラー時だけでなく`saveDestination:enter`/`saveDestination:result`等、目的地保存の正常フローでも無条件にバス停コード等をサーバーへ送信し続けており、ユーザーへの開示がないまま実質的な利用状況トラッキングとして機能していた。App Privacy申告を簡潔かつ正確にするため、`reportClientError()`本体・呼び出し箇所・`window.onerror`/`unhandledrejection`ハンドラ・サーバー側`POST /api/client-error`エンドポイントを全て削除し、既に収集済みだった`data/client-errors.log`(git管理対象外、`.gitignore`で除外済み)も削除した。現在サーバーに送信される個人関連データは、位置情報(最寄りバス停検出用、アカウント非紐付け)とフィードバック本文(自由記述、LINEへ中継するのみでサーバー保存なし)の2つのみになっている。
 
 ## デザイン方針
 
