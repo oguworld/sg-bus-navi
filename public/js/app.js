@@ -119,6 +119,15 @@
   // 段階的取得を導入した（initGpsLocation()参照）。
   const GPS_FAST_TIMEOUT_MS = 5000;
 
+  // 2026-09-17ユーザー指摘「Google Mapとかは一瞬で現在地が出る」で発見: 従来maximumAge
+  // を指定しておらず(Web版のデフォルト実装で0扱い)、OS側に直近の位置情報がキャッシュ
+  // 済みでも毎回必ず新規に位置を計算させていたため、他の地図アプリの体感速度に
+  // 大きく劣っていた。粗い位置は最大1分・高精度GPSも直近10秒以内のキャッシュがあれば
+  // 許容し、OSキャッシュがあれば即座に返るようにする(不正確になるリスクは、歩行者が
+  // 10秒〜1分でバス停を跨いで移動することは稀なため許容範囲と判断)。
+  const GPS_FAST_MAX_AGE_MS = 60000;
+  const GPS_ACCURATE_MAX_AGE_MS = 10000;
+
   // 近傍バス停の取得件数（横スワイプで2番目以降まで使う）。当初3件固定
   // だったが、ユーザー指摘「反対側もあるし3つだとちょっと少ないかも」を受け
   // 5件に増やした(2026-09-14)。道路の反対側(逆方向)のバス停も別エントリとして
@@ -2740,7 +2749,7 @@
 
     // 粗い位置（速いが精度は低い）。失敗しても高精度側の結果を待てばよいため、
     // ここでのエラーはフォールバック表示せず黙って無視する。
-    getCurrentCoords({ enableHighAccuracy: false, timeout: GPS_FAST_TIMEOUT_MS })
+    getCurrentCoords({ enableHighAccuracy: false, timeout: GPS_FAST_TIMEOUT_MS, maximumAge: GPS_FAST_MAX_AGE_MS })
       .then((coords) => {
         if (shownAnyLocation) return; // 高精度側が先に届いていれば何もしない
         shownAnyLocation = true;
@@ -2752,7 +2761,11 @@
 
     // 高精度（GPS）。こちらが本命の正確な結果。
     try {
-      const coords = await getCurrentCoords({ enableHighAccuracy: true, timeout: GPS_TIMEOUT_MS });
+      const coords = await getCurrentCoords({
+        enableHighAccuracy: true,
+        timeout: GPS_TIMEOUT_MS,
+        maximumAge: GPS_ACCURATE_MAX_AGE_MS,
+      });
       if (shownAnyLocation && currentStopIndex !== 0) return; // ユーザーが既に他のバス停を見ている場合は上書きしない
       shownAnyLocation = true;
       loadNearbyStopsAndArrivals(coords.latitude, coords.longitude);
