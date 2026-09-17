@@ -128,6 +128,47 @@
   const GPS_FAST_MAX_AGE_MS = 60000;
   const GPS_ACCURATE_MAX_AGE_MS = 10000;
 
+  // 2026-09-17ユーザー指示「アプリを立ち上げた瞬間に現在地が分かるようにしたい」
+  // →「粗くていいので最短で大まかな場所を取り、その後詳細な情報で上書きしていく
+  // 段階的なやつがいい」。OS側のGPS/位置情報キャッシュ(上記maximumAge)だけでなく、
+  // アプリ自身も直近成功した座標をlocalStorageに保存しておき、起動直後は
+  // GPS/位置情報の取得すら待たずに即座にその座標でバス停一覧を表示する
+  // （その後、通常通り粗い位置→高精度GPSの結果で静かに上書きされる3段階構成）。
+  // 到着時刻自体は鮮度が命のため、キャッシュするのは座標のみで到着情報は
+  // 毎回必ずサーバーから取り直す（stale become敵なので古いバス到着時刻を
+  // 表示することは絶対に避ける）。
+  const LAST_LOCATION_STORAGE_KEY = 'sgbusnavi_last_location';
+  const LAST_LOCATION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7日
+
+  function saveLastLocation(lat, lng) {
+    try {
+      window.localStorage.setItem(LAST_LOCATION_STORAGE_KEY, JSON.stringify({ lat, lng, ts: Date.now() }));
+    } catch (err) {
+      // 起動高速化のための補助的なキャッシュのため、保存失敗は無視してよい
+      // （保存できなくても通常のGPS取得フローにフォールバックするだけで実害はない）
+    }
+  }
+
+  function loadLastLocation() {
+    try {
+      const raw = window.localStorage.getItem(LAST_LOCATION_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (
+        !parsed ||
+        typeof parsed.lat !== 'number' ||
+        typeof parsed.lng !== 'number' ||
+        typeof parsed.ts !== 'number'
+      ) {
+        return null;
+      }
+      if (Date.now() - parsed.ts > LAST_LOCATION_MAX_AGE_MS) return null;
+      return parsed;
+    } catch (err) {
+      return null;
+    }
+  }
+
   // 近傍バス停の取得件数（横スワイプで2番目以降まで使う）。当初3件固定
   // だったが、ユーザー指摘「反対側もあるし3つだとちょっと少ないかも」を受け
   // 5件に増やした(2026-09-14)。道路の反対側(逆方向)のバス停も別エントリとして
@@ -2616,6 +2657,7 @@
   // /api/bus-stops/nearby を呼び出し、成功時は最寄りバス停の到着情報を表示する。
   async function loadNearbyStopsAndArrivals(lat, lng) {
     renderGpsLoadingState();
+    saveLastLocation(lat, lng);
 
     let response;
     try {
@@ -2729,14 +2771,21 @@
 
   // GPS取得のエントリーポイント。
   //
-  // 2026-09-17ユーザー指示による段階的取得: 高精度GPS(enableHighAccuracy:true)の
-  // 初回取得は数秒〜10秒かかることがある（特に高層ビルの多いシンガポールの屋内）。
-  // このアプリの核心機能（最寄りバス停の自動検出）は精度が命のため常に高精度取得を
-  // 使い続けるが、それと並行してWi-Fi/セルタワーベースの粗い位置(速いが精度は低い)も
-  // 同時にリクエストし、どちらか早く届いた方で先に暫定表示する。高精度の結果が
-  // 後から届いた時点で、ユーザーがまだ最寄りバス停（0番目）を見ている場合のみ
-  // 正確な結果に差し替える（既に2番目以降のバス停に手動でスワイプ/タップ済みの
-  // 場合は、表示を勝手に0番目へ戻して驚かせないよう上書きしない）。
+  // 2026-09-17ユーザー指示による3段階の段階的取得:
+  // 1. 直近成功時の座標(localStorage、LAST_LOCATION_MAX_AGE_MS以内)があれば、
+  //    GPS/位置情報の取得を一切待たずに即座にそれで暫定表示する（「アプリを
+  //    立ち上げた瞬間に現在地が分かるようにしたい」対応、到着時刻自体は
+  //    必ずサーバーから最新を取り直すため鮮度の問題はない）。
+  // 2. Wi-Fi/セルタワーベースの粗い位置(速いが精度は低い)。
+  // 3. 高精度GPS(enableHighAccuracy:true)。初回取得は数秒〜10秒かかることが
+  //    ある（特に高層ビルの多いシンガポールの屋内）。このアプリの核心機能
+  //    （最寄りバス停の自動検出）は精度が命のため、段階1・2で暫定表示済みでも
+  //    高精度取得自体は必ず行う。
+  // 2・3は並行してリクエストし、どちらか早く届いた方で(1がなければ)先に暫定
+  // 表示する。より正確な結果が後から届いた時点で、ユーザーがまだ最寄りバス停
+  // （0番目）を見ている場合のみ結果を差し替える（既に2番目以降のバス停に
+  // 手動でスワイプ/タップ済みの場合は、表示を勝手に0番目へ戻して驚かせない
+  // よう上書きしない）。
   async function initGpsLocation() {
     renderGpsLoadingState();
 
@@ -2747,11 +2796,18 @@
 
     let shownAnyLocation = false;
 
-    // 粗い位置（速いが精度は低い）。失敗しても高精度側の結果を待てばよいため、
+    // 1. 直近成功時の座標があれば、位置情報取得を待たずに即座に暫定表示する。
+    const lastLocation = loadLastLocation();
+    if (lastLocation) {
+      shownAnyLocation = true;
+      loadNearbyStopsAndArrivals(lastLocation.lat, lastLocation.lng);
+    }
+
+    // 2. 粗い位置（速いが精度は低い）。失敗しても高精度側の結果を待てばよいため、
     // ここでのエラーはフォールバック表示せず黙って無視する。
     getCurrentCoords({ enableHighAccuracy: false, timeout: GPS_FAST_TIMEOUT_MS, maximumAge: GPS_FAST_MAX_AGE_MS })
       .then((coords) => {
-        if (shownAnyLocation) return; // 高精度側が先に届いていれば何もしない
+        if (shownAnyLocation) return; // キャッシュ済み座標or高精度側が先に届いていれば何もしない
         shownAnyLocation = true;
         loadNearbyStopsAndArrivals(coords.latitude, coords.longitude);
       })
