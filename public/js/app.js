@@ -39,6 +39,41 @@
   const API_BASE = _isCapacitorApp ? 'https://bus.willoa.net' : '';
 
   /* ══════════════════════════════════════════════
+   * ネイティブアプリ内の外部/自サイトリンク（2026-09-17実機で発見・修正）
+   *
+   * ユーザー指摘「アプリ版のWebサイトのリンクがおかしい」で発見: Settings画面の
+   * 「Website」・Shareシートの「Website」リンクは`href="/about"`という相対パスの
+   * ままだった。ネイティブアプリはCapacitorのローカルバンドル同梱構成
+   * （webDirにserver.url未指定、上記API_BASEと同じ理由）のため、WebViewの
+   * originはbus.willoa.netではなくローカルオリジンになり、`/about`（拡張子なし、
+   * サーバー側express routeとして存在するだけでローカルバンドルには同名ファイルが
+   * ない）へのリンクはローカルには存在せず読み込みに失敗していた。
+   * 加えて、たとえURLを絶対パス化しても、ネイティブアプリのWebViewを外部サイトへ
+   * そのまま遷移させると、standalone PWAで先に発見した「戻るボタンがなく元の
+   * アプリに戻れない」不具合(2026-09-14)のネイティブ版になってしまう
+   * （ブラウザのタブ・戻るボタンに相当するUIが一切ないため）。
+   * sg-weekend-app（姉妹アプリ）と同じ`@capacitor/browser`プラグインで
+   * in-appブラウザ（システム標準の「完了」ボタンで確実にアプリへ戻れる）として
+   * 開くことで両方を解決する。対象はアプリ内でサイト外へ誘導する既知の4リンクのみ
+   * （それ以外はJSによる画面遷移のみのSPAのため対象なし）。
+   * ══════════════════════════════════════════════ */
+  if (_isCapacitorApp) {
+    document.addEventListener('click', (event) => {
+      const anchor = event.target.closest(
+        '#settings-website-link, #settings-privacy-link, #settings-support-link, .share-sheet-link'
+      );
+      if (!anchor) return;
+      const href = anchor.getAttribute('href') || '';
+      if (!href) return;
+      event.preventDefault();
+      const absoluteUrl = /^https?:\/\//i.test(href) ? href : API_BASE + href;
+      if (window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+        window.Capacitor.Plugins.Browser.open({ url: absoluteUrl });
+      }
+    });
+  }
+
+  /* ══════════════════════════════════════════════
    * 一時デバッグ用: クライアント側エラー・トレースをサーバーに送信する
    * （2026-09-13、目的地保存が実機でのみ再現する不具合の原因究明用。
    *   jsdomでのシミュレーションでは再現できなかったため、実機の実際の
