@@ -54,13 +54,15 @@
    * （ブラウザのタブ・戻るボタンに相当するUIが一切ないため）。
    * sg-weekend-app（姉妹アプリ）と同じ`@capacitor/browser`プラグインで
    * in-appブラウザ（システム標準の「完了」ボタンで確実にアプリへ戻れる）として
-   * 開くことで両方を解決する。対象はアプリ内でサイト外へ誘導する既知の4リンクのみ
-   * （それ以外はJSによる画面遷移のみのSPAのため対象なし）。
+   * 開くことで両方を解決する。対象はアプリ内でサイト外へ誘導するリンクのみ
+   * （それ以外はJSによる画面遷移のみのSPAのため対象なし。2026-09-17、Willoa本体・
+   * 姉妹アプリSG在住Naviへの相互リンクを追加した際も同じ対応が必要なため対象に追加）。
    * ══════════════════════════════════════════════ */
   if (_isCapacitorApp) {
     document.addEventListener('click', (event) => {
       const anchor = event.target.closest(
-        '#settings-website-link, #settings-privacy-link, #settings-support-link, .share-sheet-link'
+        '#settings-website-link, #settings-privacy-link, #settings-support-link, ' +
+          '#settings-willoa-link, #settings-sister-app-link, .share-sheet-link'
       );
       if (!anchor) return;
       const href = anchor.getAttribute('href') || '';

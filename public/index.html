@@ -259,6 +259,18 @@
           <span class="settings-item-label">Contact</span>
           <i class="ti ti-chevron-right" aria-hidden="true"></i>
         </a>
+        <!-- Willoa本体・姉妹アプリSG在住Naviとの相互リンク（2026-09-17ユーザー指示）。
+             どちらも別ドメインへ完全に離脱する遷移で、戻り導線を相手側に期待できない
+             ため、Support the appと同じtarget="_blank"（新規タブ/ネイティブでは
+             @capacitor/browserのin-appブラウザ）で開く。 -->
+        <a href="https://willoa.net" class="settings-item" id="settings-willoa-link" target="_blank" rel="noopener">
+          <span class="settings-item-label">About Willoa</span>
+          <i class="ti ti-chevron-right" aria-hidden="true"></i>
+        </a>
+        <a href="https://dosuru.app" class="settings-item" id="settings-sister-app-link" target="_blank" rel="noopener">
+          <span class="settings-item-label">SG在住Navi (Sister App)</span>
+          <i class="ti ti-chevron-right" aria-hidden="true"></i>
+        </a>
         <a href="https://willoa.net/privacy-policy/en" class="settings-item" id="settings-privacy-link">
           <span class="settings-item-label">Privacy Policy</span>
           <i class="ti ti-chevron-right" aria-hidden="true"></i>
