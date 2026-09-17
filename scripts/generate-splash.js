@@ -8,6 +8,13 @@
 // splash-dark.pngが無いとcapacitor-assetsがライト版を自動で暗く変換するだけになり、
 // ロゴ文字が黒背景に沈んでほぼ見えなくなる（sg-weekend-appで判明済みの罠）ため、
 // style.cssのhtml[data-theme="dark"]配色に合わせた専用のダーク版を明示的に生成する。
+//
+// フォントはPoppins（2026-09-17ユーザー指示「フォントを英語っぽいやつに変えたい」で
+// Inter→Poppinsに変更。6種の候補フォントを比較モックで提示し、幾何学的で丸みのある
+// letterformがInterよりロゴらしい個性を出せるとの理由でPoppinsを採用）。
+// このVPSにはPoppinsが未インストールの場合、`@fontsource/poppins`のnpmパッケージから
+// woff2を取り出し`~/.local/share/fonts/`に配置して`fc-cache -f`する必要がある
+// （sharpのSVG合成はlibrsvg経由でシステムのfontconfigを参照するため）。
 
 const sharp = require('sharp');
 const path = require('path');
@@ -43,7 +50,7 @@ async function generate(theme) {
 
   const svgText = `
     <svg width="${CANVAS_SIZE}" height="${CANVAS_SIZE}">
-      <text x="50%" y="${textY}" text-anchor="middle" font-family="Inter" font-weight="700" font-size="130">
+      <text x="50%" y="${textY}" text-anchor="middle" font-family="Poppins" font-weight="700" font-size="130">
         <tspan fill="${theme.textDark}">SGBus</tspan><tspan fill="${theme.textAccent}">Navi</tspan>
       </text>
     </svg>
