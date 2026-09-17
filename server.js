@@ -26,6 +26,25 @@ if (!LTA_API_KEY) {
   );
 }
 
+/* ══════════════════════════════════════════════
+ * 一時デバッグ用: Web版PWAがキャッシュクリア・プライベートブラウズでも
+ * 古いCSS/JSのまま反映されない不具合の原因調査用ログ（2026-09-17）。
+ * サーバー自体は最新版を正しく返せているか、途中に何らかの中間キャッシュ
+ * （キャリアの透過プロキシ等）が介在していないかを、実際にリクエストが
+ * origin(このサーバー)まで届いているかどうかで切り分ける目的。
+ * 原因特定後は削除してよい一時的な仕組み。
+ * ══════════════════════════════════════════════ */
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path === '/css/style.css' || req.path === '/js/app.js' || req.path === '/sw.js') {
+    console.log(
+      `[debug-static-request] ${new Date().toISOString()} ${req.method} ${req.path} ` +
+        `ua="${req.get('User-Agent') || ''}" xff="${req.get('X-Forwarded-For') || ''}" ` +
+        `ifNoneMatch="${req.get('If-None-Match') || ''}"`
+    );
+  }
+  next();
+});
+
 // sw.js自体はブラウザ側のService Worker更新検知を妨げないよう、
 // 明示的にキャッシュ無効化ヘッダーを付与する（sg-weekend-appの前例を踏襲）。
 app.get('/sw.js', (req, res) => {
