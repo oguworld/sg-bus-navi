@@ -2794,6 +2794,14 @@
     initFilterToggle();
     initSwipeGesture();
     initGpsLocation();
+
+    const gpsRetryBtn = document.getElementById('gps-fallback-retry-btn');
+    if (gpsRetryBtn) {
+      gpsRetryBtn.addEventListener('click', () => {
+        initGpsLocation();
+      });
+    }
+
     initDestinations();
     initPullToRefresh();
     initSettingsScreen();

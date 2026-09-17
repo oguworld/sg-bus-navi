@@ -401,6 +401,29 @@ button {
   line-height: 1.5;
 }
 
+/* 2026-09-17実機で発見・修正: GPS取得失敗後、再試行する手段が一切なく
+   アプリを完全に再起動しないと再取得できなかった(ユーザー指摘「一度位置情報を
+   取るのに失敗するとアプリを再立ち上げしなければならない」)。initGpsLocation()を
+   再実行するボタンを追加。アクセントカラー塗りつぶしの丸ピル(.destination-item-editor-done
+   と同じ「押せるボタン」の見た目)にして、フォールバック画面で取るべき唯一の
+   アクションであることを分かりやすくする。 */
+.gps-fallback-retry-btn {
+  margin-top: 6px;
+  padding: 10px 24px;
+  border-radius: 50px;
+  border: none;
+  background: var(--fill-accent);
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--on-accent);
+  transition: transform 0.1s ease;
+}
+
+.gps-fallback-retry-btn:active {
+  transform: scale(0.96);
+}
+
 /* ══════════════════════════════════════════════
  * バスカードフィード（Home画面）
  *
