@@ -4046,11 +4046,13 @@
    *
    * SG在住Naviとの相違点:
    * - SGBusNaviも2026-09-16以降Capacitorネイティブアプリに対応した(_isCapacitorApp
-   *   は本ファイル冒頭で定義、API_BASEの判定に使用)が、PTRの起動判定自体は
-   *   window.matchMedia('(display-mode: standalone)').matches ||
-   *   window.navigator.standalone === true のままにしている（「ホーム画面に
-   *   追加したPWAとして起動しているか」の判定であり、ネイティブアプリ内での
-   *   PTR有効化は別途未検証・未対応）。
+   *   は本ファイル冒頭で定義、API_BASEの判定に使用)。2026-09-17実機で発見・修正:
+   *   当初PTRの起動判定はwindow.matchMedia('(display-mode: standalone)').matches ||
+   *   window.navigator.standalone === trueのみだったため、ネイティブアプリ
+   *   (Capacitor WKWebView)ではどちらも真にならず、下に引っ張って更新する
+   *   操作自体が一切効かなかった(ユーザー指摘「アプリ側、更新のために下に
+   *   Pullすることができないね」)。isStandalonePwa()に_isCapacitorAppも
+   *   条件に加え、ネイティブアプリ内でもPTRを有効化した。
    * - 2026-09-13、Home画面のヘッダー（タイトル・バス停ピル行）を固定表示にする
    *   刷新に伴い、SGBusNaviもSG在住Naviと同じ専用overflow:autoスクロール
    *   コンテナ（#home-scroll-content）を持つ構造に変更した。これにより
@@ -4060,11 +4062,13 @@
   const PTR_THRESHOLD = 60; // これ以上引っ張って離したらリフレッシュ確定
   const PTR_MAX_PULL = 90; // インジケーターの最大高さ（クランプ）
 
-  // ホーム画面限定のPWAスタンドアロン起動判定。
-  // iOS Safari: navigator.standalone、Android Chrome等: display-mode: standalone
-  // のいずれかがtrueならホーム画面から起動されたPWAとみなす。
+  // ホーム画面限定のPWAスタンドアロン起動判定（ネイティブアプリも含む）。
+  // iOS Safari: navigator.standalone、Android Chrome等: display-mode: standalone、
+  // Capacitorネイティブアプリ: _isCapacitorApp のいずれかがtrueなら、
+  // ブラウザのアドレスバー等が存在しない「アプリらしい」画面とみなす。
   function isStandalonePwa() {
     return (
+      _isCapacitorApp ||
       (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
       window.navigator.standalone === true
     );
