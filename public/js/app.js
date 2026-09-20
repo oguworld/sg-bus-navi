@@ -539,7 +539,15 @@
     // ちょうど境界付近の停留所と重なって読めなくなる実害があった(例:
     // 「The Nexus」の現在地ラベルが「Beauty World Stn Exit C」に重なる)。
     // ラベル分の余白を確保するため上下左右のpaddingを拡大する。
-    map.fitBounds(routeModalPolyline.getBounds(), { padding: [50, 60] });
+    //
+    // フェーズ8（.claude/plan-phase8-arrivals-grid-and-modal.md）で経路
+    // モーダルをフルスクリーンから中央配置の小さいカード(max-height:78vh、
+    // 地図は.route-modal-mapのflex:2分のみ)に変更したことに伴い、地図の
+    // 実高さがフルスクリーン時よりかなり小さくなった。[50,60]のままだと
+    // 縦方向の余白(合計120px)が地図の実高さに対して相対的に大きくなり、
+    // 短い区間でも不必要に大きくズームアウトしてしまうため、値を控えめに
+    // 調整した（ラベル文字切れ対策としての余白確保自体は維持しつつ縮小）。
+    map.fitBounds(routeModalPolyline.getBounds(), { padding: [36, 44] });
 
     // addMrtWaypointMarkers()はマーカー同士の画面上のピクセル距離で近接判定を
     // 行うため、ズーム・中心が確定するfitBounds()の後に呼ぶ必要がある
@@ -1797,15 +1805,21 @@
   }
 
   /* ══════════════════════════════════════════════
-   * フェーズ7（.claude/plan-phase7-arrivals-queue-cards.md）: クイーニングカードの
-   * ETA表示。行き先・「Next: N min」・車椅子(WAB)アイコンは情報を絞る方針により
-   * 廃止し、系統番号・ETA・車種(SD/DD)のみを表示する（buildBusCard()参照）。
+   * フェーズ7（.claude/plan-phase7-arrivals-queue-cards.md）で情報を系統番号・
+   * ETA・車種+混雑度・バス会社に絞る方針を確立（行き先・「Next: N min」・
+   * 車椅子(WAB)アイコンは非表示のまま）。フェーズ8（.claude/
+   * plan-phase8-arrivals-grid-and-modal.md）でヒーローセル+グリッドに
+   * レイアウトを刷新し、車種+混雑度の表現をバスイラストSVGに戻した
+   * （buildBusCard()参照）。
    * ══════════════════════════════════════════════ */
 
-  // 既存カードDOMを再生成せず、ETA表示（.bus-card-eta の中身）・カード背景色
-  // （混雑度）・車種ラベルのみを最新の到着インスタンス情報で更新する。
-  // 出発検出の差分更新（変化のないカードの不要な再描画・アニメーションの
-  // ちらつきを避ける）用（.claude/plan.md 第9節タスク分解ステップ6）。
+  // 既存カードDOMを再生成せず、ETA表示（.bus-card-eta の中身）・バスイラスト
+  // （車種+混雑度）のみを最新の到着インスタンス情報で更新する。出発検出の
+  // 差分更新（変化のないカードの不要な再描画・アニメーションのちらつきを
+  // 避ける）用（.claude/plan.md 第9節タスク分解ステップ6）。
+  //
+  // Operatorは同一系統内で変化しないためここでは更新しない
+  // （buildBusCard()生成時点の値のまま、フェーズ8で追加）。
   function updateBusCardEta(card, instance, allInstances) {
     const etaEl = card.querySelector('.bus-card-eta');
     if (!etaEl) return;
@@ -1822,13 +1836,10 @@
     etaEl.innerHTML = etaHtml;
     card.setAttribute('data-eta-minutes', minutes === null ? '' : String(minutes));
 
-    // 混雑度(Load)は毎ポーリングで変わりうるため背景色クラスも再計算する。
-    const loadInfo = getLoadIndicatorInfo(instance.Load);
-    card.classList.remove('bus-card--load-green', 'bus-card--load-amber', 'bus-card--load-red', 'bus-card--load-neutral');
-    card.classList.add(loadInfo ? `bus-card--load-${loadInfo.colorClass}` : 'bus-card--load-neutral');
-
-    const typeEl = card.querySelector('.bus-card-type');
-    if (typeEl) typeEl.textContent = typeCode;
+    // 混雑度(Load)・車種は毎ポーリングで変わりうるため、バスイラストSVGごと
+    // 再生成する。
+    const iconWrapEl = card.querySelector('.bus-card-vehicle-icon-wrap');
+    if (iconWrapEl) iconWrapEl.innerHTML = buildBusIllustrationSvg(typeCode, instance.Load);
   }
 
   // LTA Loadコード（SEA/SDA/LSD）から混雑状況インジケーター用の
@@ -1860,11 +1871,13 @@
   // 指摘を受け、タイヤを廃止。一階建ては横長・低いシルエット、二階建ては
   // 窓2段の縦長シルエットにして形そのもので瞬時に見分けられるようにした。
   //
-  // 現在未使用（2026-09-20フェーズ7でArrivalsカードを「遠近クイーニング」
-  // デザインに全面刷新し、表示情報を系統番号・ETA・車種(SD/DD)のみに絞った
-  // ため、buildBusCard()からはこのSVGイラスト自体を呼ばなくなった。将来また
-  // 車種+混雑度のイラスト表現を使う可能性を踏まえ、関数定義自体はあえて
-  // 残している（renderMiniRouteMapFallback等、既存の残置コードと同じ方針）。
+  // 2026-09-20フェーズ7でArrivalsカードを「遠近クイーニング」デザインに全面
+  // 刷新した際、表示情報を系統番号・ETA・車種(SD/DD)のみに絞ったためこの
+  // SVGイラスト自体は一時未使用になっていたが、直後のフェーズ8（ヒーロー
+  // セル+グリッド化、.claude/plan-phase8-arrivals-grid-and-modal.md）で
+  // ユーザー指示「2階建てと1階建ての情報も表示したい。例のアイコンと窓の色の
+  // 形で」により復活し、buildBusCard()から再度呼び出されるようになった
+  // （ヒーローセルの.bus-card-sub-row内、車種+混雑度を1つのイラストで表現）。
   function buildBusIllustrationSvg(typeCode, loadCode) {
     const isDoubleDeck = typeCode === 'DD';
     const loadInfo = getLoadIndicatorInfo(loadCode);
@@ -1930,6 +1943,12 @@
 
   // 1系統分のサービス情報から、有効な到着インスタンス（NextBus/NextBus2/NextBus3のうち
   // EstimatedArrivalが空でないもの）を配列として取り出す。
+  //
+  // Operator（バス会社、SBST/SMRT/TTS/GAS）はNextBus単位ではなくService単位の
+  // フィールドのため（フェーズ8、.claude/plan-phase8-arrivals-grid-and-modal.md
+  // 1-3節、server.js側が/api/bus-arrivalのServices[]にOperatorを付与する）、
+  // 各到着インスタンスにそのままコピーして持たせる（buildBusCard()の
+  // Operator表示用）。
   function extractArrivalInstancesFromService(service) {
     const serviceNo = service.ServiceNo || '?';
     const instances = [];
@@ -1941,6 +1960,7 @@
 
       instances.push({
         ServiceNo: serviceNo,
+        Operator: service.Operator,
         DestinationName: nextBus.DestinationName,
         DestinationCode: nextBus.DestinationCode,
         OriginCode: nextBus.OriginCode,
@@ -2035,18 +2055,24 @@
   // 1件の到着インスタンス（NextBus/NextBus2/NextBus3のいずれか1本）から
   // バスカードのHTMLを組み立てる。
   //
-  // フェーズ7（.claude/plan-phase7-arrivals-queue-cards.md）: 「遠近クイーニング
-  // カード（S字カーブ、A-4）」への全面刷新。ユーザー指示「余計な情報はいらない
-  // ので、系統番号と本当に必要な情報だけに残して、カードをもっと正方形に近い
-  // 形にして、バスがキューイングしてバス停に近づいてくる様を視覚的に表現
-  // したい」に対応。表示情報を系統番号・ETA・車種(SD/DD)のみに絞り、行き先・
-  // ミニ経路図・「Next: N min」・WABアイコンは廃止した
-  // （参考: mockups/arrivals-queue-patternA-variants-v1.html の variant-s）。
+  // フェーズ8（.claude/plan-phase8-arrivals-grid-and-modal.md）: 「ヒーローセル
+  // +グリッド」への刷新。フェーズ7の縦一列S字カーブキューイングは
+  // 「スペースを無駄遣いしすぎている」とのフィードバックにより、3列グリッド+
+  // 最も近い1件だけを2×2で強調する構成に変更した（mockups/
+  // arrivals-queue-multicolumn-v1.html Option 3）。
   //
-  // カードのサイズ・横オフセット（tierクラスt1〜t7）はリスト内の順位に
-  // 依存するため、この関数自体はtierクラスを付与しない。生成直後に必ず
-  // reapplyQueueTiers()を呼び、現在のDOM順から一括で付け直す設計とする
-  // （applyArrivalDiff()の出発演出・新規挿入後もこの関数を呼べば整合する）。
+  // カードが「ヒーロー(先頭)か通常セルか」はリスト内の順位に依存するため、
+  // この関数自体は.bus-card--heroクラスを付与しない。生成直後に必ず
+  // reapplyQueueTiers()（関数名はフェーズ7から維持、内部実装のみ簡略化）を
+  // 呼び、現在のDOM順から一括で付け直す設計とする（applyArrivalDiff()の
+  // 出発演出・新規挿入後もこの関数を呼べば整合する）。
+  //
+  // 表示情報は系統番号・ETA・バスイラスト(車種+混雑度)・バス会社(Operator)。
+  // 行き先・ミニ経路図・「Next: N min」は引き続き表示しない
+  // （フェーズ7の方針を踏襲）。バスイラストはヒーロー・通常セル両方に表示し、
+  // Operatorはスペースの都合上ヒーローセルのみ表示する（CSS側
+  // .bus-card-sub-row/.bus-card-operator参照、mockups/
+  // arrivals-card-white-saved-v2.html準拠）。
   //
   // 目的地一致タグ（角の.bus-badge-match-icon）は系統単位のfetchRouteSummary
   // 結果に依存するため、この時点では空のプレースホルダーとして生成し、
@@ -2070,17 +2096,14 @@
     const serviceNo = instance.ServiceNo || '?';
     const minutes = estimateMinutesFromNow(instance.EstimatedArrival);
     const typeCode = instance.Type || 'SD';
-    const loadInfo = getLoadIndicatorInfo(instance.Load);
-    const loadClass = loadInfo ? ` bus-card--load-${loadInfo.colorClass}` : ' bus-card--load-neutral';
 
-    // フェーズ7: カード全体をタップ可能にし、タップで経路モーダルを開く
-    // （2026-09-14に一度「ボタン化」した経緯があるが、正方形の小カードには
-    // 専用ボタンを置くスペースがないため、カードタップに戻す判断。
-    // plan-phase7 2節2項）。button要素にすることでキーボード操作・
-    // アクセシビリティのフォーカスも自然に得られる。
+    // フェーズ7で「カードタップで経路モーダルを開く」方式に変更済み
+    // （正方形の小カードには専用ボタンを置くスペースがないため）。フェーズ8
+    // のグリッド化でもこの挙動は維持する（plan-phase8 2節4項）。button要素の
+    // ままにすることでキーボード操作・アクセシビリティのフォーカスも保たれる。
     const card = document.createElement('button');
     card.type = 'button';
-    card.className = `bus-card${loadClass}`;
+    card.className = 'bus-card';
     card.setAttribute('data-route-from', '');
     card.setAttribute('data-route-to', instance.DestinationName || '');
     card.setAttribute('data-route-number', serviceNo);
@@ -2093,16 +2116,12 @@
     // （findInsertionPointForNewArrival）に使う、ETAの分数（nullは空文字列）。
     card.setAttribute('data-eta-minutes', minutes === null ? '' : String(minutes));
 
-    // 4文字以上の系統番号（118A、961M等、全801系統中160件）は正方形バッジに
+    // 4文字以上の系統番号（118A、961M等、全801系統中160件）は正方形セルに
     // 数字が収まりきらず文字が縁に張り付いて見えるため、文字数に応じて
     // フォントサイズを落とす修飾クラスを付与する（2026-09-13実機で発見・修正、
-    // フェーズ7でも踏襲）。
+    // フェーズ7・8でも踏襲）。
     const badgeLengthClass = serviceNo.length >= 4 ? ' bus-card-num--long' : '';
 
-    // 車種ラベル(SD/DD)。最小tier(t7)ではCSS側で非表示にするため、
-    // マークアップ自体は常に出力する(reapplyQueueTiers()がtierクラスを
-    // 付与した後、CSSがtierに応じて表示/非表示を切り替える)。
-    const typeLabelHtml = `<span class="bus-card-type">${escapeHtml(typeCode)}</span>`;
     const etaHtml =
       minutes === null
         ? '<span class="bus-card-eta-value">—</span>'
@@ -2110,49 +2129,66 @@
           ? '<span class="bus-card-eta-value bus-card-eta-value--now">Now</span>'
           : `<span class="bus-card-eta-value">${minutes}</span><span class="bus-card-eta-unit">min</span>`;
 
+    // バスイラスト(車種+混雑度)はヒーロー・通常セル両方に表示する
+    // （mockups/arrivals-card-white-saved-v2.html、ユーザー承認済み）。
+    // バス会社(Operator)はスペースの都合上ヒーローセルのみ表示するが、CSS側
+    // (.bus-card-operator、display:none既定・.bus-card--hero配下でinline)が
+    // 出し分けを担うため、マークアップ自体は常に出力する(reapplyQueueTiers()が
+    // .bus-card--heroを付与した後、CSSがヒーロー/通常セルに応じて表示/非表示を
+    // 切り替える)。
+    const vehicleIconHtml = buildBusIllustrationSvg(typeCode, instance.Load);
+    const operatorHtml = instance.Operator
+      ? `<span class="bus-card-operator">${escapeHtml(instance.Operator)}</span>`
+      : '';
+
     card.innerHTML = `
       <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
       <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
       <span class="bus-card-num${badgeLengthClass}">${escapeHtml(serviceNo)}</span>
       <span class="bus-card-eta">${etaHtml}</span>
-      ${typeLabelHtml}
+      <span class="bus-card-sub-row">
+        <span class="bus-card-vehicle-icon-wrap">${vehicleIconHtml}</span>
+        ${operatorHtml}
+      </span>
     `;
 
     return card;
   }
 
   /* ══════════════════════════════════════════════
-   * フェーズ7: tier（キューの順位に応じたサイズ・横オフセット段階）の再計算
-   * （.claude/plan-phase7-arrivals-queue-cards.md 2節4項）
+   * フェーズ8: ヒーローセル判定の再計算
+   * （.claude/plan-phase8-arrivals-grid-and-modal.md 1-5節・2節2項）
    *
-   * カードのサイズ・margin-top（縦の重なり）・横方向のS字カーブオフセットは
-   * すべて「リスト内で何番目に近いか（tier）」に依存するCSSクラス
-   * （.t1〜.t7、7以降はt7で底打ち）で制御する。ポーリングで1台出発すると
-   * それより後ろの全カードの順位が1つずつ繰り上がるため、出発演出・新規
-   * 挿入・ETA更新が終わった後に必ずこの関数を呼び、現在のDOM順から
-   * t1〜t7を一括で付け直す。
+   * フェーズ7のtier（.t1〜.t7、6段階サイズ縮小+S字カーブオフセット）は
+   * 「スペースを無駄遣いしすぎている」とのフィードバックを受けて廃止し、
+   * 「先頭(最も到着が近い1件)かどうか」だけを判定する単純なロジックに
+   * 置き換えた。ポーリングで1台出発すると2番目以降の到着インスタンスが
+   * 繰り上がるため、出発演出・新規挿入・ETA更新が終わった後に必ずこの関数を
+   * 呼び、現在のDOM順（=到着時刻順、フラットフィードのソート順をそのまま
+   * 反映）から先頭カードにのみ.bus-card--heroを付け直す。
    *
    * 出発アニメーション中のカード（.bus-card--departing）はDOM上にまだ
-   * 存在するが表示上は消えていく途中のため、tier再計算の対象（順位カウント）
-   * から除外する（除外しないと、消えかけのカードの分だけ後続カードの
-   * tierが1つずれて一瞬ガクつく）。
+   * 存在するが表示上は消えていく途中のため、順位カウントから除外する
+   * （除外しないと、消えかけのカードがヒーロー扱いのまま残る一瞬のガクつきが
+   * 起きる、フェーズ7から踏襲の方針）。
    * ══════════════════════════════════════════════ */
-  const QUEUE_TIER_COUNT = 7; // t1〜t7（t7が最小サイズで底打ち）
-
   function reapplyQueueTiers() {
     const container = document.getElementById('bus-card-list');
     if (!container) return;
 
-    const cards = Array.from(container.querySelectorAll('.bus-card')).filter(
-      (card) => !card.classList.contains('bus-card--departing')
-    );
+    const allCards = Array.from(container.querySelectorAll('.bus-card'));
+
+    // 出発演出中のカード（.bus-card--departing）は順位カウントの対象外だが、
+    // それが直前までヒーローだった場合に.bus-card--heroが残ったままだと、
+    // 新たにヒーローになったカードと2件同時に2×2グリッド領域を主張して
+    // レイアウトが崩れる（2026-09-20 jsdomスモークテストで発見・修正）。
+    // 順位カウントの対象外にする前に、まず全カードから一旦外す。
+    allCards.forEach((card) => card.classList.remove('bus-card--hero'));
+
+    const cards = allCards.filter((card) => !card.classList.contains('bus-card--departing'));
 
     cards.forEach((card, index) => {
-      for (let tier = 1; tier <= QUEUE_TIER_COUNT; tier++) {
-        card.classList.remove(`t${tier}`);
-      }
-      const tier = Math.min(index + 1, QUEUE_TIER_COUNT);
-      card.classList.add(`t${tier}`);
+      if (index === 0) card.classList.add('bus-card--hero');
     });
   }
 
@@ -2390,8 +2426,8 @@
       arrivalInstances.forEach((instance) => {
         container.appendChild(buildBusCard(instance, arrivalInstances, stopCode));
       });
-      // フェーズ7: カード生成直後に順位に応じたtier（サイズ・S字カーブ
-      // オフセット）を一括付与する（.claude/plan-phase7-arrivals-queue-cards.md）。
+      // フェーズ8: カード生成直後に先頭（最も到着が近い1件）へヒーローセル
+      // クラスを一括付与する（.claude/plan-phase8-arrivals-grid-and-modal.md）。
       reapplyQueueTiers();
 
       // フェーズ6: Timetableビューは上限なし・生のServices[]をそのまま行データに
@@ -2656,11 +2692,11 @@
 
     lastArrivalSnapshot = arrivalInstances.slice();
 
-    // フェーズ7: 出発・新規挿入によりリスト内の順位が変わったため、
-    // tier（サイズ・S字カーブオフセット）を再計算する。出発演出中のカード
+    // フェーズ8: 出発・新規挿入によりリスト内の順位が変わったため、
+    // ヒーローセル判定（先頭かどうか）を再計算する。出発演出中のカード
     // （.bus-card--departing）はreapplyQueueTiers()内で順位カウントから
     // 除外されるため、消えかけのカードの分だけ後続がずれることはない
-    // （.claude/plan-phase7-arrivals-queue-cards.md 2節4項）。
+    // （.claude/plan-phase8-arrivals-grid-and-modal.md 1-5節）。
     reapplyQueueTiers();
 
     // 新規追加・出発によりDOM構成が変わったため、ハイライト・目的地一致タグ・

@@ -12,6 +12,7 @@ data/
 !.claude/plan-phase4-home-card-redesign.md
 !.claude/plan-phase6-map-timetable-toggle.md
 !.claude/plan-phase7-arrivals-queue-cards.md
+!.claude/plan-phase8-arrivals-grid-and-modal.md
 
 # iOS署名関連（絶対にコミットしない）
 *.p12

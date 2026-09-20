@@ -93,40 +93,74 @@
              以下は#bus-card-listがJavaScript実行前後の一瞬に表示されうる静的プレースホルダー
              （GPS取得完了後、loadBusArrivals()がcontainer.innerHTMLを上書きする）。
              マークアップ・クラス名はbuildBusCard()が生成する実カードと同一にしてある
-             （フェーズ7: 遠近クイーニングカード、.claude/plan-phase7-arrivals-queue-cards.md）。
-             tierクラス(t1/t2/t3)はJS実行後にreapplyQueueTiers()が付与し直すため、
-             ここでは見た目確認用に静的に付与しておく。
+             （フェーズ8: ヒーローセル+グリッド、.claude/
+             plan-phase8-arrivals-grid-and-modal.md）。
+             .bus-card--heroクラスはJS実行後にreapplyQueueTiers()が付与し直すため、
+             ここでは見た目確認用に静的に付与しておく（先頭1件のみ）。
              フェーズ6: 初期表示はTimetableビューのためhiddenを付与、toggleHomeView()が
              表示状態を切り替える。 -->
         <div class="bus-card-list" id="bus-card-list" hidden>
 
-          <!-- バスカード1: 目的地一致・最も近い(t1) -->
-          <button type="button" class="bus-card bus-card--load-green t1" data-route-from="" data-route-to="Bukit Merah Int" data-route-number="67">
+          <!-- バスカード1: 目的地一致・最も近い(ヒーローセル) -->
+          <button type="button" class="bus-card bus-card--hero" data-route-from="" data-route-to="Bukit Merah Int" data-route-number="67">
             <span class="bus-badge-match-icon bus-badge-match-icon--1" style="background: var(--category-color-lime); color: #FAFAF8;">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg>
             </span>
             <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
             <span class="bus-card-num">67</span>
             <span class="bus-card-eta"><span class="bus-card-eta-value bus-card-eta-value--now">Now</span></span>
-            <span class="bus-card-type">SD</span>
+            <span class="bus-card-sub-row">
+              <span class="bus-card-vehicle-icon-wrap">
+                <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20" role="img" aria-label="Single Deck">
+                  <rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4"/>
+                  <rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                  <rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                  <rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                </svg>
+              </span>
+              <span class="bus-card-operator">SBST</span>
+            </span>
           </button>
 
-          <!-- バスカード2: 通常・2番目(t2) -->
-          <button type="button" class="bus-card bus-card--load-amber t2" data-route-from="" data-route-to="Clementi Ave 6" data-route-number="74">
+          <!-- バスカード2: 通常セル -->
+          <button type="button" class="bus-card" data-route-from="" data-route-to="Clementi Ave 6" data-route-number="74">
             <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
             <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
             <span class="bus-card-num">74</span>
             <span class="bus-card-eta"><span class="bus-card-eta-value">2</span><span class="bus-card-eta-unit">min</span></span>
-            <span class="bus-card-type">DD</span>
+            <span class="bus-card-sub-row">
+              <span class="bus-card-vehicle-icon-wrap">
+                <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--double" viewBox="0 0 34 30" role="img" aria-label="Double Deck">
+                  <rect x="1.5" y="1.5" width="31" height="27" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4"/>
+                  <rect x="4" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                  <rect x="13.5" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                  <rect x="23" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                  <rect x="4" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                  <rect x="13.5" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                  <rect x="23" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
+                </svg>
+              </span>
+              <span class="bus-card-operator">SMRT</span>
+            </span>
           </button>
 
-          <!-- バスカード3: 通常・3番目(t3) -->
-          <button type="button" class="bus-card bus-card--load-green t3" data-route-from="" data-route-to="Toa Payoh Int" data-route-number="151">
+          <!-- バスカード3: 通常セル -->
+          <button type="button" class="bus-card" data-route-from="" data-route-to="Toa Payoh Int" data-route-number="151">
             <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
             <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
             <span class="bus-card-num">151</span>
             <span class="bus-card-eta"><span class="bus-card-eta-value">4</span><span class="bus-card-eta-unit">min</span></span>
-            <span class="bus-card-type">SD</span>
+            <span class="bus-card-sub-row">
+              <span class="bus-card-vehicle-icon-wrap">
+                <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20" role="img" aria-label="Single Deck">
+                  <rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4"/>
+                  <rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                  <rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                  <rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
+                </svg>
+              </span>
+              <span class="bus-card-operator">SBST</span>
+            </span>
           </button>
 
         </div>

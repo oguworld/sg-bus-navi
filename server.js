@@ -378,6 +378,13 @@ function resolveDestinationName(destinationCode) {
  * 元のDestinationCode等の既存フィールドは変更しない（後方互換性維持）。
  * busStopsCacheが未準備（0件）の場合は全てnullになるが、レスポンス自体は返す
  * （フロント側がフォールバック表示するため、ここではエラーにしない）。
+ *
+ * フェーズ8（.claude/plan-phase8-arrivals-grid-and-modal.md 1-4節）:
+ * 併せて各Services[]にOperator（SBST/SMRT/TTS/GAS）も付与する。v3/BusArrival
+ * のレスポンス自体にはOperatorフィールドが存在しないため、busServicesCache
+ * 由来のServiceNo→Operator Map（busServiceNoToOperatorMap）で解決する。
+ * 解決できない場合（未知の系統番号等）はフィールド自体を付与しない
+ * （フロント側は値が無ければOperatorラベルを表示しないだけで実害がない）。
  */
 function enrichBusArrivalWithDestinationNames(data) {
   if (!data || !Array.isArray(data.Services)) {
@@ -390,6 +397,11 @@ function enrichBusArrivalWithDestinationNames(data) {
       if (nextBus && typeof nextBus === 'object') {
         nextBus.DestinationName = resolveDestinationName(nextBus.DestinationCode);
       }
+    }
+
+    const operator = busServiceNoToOperatorMap.get(service.ServiceNo);
+    if (operator) {
+      service.Operator = operator;
     }
   }
 
@@ -609,6 +621,15 @@ let busServicesCache = [];
 let busServicesUpdatedAt = null;
 let busServicesFetchInProgress = false;
 
+// ServiceNo -> Operator（SBST/SMRT/TTS/GAS）への引き当て用Map。
+// 用途: /api/bus-arrival のレスポンスにOperatorを付与する
+// （フェーズ8、.claude/plan-phase8-arrivals-grid-and-modal.md 1-3節、
+// Arrivalsカードでのバス会社表示用）。Operatorは方向(Direction)によらず
+// 系統番号単位で同一の値のため、ServiceNo+Directionのグルーピングとは別に
+// シンプルなServiceNo単位のMapとして保持する。busServicesCacheが更新される
+// （初期読み込み・LTA再取得完了）たびに再構築する。
+let busServiceNoToOperatorMap = new Map();
+
 // "ServiceNo|Direction" -> Array<{StopSequence, BusStopCode, Distance}>（StopSequence昇順ソート済み）。
 // 次ステップ（経路モーダル実データ化）の経由地点選定ロジックが、
 // 系統・方向を指定して経由停留所列を高速に引けるようにするための事前グルーピング。
@@ -697,6 +718,24 @@ function rebuildBusServiceByServiceDirection() {
   console.log(
     `[BusServices] グルーピングMap再構築完了: ${map.size}系統・方向の組み合わせ`
   );
+}
+
+/**
+ * ServiceNo -> Operator（SBST/SMRT/TTS/GAS）のMapを再構築する
+ * （フェーズ8、.claude/plan-phase8-arrivals-grid-and-modal.md 1-4節）。
+ * Operatorは方向(Direction)によらず系統番号単位で同一の値のため、
+ * rebuildBusServiceByServiceDirection()とは別のシンプルなMapとして保持する。
+ * 同一ServiceNoで複数レコードがある場合は最初の1件を採用する（Operatorは
+ * 通常どのDirectionでも同一のため実害はない）。
+ */
+function rebuildBusServiceNoToOperatorMap() {
+  const map = new Map();
+  for (const service of busServicesCache) {
+    if (!service.ServiceNo || map.has(service.ServiceNo)) continue;
+    if (service.Operator) map.set(service.ServiceNo, service.Operator);
+  }
+  busServiceNoToOperatorMap = map;
+  console.log(`[BusServices] ServiceNo→Operator Map再構築完了: ${map.size}系統`);
 }
 
 /**
@@ -829,6 +868,7 @@ async function fetchAllBusServicesFromLta() {
         ServiceNo: service.ServiceNo,
         Direction: service.Direction,
         Category: service.Category,
+        Operator: service.Operator,
         OriginCode: service.OriginCode,
         DestinationCode: service.DestinationCode,
         LoopDesc: service.LoopDesc,
@@ -958,6 +998,7 @@ async function refreshBusServicesCache() {
     busServicesCache = services;
     busServicesUpdatedAt = updatedAt;
     rebuildBusServiceByServiceDirection();
+    rebuildBusServiceNoToOperatorMap();
     saveBusServicesCacheToDisk(services, updatedAt);
     console.log(
       `[BusServices] 取得完了: ${services.length}件、data/bus-services.jsonに保存しました。`
@@ -1016,6 +1057,7 @@ function initBusServicesCache() {
     busServicesCache = cached.services;
     busServicesUpdatedAt = cached.updatedAt ? new Date(cached.updatedAt) : null;
     rebuildBusServiceByServiceDirection();
+    rebuildBusServiceNoToOperatorMap();
     console.log(
       `[BusServices] data/bus-services.json からキャッシュを読み込みました（${busServicesCache.length}件、` +
         `更新日時: ${busServicesUpdatedAt ? busServicesUpdatedAt.toISOString() : '不明'}）。`
@@ -1024,12 +1066,27 @@ function initBusServicesCache() {
     console.log('[BusServices] data/bus-services.json が存在しません。初回取得を行います。');
   }
 
+  // フェーズ8（.claude/plan-phase8-arrivals-grid-and-modal.md 1-4節）でOperator
+  // フィールドをfetchAllBusServicesFromLta()の取得対象に追加したため、
+  // それ以前に保存された既存のdata/bus-services.jsonにはOperatorが
+  // 含まれていない。24時間の鮮度チェックとは別に、キャッシュ内の先頭要素に
+  // Operatorが存在するかで判定し、欠落していれば鮮度に関わらず1回だけ
+  // 強制的にLTA再取得する（さもないと最大24時間、Operator表示が空のままに
+  // なってしまう）。
+  const missingOperatorField =
+    Array.isArray(busServicesCache) &&
+    busServicesCache.length > 0 &&
+    !Object.prototype.hasOwnProperty.call(busServicesCache[0], 'Operator');
+
   const isStale =
     !busServicesUpdatedAt ||
-    Date.now() - busServicesUpdatedAt.getTime() > BUS_SERVICES_MAX_AGE_MS;
+    Date.now() - busServicesUpdatedAt.getTime() > BUS_SERVICES_MAX_AGE_MS ||
+    missingOperatorField;
 
   if (isStale) {
-    if (cached) {
+    if (cached && missingOperatorField) {
+      console.log('[BusServices] 既存キャッシュにOperatorフィールドが無いため、バックグラウンドで再取得します。');
+    } else if (cached) {
       console.log('[BusServices] キャッシュが24時間以上古いため、バックグラウンドで再取得します。');
     }
     refreshBusServicesCache();

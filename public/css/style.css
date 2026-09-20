@@ -774,90 +774,97 @@ button {
 }
 
 /* ══════════════════════════════════════════════
- * バスカードフィード（Home画面）— 遠近クイーニングカード（フェーズ7）
+ * バスカードフィード（Home画面）— ヒーローセル+グリッド（フェーズ8）
  *
- * .claude/plan-phase7-arrivals-queue-cards.md（ユーザー承認済み、
- * mockups/arrivals-queue-patternA-variants-v1.html の variant-s = A-4
- * 「S字カーブ」を採用）に基づき全面刷新。ユーザー指示「余計な情報はいらない
- * ので、系統番号と本当に必要な情報だけに残して、カードをもっと正方形に近い
- * 形にして、バスがキューイングしてバス停に近づいてくる様を視覚的に表現
- * したい」に対応。表示情報は系統番号・ETA・車種(SD/DD)のみに絞り、行き先・
- * ミニ経路図・「Next: N min」・WABアイコンは廃止した。
+ * .claude/plan-phase8-arrivals-grid-and-modal.md（ユーザー承認済み）に基づき、
+ * フェーズ7の縦一列S字カーブキューイングカード（.claude/plan-phase7-
+ * arrivals-queue-cards.md、tier(.t1〜.t7)による6段階サイズ縮小・
+ * translateXオフセット・margin-top重ね）を全面刷新した。ユーザーフィード
+ * バック「少しスペースを無駄遣いしすぎてしまっているので、縦一列じゃない
+ * 形がよさそう」を受け、3列グリッド+最も近い1件だけを2×2のヒーローセルで
+ * 強調する構成に変更（mockups/arrivals-queue-multicolumn-v1.html Option 3）。
  *
- * カードは到着が近い順に上から並び、下に行くほど段階的に小さくなる
- * （tierクラス.t1〜.t7、t7は最小サイズで底打ち・無限に縮小しない）。
- * margin-top負値で縦に少し重なり、奥行き感を出す。横方向のオフセットは
- * translateXでS字カーブ状に揺れる（モックアップ.variant-sの値を踏襲）。
- * tierクラスの付け外しはJS側reapplyQueueTiers()が担う（リスト内の順位に
- * 依存するため、buildBusCard()自体はtierクラスを付与しない）。
+ * さらに実装着手後の追加指示（コーディネーター経由）で、カード背景は
+ * 混雑度による塗りつぶしをやめ白(--surface-1)で統一、車種+混雑度は
+ * フェーズ4〜6で確立していたバスイラストSVG（形=単一/二階建て、
+ * 窓の色=混雑度、buildBusIllustrationSvg()）を復活させる形に変更した
+ * （mockups/arrivals-card-white-saved-v1.htmlの「小さい色ドット」案は
+ * 「2階建て/1階建ての情報も表示したい」との指摘を受けて不採用、撤回済み）。
+ * 最終的にmockups/arrivals-card-white-saved-v2.html（ユーザー正式承認済み）
+ * に基づき、バスイラストはヒーロー・通常セル両方に表示し（1台のイラストで
+ * 車種+混雑度の両方を表現するため通常セルでも省略しない）、バス会社
+ * (Operator)テキストのみヒーローセル限定で表示する構成に確定した。
+ *
+ * サイズ階層は「先頭(ヒーロー)か、それ以外(通常セル)か」の2値のみに
+ * 単純化した（tierクラス.t1〜.t7は廃止）。JS側reapplyQueueTiers()
+ * （フェーズ7から関数名は維持しつつ内部実装のみ簡略化）が先頭カードにのみ
+ * .bus-card--heroを付与する。
  * ══════════════════════════════════════════════ */
 .bus-card-list {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  /* S字カーブのtranslateXで左右にはみ出す分の余白を確保する（最大約20px）。 */
-  padding: 20px 24px 24px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 16px 14px 24px;
 }
 
 .bus-card {
+  position: relative;
+  aspect-ratio: 1 / 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border: none;
-  border-radius: 18px;
-  color: var(--on-accent);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--text-primary);
   font-weight: 800;
-  box-shadow: 0 5px 14px rgba(43, 43, 39, 0.16);
-  position: relative;
+  box-shadow: 0 3px 10px rgba(43, 43, 39, 0.08);
   cursor: pointer;
-  /* サイズ・位置(margin-top/translateX)はtierクラス(.t1〜.t7)側で指定する。
-     ここではトランジションと、新規挿入(.bus-card--entering)・出発演出
-     (.bus-card--departing)に共通する基本のtransitionのみ定義する。 */
-  transition: transform 0.25s ease, opacity 0.3s ease, width 0.25s ease, height 0.25s ease,
-    margin-top 0.25s ease, font-size 0.25s ease;
+  transition: transform 0.2s ease, opacity 0.3s ease;
 }
 
 .bus-card:active {
-  transform: scale(0.96) translateX(var(--queue-offset-x, 0));
+  transform: scale(0.96);
 }
 
-/* 混雑度(Load)による背景色。SEA=緑/SDA=黄/LSD=赤。未知・欠落時は
-   ニュートラルなグレーにフォールバックする（偽の色を出さない、CLAUDE.md
-   「登録済み目的地」節と同じ「安全側に倒す」方針を踏襲）。 */
-.bus-card--load-green {
-  background: var(--load-green);
+/* ヒーローセル（最も到着が近い1件のみ）: 2×2マスに拡大し、文字サイズも
+   大きくする。それ以外は全て同一サイズの通常セル（グリッドの1×1のまま）。 */
+.bus-card--hero {
+  grid-column: span 2;
+  grid-row: span 2;
 }
 
-.bus-card--load-amber {
-  background: var(--load-amber);
-}
-
-.bus-card--load-red {
-  background: var(--load-red);
-}
-
-.bus-card--load-neutral {
-  background: var(--warm-gray);
-}
-
-/* 系統番号（大きな数字、電光掲示板を意識した最大の視覚要素） */
+/* 系統番号（大きな数字、電光掲示板を意識した最大の視覚要素）。文字色は
+   ニュートラル(--text-primary)に統一（フェーズ7までの白文字は、混雑度の
+   色塗りつぶし背景が前提だったため、白背景化に伴い濃色に変更）。 */
 .bus-card-num {
   line-height: 1;
+  font-size: 17px;
+}
+
+.bus-card--hero .bus-card-num {
+  font-size: 34px;
 }
 
 /* 4文字以上の系統番号（118A、961M等）用。正方形カードの狭い横幅に
    収まりきらず文字が縁に張り付くため縮小する（2026-09-13実機で発見・修正の
-   踏襲、フェーズ7でクラス名を.bus-badge--longから.bus-card-num--longに変更）。 */
+   踏襲）。 */
 .bus-card-num--long {
   letter-spacing: -0.5px;
 }
 
 .bus-card-eta {
   font-weight: 700;
-  opacity: 0.92;
-  margin-top: 2px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+  font-size: 9px;
   white-space: nowrap;
+}
+
+.bus-card--hero .bus-card-eta {
+  font-size: 15px;
+  margin-top: 4px;
 }
 
 .bus-card-eta-value--now {
@@ -868,19 +875,67 @@ button {
   margin-left: 2px;
 }
 
-/* 車種(SD/DD)。最小tier(t7)ではスペースの都合上非表示にする
-   （plan-phase7 1節「小さいカードでは省略してよい」）。 */
-.bus-card-type {
-  font-weight: 700;
-  opacity: 0.8;
-  letter-spacing: 0.03em;
-  margin-top: 1px;
+/* サブ行: バスイラスト(車種+混雑度)+バス会社(Operator)。
+   mockups/arrivals-card-white-saved-v2.html（ユーザー承認済み）に基づき、
+   バスイラストは通常セル・ヒーローセル両方に表示する（1台のイラストで
+   車種(形)+混雑度(窓の色)の両方を表現するため、通常セルでも省略しない）。
+   Operator(バス会社)テキストのみスペースの都合上ヒーローセル限定で表示する
+   （.claude/plan-phase8-arrivals-grid-and-modal.md 1-2節）。 */
+.bus-card-sub-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 4px;
 }
 
-/* 目的地一致インジケーター: 角に重ねる小さな丸アイコン（旧.bus-badge-match-icon
-   と同じ考え方、CLAUDE.md「バスカード」節参照）。フェーズ7ではカード自体が
-   バッジ相当のため、カードの角に直接重ねる。カード背景色(混雑度)とは別
-   レイヤーとして共存させる（plan-phase7 2節1項）。 */
+.bus-card--hero .bus-card-sub-row {
+  margin-top: 6px;
+}
+
+.bus-card-operator {
+  display: none;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  font-size: 10px;
+}
+
+.bus-card--hero .bus-card-operator {
+  display: inline;
+}
+
+/* バスイラストアイコン（フェーズ4〜6で確立、フェーズ7で一時廃止していたが
+   フェーズ8で復活。形=単一/二階建てのシルエット、窓の色=混雑度。本体の
+   輪郭線は車椅子アイコンと同じ--text-mutedの線画のみで、グラデーション等の
+   塗りつぶしは行わない（git 36bdd0c時点のbuildBusIllustrationSvg()をそのまま
+   復元・流用、コーディネーター指示により確認済み）。
+   サイズはmockups/arrivals-card-white-saved-v2.htmlの値をそのまま採用
+   （svgのwidthのみ指定し、height:autoでviewBoxの縦横比を保つ）。 */
+.bus-card-vehicle-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bus-card-vehicle-icon {
+  height: auto;
+}
+
+.bus-card-vehicle-icon--single,
+.bus-card-vehicle-icon--double {
+  width: 26px;
+}
+
+.bus-card--hero .bus-card-vehicle-icon--single,
+.bus-card--hero .bus-card-vehicle-icon--double {
+  width: 46px;
+}
+
+/* 目的地一致インジケーター: 角に重ねる小さな丸アイコン（既存.bus-badge-
+   match-iconと同じ考え方、CLAUDE.md「バスカード」節参照）。カード自体が
+   バッジ相当のため、カードの角に直接重ねる。白背景化後もこの表示方法は
+   変更なし（.claude/plan-phase8-arrivals-grid-and-modal.md 1-4節）。 */
 .bus-badge-match-icon {
   position: absolute;
   top: -6px;
@@ -895,6 +950,11 @@ button {
   z-index: 3;
 }
 
+.bus-card--hero .bus-badge-match-icon {
+  width: 24px;
+  height: 24px;
+}
+
 .bus-badge-match-icon--1 {
   right: -6px;
   z-index: 2;
@@ -905,116 +965,27 @@ button {
   z-index: 1;
 }
 
+.bus-card--hero .bus-badge-match-icon--2 {
+  right: 10px;
+}
+
 .bus-badge-match-icon svg {
   width: 11px;
   height: 11px;
 }
 
-/* ── サイズ階層(tier)。到着が近い順(t1)から遠い順(t7)へ段階的に縮小する。
-   t7以降(8件目以降)は同じ最小サイズで底打ちし、無限に縮小し続けない
-   （mockups/arrivals-queue-patternA-variants-v1.html .t7〜.t10相当）。
-   横方向のオフセット(translateX)はS字カーブ(variant-s)の値をそのまま採用。
-   カスタムプロパティ--queue-offset-xに保持し、:active時のscale変換と
-   合成できるようにする。 ── */
-.bus-card.t1 {
-  width: 112px;
-  height: 112px;
-  font-size: 26px;
-  margin-top: 0;
-  z-index: 8;
-  --queue-offset-x: 0px;
-  transform: translateX(var(--queue-offset-x));
+.bus-card--hero .bus-badge-match-icon svg {
+  width: 13px;
+  height: 13px;
 }
-.bus-card.t1 .bus-card-eta { font-size: 14px; }
-.bus-card.t1 .bus-card-type { font-size: 9.5px; }
-
-.bus-card.t2 {
-  width: 98px;
-  height: 98px;
-  font-size: 22px;
-  margin-top: -12px;
-  z-index: 7;
-  opacity: 0.97;
-  --queue-offset-x: 8px;
-  transform: translateX(var(--queue-offset-x));
-}
-.bus-card.t2 .bus-card-eta { font-size: 12px; }
-.bus-card.t2 .bus-card-type { font-size: 9px; }
-
-.bus-card.t3 {
-  width: 86px;
-  height: 86px;
-  font-size: 19px;
-  margin-top: -10px;
-  z-index: 6;
-  opacity: 0.94;
-  --queue-offset-x: 16px;
-  transform: translateX(var(--queue-offset-x));
-}
-.bus-card.t3 .bus-card-eta { font-size: 11px; }
-.bus-card.t3 .bus-card-type { font-size: 8px; }
-
-.bus-card.t4 {
-  width: 74px;
-  height: 74px;
-  font-size: 16px;
-  margin-top: -9px;
-  z-index: 5;
-  opacity: 0.9;
-  --queue-offset-x: 10px;
-  transform: translateX(var(--queue-offset-x));
-}
-.bus-card.t4 .bus-card-eta { font-size: 10px; }
-
-.bus-card.t5 {
-  width: 64px;
-  height: 64px;
-  font-size: 14px;
-  margin-top: -8px;
-  z-index: 4;
-  opacity: 0.87;
-  --queue-offset-x: -6px;
-  transform: translateX(var(--queue-offset-x));
-}
-.bus-card.t5 .bus-card-eta { font-size: 9px; }
-
-.bus-card.t6 {
-  width: 56px;
-  height: 56px;
-  font-size: 12px;
-  margin-top: -7px;
-  z-index: 3;
-  opacity: 0.83;
-  --queue-offset-x: -16px;
-  transform: translateX(var(--queue-offset-x));
-}
-.bus-card.t6 .bus-card-eta { font-size: 8px; }
-
-/* t7 = 底打ちサイズ。8件目以降も全て同じ大きさ・同じ最小サイズのまま
-   単純に積み上がる（無限に縮小し続けない、plan-phase7 1節）。横オフセットは
-   モックアップのS字周期(.t7〜.t10)をそのまま踏襲し、11件目以降は
-   JS側reapplyQueueTiers()がt7を再度付与するため同じ値が繰り返される。 */
-.bus-card.t7 {
-  width: 50px;
-  height: 50px;
-  font-size: 11px;
-  margin-top: -6px;
-  z-index: 2;
-  opacity: 0.8;
-  --queue-offset-x: -14px;
-  transform: translateX(var(--queue-offset-x));
-}
-.bus-card.t7 .bus-card-eta { font-size: 7px; }
-.bus-card.t7 .bus-card-type { display: none; }
 
 /* ══════════════════════════════════════════════
- * 出発演出（フェーズ4由来、フェーズ7で正方形カード向けに調整）。
+ * 出発演出（フェーズ4由来、フェーズ7・8でも継続採用）。
  *
- * 旧デザインは横長カードを右にスライドさせながら消していたが、正方形の
- * クイーニングカードでは不自然なため、その場でスケールダウンしながら
- * フェードアウトする形に変更した（「バスが発車して見えなくなる」演出）。
- * JS側（playDepartAnimation）が到着インスタンスの消失を検出したカードに
- * .bus-card--departingを付与し、animationend後にDOMから除去する。
+ * その場でスケールダウンしながらフェードアウトする（「バスが発車して
+ * 見えなくなる」演出）。JS側（playDepartAnimation）が到着インスタンスの
+ * 消失を検出したカードに.bus-card--departingを付与し、animationend後に
+ * DOMから除去する。
  * ══════════════════════════════════════════════ */
 .bus-card--departing {
   animation: bus-card-depart 0.5s ease-in forwards;
@@ -1024,11 +995,11 @@ button {
 @keyframes bus-card-depart {
   0% {
     opacity: 1;
-    transform: translateX(var(--queue-offset-x, 0)) scale(1);
+    transform: scale(1);
   }
   100% {
     opacity: 0;
-    transform: translateX(var(--queue-offset-x, 0)) scale(0.4);
+    transform: scale(0.4);
   }
 }
 
@@ -1038,7 +1009,7 @@ button {
    .bus-card--enteringを付与し、次フレームで除去することでtransitionを発火させる。 */
 .bus-card--entering {
   opacity: 0;
-  transform: translateX(var(--queue-offset-x, 0)) scale(0.7);
+  transform: scale(0.7);
 }
 
 /*
@@ -1934,24 +1905,21 @@ button {
    同じ--surface-2を背景に持つ系統番号バッジ(.bus-badge)が背景に溶け込んで
    見えなくなっていた。モーダルは画面の上に浮くUIチロームなので、
    デザイントークンの規約どおりカード/浮いた面用の--surface-1(白)に統一した。 */
+/* 2026-09-14に「地図もうちょっと大きく表示してほしい、画面いっぱいに」との
+   指示でフルスクリーンシート化していたが、2026-09-20ユーザー指示「系統を
+   タップしたときのモーダルは、全画面表示よりも上でいい」により、
+   destination-map-modal-overlayと同じ「中央配置・ダーク背景の上に浮かぶ
+   カード」パターンに戻した。ボトムナビもダーク背景の下に隠れる標準的な
+   モーダル挙動になる（destination-map-modal-overlayと同じ、2026-09-14の
+   「ボトムナビも見せる」特別対応は今回のパターン変更に伴い不要になった）。 */
 .route-modal-overlay {
   display: none;
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  /* ボトムナビ分だけ下を開けておき、オーバーレイの下からボトムナビ
-     (常時fixed表示)が見えるようにする（2026-09-14ユーザー指示「この画面にも
-     ボトムメニュー出すようにして」）。ナビ自体はz-index操作不要（覆う要素が
-     その高さまで存在しないだけで表示される）。
-     実機で発見・修正: 当初84px固定にしていたが、.bottom-navの実高さは
-     env(safe-area-inset-bottom)分(ホームインジケーターのある機種で約34px)
-     さらに高いため、固定84pxだとナビの上部（アイコン・ラベル行）がオーバー
-     レイの下に隠れ、セーフエリアの余白部分だけが覗く状態になっていた
-     （ユーザー指摘「ボトムメニュー隠れてます」）。.bottom-navのpadding計算
-     （10px + 10px + safe-area-inset-bottom）と揃えて動的に高さを確保する。 */
-  bottom: calc(84px + env(safe-area-inset-bottom));
-  background: var(--surface-1);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
   z-index: 100;
 }
 
@@ -1962,17 +1930,25 @@ button {
 .route-modal {
   background: var(--surface-1);
   width: 100%;
-  height: 100%;
+  max-width: 420px;
+  max-height: 78vh;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 0.5px solid var(--border-strong);
+  box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
 }
 
 .route-modal-header {
+  /* 中央配置カードに変更(2026-09-20)したため、フルスクリーン時代の
+     env(safe-area-inset-top)加算(ステータスバー回避用)は不要になった
+     (destination-map-modal-headerと同じ通常paddingに統一)。 */
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: calc(14px + env(safe-area-inset-top)) 14px 10px;
+  padding: 14px 14px 10px;
   border-bottom: 0.5px solid var(--border);
 }
 

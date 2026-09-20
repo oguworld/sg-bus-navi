@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGBusNavi — Arrivals queue cards: multi-column layout options (mockup, not wired to app)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAFAF8; --midnight: #2B2B27; --warm-gray: #767268;
+    --font-heading: 'Inter', sans-serif;
+    --load-green: #4C9A5B; --load-amber: #C79A2E; --load-red: #C0392B;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; font-family: var(--font-heading); }
+  body { background: #ECECE8; padding: 24px 0 80px; }
+  .note { max-width: 980px; margin: 0 auto 28px; padding: 0 16px; font-size: 13px; color: var(--warm-gray); line-height: 1.7; }
+  .note b { color: var(--midnight); }
+  .note ol { padding-left: 18px; margin-top: 6px; }
+
+  .row { display:flex; gap:26px; flex-wrap:wrap; justify-content:center; align-items:flex-start; }
+  .col { display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .col-label { font-size: 13px; font-weight:700; color: var(--midnight); text-align:center; max-width:270px; }
+  .col-desc { font-size: 11.5px; color: var(--warm-gray); text-align:center; max-width:270px; line-height:1.5; }
+
+  .phone {
+    width: 280px; height: 420px;
+    background: var(--cream);
+    border-radius: 26px;
+    overflow: hidden;
+    box-shadow: 0 14px 36px rgba(0,0,0,0.16);
+    position: relative;
+  }
+  .scroller { height:100%; overflow-y:auto; padding: 16px 14px 26px; }
+
+  .qcard {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    border-radius: 16px;
+    color: #fff;
+    font-weight:800;
+    box-shadow: 0 4px 12px rgba(43,43,39,0.16);
+  }
+  .qcard .num { line-height:1; }
+  .qcard .eta { font-weight:700; opacity:0.92; margin-top:2px; }
+  .qcard .type { font-weight:700; opacity:0.8; letter-spacing:0.03em; margin-top:1px; }
+  .load-green { background: var(--load-green); }
+  .load-amber { background: var(--load-amber); }
+  .load-red { background: var(--load-red); }
+
+  /* ══ Option 1: フロー折り返しグリッド（サイズ=緊急度、幅いっぱいに
+     自然に折り返す。特別な整列ルールなし、CSS flex-wrapのみ） ══ */
+  .flow-1 { display:flex; flex-wrap:wrap; gap:8px; align-content:flex-start; }
+  .f1-xl { width:104px; height:104px; font-size:26px; }
+  .f1-xl .eta { font-size:13px; } .f1-xl .type { font-size:9px; }
+  .f1-l  { width:84px; height:84px; font-size:21px; }
+  .f1-l .eta { font-size:11px; } .f1-l .type { font-size:8px; }
+  .f1-m  { width:68px; height:68px; font-size:17px; }
+  .f1-m .eta { font-size:9px; }
+  .f1-s  { width:56px; height:56px; font-size:14px; }
+  .f1-s .eta { font-size:8px; }
+
+  /* ══ Option 2: 2レーン（バス停に向かう2本の道を横に並べる。1台目は
+     左レーン最上段、2台目は右レーン最上段…と交互に振り分け、各レーンの
+     中で下に行くほど小さくなる=奥へ遠ざかる） ══ */
+  .lanes-2 { display:flex; gap:10px; }
+  .lane { display:flex; flex-direction:column; gap:8px; flex:1; }
+  .lane .qcard { width:100%; aspect-ratio:1/1; }
+  .l2-t1 .num { font-size:24px; } .l2-t1 .eta { font-size:12px; } .l2-t1 .type { font-size:9px; }
+  .l2-t2 .num { font-size:19px; } .l2-t2 .eta { font-size:10px; } .l2-t2 .type { font-size:8px; }
+  .l2-t3 .num { font-size:16px; } .l2-t3 .eta { font-size:9px; }
+  .l2-t4 .num { font-size:14px; } .l2-t4 .eta { font-size:8px; }
+
+  /* ══ Option 3: ヒーローセル+グリッド（最も近い1台だけ大きく2x2で強調、
+     残りは3列の通常グリッドで整列。Pattern Bの発展形） ══ */
+  .grid-3 { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
+  .g3-hero { grid-column: span 2; grid-row: span 2; aspect-ratio:1/1; }
+  .g3-hero .num { font-size:32px; } .g3-hero .eta { font-size:15px; } .g3-hero .type { font-size:10px; }
+  .g3-cell { aspect-ratio:1/1; }
+  .g3-cell .num { font-size:16px; } .g3-cell .eta { font-size:9px; } .g3-cell .type { font-size:7.5px; }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>SGBusNavi — Arrivalsカード 多列レイアウト案（モックアップ v1）</b><br>
+  ユーザーフィードバック「縦一列じゃない形がよさそう、スペースを無駄遣いしすぎている」を受け、実装済みの単一縦列(S字カーブ)から、幅を活かした多列レイアウトに変更する3案。カードの中身(系統番号・ETA・車種SD/DD・混雑度による背景色)は変更なし、<b>並べ方だけ</b>を変える。いずれも「近いバス=大きい」という緊急度表現は維持している。
+  <ol>
+    <li><b>Option 1「フロー折り返しグリッド」</b>: 特別な整列ルールを設けず、サイズが違うカードを`flex-wrap`で自然に折り返す。実装が最も単純で、件数に応じて自動的に行が増える。</li>
+    <li><b>Option 2「2レーン」</b>: バス停へ向かう道を2本並べたイメージ。到着順に左右のレーンへ交互に振り分け、各レーンの中で下に行くほど小さくなる（奥へ遠ざかる）。縦の長さが単一列の約半分になり、「キューイング」の感覚も残しやすい。</li>
+    <li><b>Option 3「ヒーローセル+グリッド」</b>: 最も近い1台だけ2×2の大きなセルで目立たせ、残りは3列の通常グリッドに整列。一覧性が最も高く、件数が多いバス停でもスペース効率が良い。</li>
+  </ol>
+  <b>この下、実際の表示イメージ（8件、到着順）:</b>
+</div>
+
+<div class="row">
+
+  <div class="col">
+    <div class="col-label">Option 1 — フロー折り返しグリッド</div>
+    <div class="col-desc">サイズ違いのカードが自然に折り返す</div>
+    <div class="phone">
+      <div class="scroller">
+        <div class="flow-1">
+          <div class="qcard f1-xl load-green"><span class="num">17</span><span class="eta">2 min</span><span class="type">DD</span></div>
+          <div class="qcard f1-l load-green"><span class="num">45</span><span class="eta">5 min</span><span class="type">SD</span></div>
+          <div class="qcard f1-l load-amber"><span class="num">18</span><span class="eta">9 min</span><span class="type">DD</span></div>
+          <div class="qcard f1-m load-amber"><span class="num">61</span><span class="eta">13 min</span></div>
+          <div class="qcard f1-m load-green"><span class="num">17</span><span class="eta">17 min</span></div>
+          <div class="qcard f1-s load-red"><span class="num">190</span><span class="eta">21 min</span></div>
+          <div class="qcard f1-s load-amber"><span class="num">45</span><span class="eta">25 min</span></div>
+          <div class="qcard f1-s load-green"><span class="num">18</span><span class="eta">29 min</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="col-label">Option 2 — 2レーン</div>
+    <div class="col-desc">2本の道が奥へ伸びるイメージ、縦の長さが半分に</div>
+    <div class="phone">
+      <div class="scroller">
+        <div class="lanes-2">
+          <div class="lane">
+            <div class="qcard l2-t1 load-green"><span class="num">17</span><span class="eta">2 min</span><span class="type">DD</span></div>
+            <div class="qcard l2-t2 load-amber"><span class="num">18</span><span class="eta">9 min</span><span class="type">DD</span></div>
+            <div class="qcard l2-t3 load-green"><span class="num">17</span><span class="eta">17 min</span></div>
+            <div class="qcard l2-t4 load-amber"><span class="num">45</span><span class="eta">25 min</span></div>
+          </div>
+          <div class="lane">
+            <div class="qcard l2-t1 load-green"><span class="num">45</span><span class="eta">5 min</span><span class="type">SD</span></div>
+            <div class="qcard l2-t2 load-amber"><span class="num">61</span><span class="eta">13 min</span><span class="type">SD</span></div>
+            <div class="qcard l2-t3 load-red"><span class="num">190</span><span class="eta">21 min</span></div>
+            <div class="qcard l2-t4 load-green"><span class="num">18</span><span class="eta">29 min</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="col-label">Option 3 — ヒーローセル+グリッド</div>
+    <div class="col-desc">最も近い1台だけ大きく、残りは3列グリッド</div>
+    <div class="phone">
+      <div class="scroller">
+        <div class="grid-3">
+          <div class="qcard g3-hero load-green"><span class="num">17</span><span class="eta">2 min</span><span class="type">DD</span></div>
+          <div class="qcard g3-cell load-green"><span class="num">45</span><span class="eta">5 min</span><span class="type">SD</span></div>
+          <div class="qcard g3-cell load-amber"><span class="num">18</span><span class="eta">9 min</span><span class="type">DD</span></div>
+          <div class="qcard g3-cell load-amber"><span class="num">61</span><span class="eta">13 min</span></div>
+          <div class="qcard g3-cell load-green"><span class="num">17</span><span class="eta">17 min</span></div>
+          <div class="qcard g3-cell load-red"><span class="num">190</span><span class="eta">21 min</span></div>
+          <div class="qcard g3-cell load-amber"><span class="num">45</span><span class="eta">25 min</span></div>
+          <div class="qcard g3-cell load-green"><span class="num">18</span><span class="eta">29 min</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -52,21 +52,22 @@
 8. **Timetableビュー(`#home-timetable-list`、`.tt-row`)**: `/api/bus-arrival`の生の`Services[]`(フラット化前、`NextBus`/`NextBus2`/`NextBus3`をそのまま3列として使う)を系統番号1行のテーブルとして表示。系統番号の自然順(`compareServiceNumbers()`、`localeCompare`の`numeric:true`)でソートし、到着時刻順にはしない(ポーリングのたびに行の位置が入れ替わるのを防ぐため)。各時刻セルは分数値(0分は「Now」)+混雑度色(`load-green`/`amber`/`red`)+車種コード(SD/DD/BD)+車椅子アイコンを小さく併記。到着予定なしの枠は「–」。上限なし・全件表示(Arrivalsビューの`MAX_DISPLAYED_ARRIVALS`=10件とは別概念)。系統番号バッジ(`.tt-badge`)タップで経路モーダルを開く(Arrivalsビューの専用「Route」ボタンに相当する導線)。Arrivals/Timetableの両ビューは`loadBusArrivals()`/`pollBusArrivals()`が同一の取得結果から常に同期して描画するため、ビュー切替自体は再フェッチを伴わない
 9. **両ビュー共有の目的地一致ハイライト・フィルター**: `applyRouteEnrichment()`/`applyRelatedOnlyFilter()`/`showAllBusCards()`は`#bus-card-list .bus-card`と`#home-timetable-list .tt-row`を合わせた要素集合(`collectEnrichableElements()`)に対して1回だけ判定・適用する(系統単位キャッシュ`serviceRouteInfoCache`も共有、両ビュー分で二重にAPIを叩かない)。`.tt-row`は`.bus-card`と同じ`data-route-number`/`data-origin-code`/`data-destination-code`/`data-current-stop-code`属性を持つため、既存の判定ロジックをそのまま使い回せる
 
-### バスカード(Arrivalsビュー、遠近クイーニングカード、フェーズ7で全面刷新)
+### バスカード(Arrivalsビュー、ヒーローセル+グリッド、フェーズ8で全面刷新)
 
-「バスがキューイングしてバス停に近づいてくる様を視覚的に表現したい」というユーザー要望を受け、2026-09-20に横長フィードカードから正方形に近い「遠近クイーニングカード」へ全面刷新した(`.claude/plan-phase7-arrivals-queue-cards.md`、採用モックアップ`mockups/arrivals-queue-patternA-variants-v1.html`の`variant-s`=A-4「S字カーブ」)。旧デザイン(行き先・メタ行・ミニ経路図・「Next: N min」等を含む横長カード)の詳細はgit履歴を参照。
+「バスがキューイングしてバス停に近づいてくる様を視覚的に表現したい」というユーザー要望を受け2026-09-20にフェーズ7で「正方形カード+S字カーブの縦一列キューイング」に刷新したが(`.claude/plan-phase7-arrivals-queue-cards.md`、採用モックアップ`mockups/arrivals-queue-patternA-variants-v1.html`の`variant-s`=A-4)、実機確認直後にユーザーから「少しスペースを無駄遣いしすぎてしまっているので、縦一列じゃない形がよさそう」とのフィードバックがあり、同日中に**「ヒーローセル+グリッド」**へ再刷新した(`.claude/plan-phase8-arrivals-grid-and-modal.md`、採用モックアップ`mockups/arrivals-queue-multicolumn-v1.html` Option 3、最終デザインは`mockups/arrivals-card-white-saved-v2.html`でユーザー正式承認済み)。フェーズ7のtier(`.t1`〜`.t7`の6段階サイズ縮小)・S字カーブオフセット(`--queue-offset-x`)・`margin-top`重ねは全て廃止された。旧デザイン(行き先・メタ行・ミニ経路図・「Next: N min」等を含む横長カード)の詳細はgit履歴を参照。
 
-- **表示情報を極限まで絞る**: 系統番号(大きな数字)・ETA(分)・車種(SD/DD)の3点のみ。行き先(終点)・ミニ経路図・「Next: N min」・車椅子(WAB)アイコンは全て廃止した(`buildBusCard()`)
-- **カード形状**: 正方形に近い形(`border-radius:18px`)。背景色は混雑度(`Load`: SEA=緑/SDA=黄/LSD=赤、`.bus-card--load-green/amber/red`、不明時は`--load-neutral`のグレー)で塗りつぶし、系統番号・ETA・車種は白文字(`--on-accent`)
-- **サイズ階層(tier)**: 到着が近い順(1番目=t1)から段階的に縮小するクラス`.t1`(112px)〜`.t6`(56px)、7件目以降は`.t7`(50px)で底打ちし無限に縮小しない(`QUEUE_TIER_COUNT`=7)。車種ラベルは最小tier(`.t7`)ではスペースの都合上非表示にする(CSS `display:none`)
-- **縦の重なり・横のS字カーブ**: 各tierは`margin-top`負値で縦に少し重なり奥行き感を出す。横方向のオフセットはCSSカスタムプロパティ`--queue-offset-x`で正弦波状に揺れる(モックアップ`variant-s`の値をそのまま採用、8件目以降は`.t7`のオフセット値が繰り返される)
-- **tierの再計算(`reapplyQueueTiers()`)**: サイズ・オフセットはリスト内の「順位」に依存するため、`buildBusCard()`自体はtierクラスを付与しない。カード生成直後(`loadBusArrivals()`)・出発演出/新規挿入/ETA差分更新の完了後(`applyArrivalDiff()`末尾)の両方で`reapplyQueueTiers()`を呼び、`#bus-card-list`内の現在の`.bus-card`を上から順に走査してtierクラスを一括で付け直す。出発アニメーション中のカード(`.bus-card--departing`)は順位カウントから除外する(除外しないと消えかけのカードの分だけ後続がずれてガクつく)
-- **目的地一致インジケーターは維持**: カード自体がバッジ相当のため、角に小さい色付きアイコン(`.bus-badge-match-icon`、最大2件まで重ね表示、20px)を直接重ねる(`renderMatchTag()`がArrivalsカードでは`card`自身を「バッジ」として扱う)。カード本体の色(混雑度)とは別レイヤーとして共存する。テキストラベルは表示せず`aria-label`/`title`で補足
-- **カードタップで経路モーダルを開く**: 正方形の小さいカードには専用「Route」ボタンを置くスペースがないため、`.bus-card`自体がbutton要素になりカード全体がタップ対象(2026-09-14に一度「ボタンのみ」に変更した経緯があるが、このデザイン制約により再度カードタップに戻した)
-- Home画面フィード表示件数は最大10件(`MAX_DISPLAYED_ARRIVALS`、到着時刻昇順)。この上限自体はフェーズ7でも変更なし
+- **レイアウト**: `#bus-card-list`は`display:grid; grid-template-columns:repeat(3,1fr); gap:10px;`の3列グリッド。**最も到着が近い1件のみ**`grid-column:span 2; grid-row:span 2;`の2×2ヒーローセルとして強調表示し、残りは全て同一サイズの1×1セル(`aspect-ratio:1/1`)。スクロールは従来通り親`#home-scroll-content`が担う
+- **カードの見た目**: 背景は白(`--surface-1`)＋細い枠線(`--border`)＋薄いshadow(フェーズ7の混雑度による背景色塗りつぶしは廃止)。系統番号は`--text-primary`、ETA/Operatorは`--text-secondary`/`--text-muted`のニュートラル文字色
+- **表示情報**: 系統番号(大きな数字)・ETA(分)・バスイラスト(車種+混雑度、ヒーロー/通常セル両方に表示)・バス会社Operator略記(ヒーローセルのみ)。行き先(終点)・ミニ経路図・「Next: N min」・車椅子(WAB)アイコンは引き続き非表示
+- **バスイラスト(車種+混雑度)**: フェーズ4〜6で確立し一時未使用だった`buildBusIllustrationSvg(typeCode, loadCode)`を復元・再利用。形(横長=一階建て/窓2段の縦長=二階建て)で車種を、窓の色(`Load`: SEA=緑/SDA=黄/LSD=赤)で混雑度を表現。本体の輪郭線は`var(--text-muted)`の線画のみで塗りつぶし・グラデーションは行わない(「色ドット+SD/DDテキスト」案は一時検討されたが「2階建て/1階建ての情報も表示したい」との指摘で撤回・不採用)。サイズはヒーローセル46px/通常セル26px(svg widthのみ指定、heightはviewBoxのアスペクト比に従いauto)
+- **Operator(バス会社)表示**: LTA DataMall `BusServices`の`Operator`フィールド(`SBST`/`SMRT`/`TTS`/`GAS`)をそのまま略記表示。サーバー側`server.js`に`ServiceNo -> Operator`のMap(`busServiceNoToOperatorMap`)を新設し、`/api/bus-arrival`レスポンスの各`Services[]`に`Operator`を付与する(`enrichBusArrivalWithDestinationNames()`に統合、新たなLTA APIコールは不要)。既存の`data/bus-services.json`キャッシュにOperatorフィールドが無い場合(フェーズ8以前に保存されたファイル)は24時間の鮮度チェックとは別に強制的に1回再取得する(`initBusServicesCache()`の`missingOperatorField`判定)。クライアント側は`extractArrivalInstancesFromService()`で各到着インスタンスに`Operator`をコピーする。「バスの色」(車体塗装色)はLTA DataMallにデータが存在しないため実装しない(見送り)
+- **目的地一致インジケーターは維持**: カード自体がバッジ相当のため、角に小さい色付きアイコン(`.bus-badge-match-icon`、最大2件まで重ね表示、通常20px/ヒーロー24px)を直接重ねる(`renderMatchTag()`がArrivalsカードでは`card`自身を「バッジ」として扱う、フェーズ7から変更なし)。テキストラベルは表示せず`aria-label`/`title`で補足
+- **ヒーロー判定の再計算(`reapplyQueueTiers()`、関数名はフェーズ7から維持しつつ内部実装のみ簡略化)**: 「先頭(`index===0`)かどうか」だけを判定し、`.bus-card--hero`を付け外しする。カード生成直後(`loadBusArrivals()`)・出発演出/新規挿入/ETA差分更新の完了後(`applyArrivalDiff()`末尾)の両方で呼ぶ。出発アニメーション中のカード(`.bus-card--departing`)は順位カウントから除外するが、**除外前に一旦全カードから`.bus-card--hero`を外してから再判定する**(2026-09-20 jsdomスモークテストで発見・修正: 除外するだけだと直前までヒーローだった出発中カードに`.bus-card--hero`が残ったまま新ヒーローとの2件同時表示になり、2×2グリッド領域を2件が同時に主張してレイアウトが崩れる不具合があった)
+- **カードタップで経路モーダルを開く**: 正方形の小さいカードには専用「Route」ボタンを置くスペースがないため、`.bus-card`自体がbutton要素になりカード全体がタップ対象(フェーズ7で確定、フェーズ8でも維持)
+- Home画面フィード表示件数は最大10件(`MAX_DISPLAYED_ARRIVALS`、到着時刻昇順)。この上限自体はフェーズ7・8でも変更なし
 - **現在表示中のバス停自体が登録済み目的地の場合、それを目的地一覧の判定対象から除外する**(`applyRouteEnrichment()`/`applyRelatedOnlyFilter()`)。除外しないと自宅最寄りバス停をSaveした場合に全カードが無条件でハイライトされてしまう
-- 出発演出(`.bus-card--departing`)は正方形カードに合わせてその場でスケールダウン+フェードアウトする形に変更(旧デザインの右スライド演出から変更)。新規挿入(`.bus-card--entering`)も同様にスケール+フェードで統一
-- **ミニ経路図(`renderMiniRoute()`)はArrivalsカードでは非表示**: `buildBusCard()`が`.bus-card-mini-route`要素自体を生成しなくなったため、`applyRouteEnrichment()`から呼ばれても対象要素が見つからず自然に何もしない(関数自体・Timetableビュー向けの経由地情報取得ロジックは削除していない)。**Timetableビュー(`.tt-row`)は今回のスコープ対象外のため、行き先・系統番号バッジ(`.tt-badge`)等は変更なし**
+- 出発演出(`.bus-card--departing`)はその場でスケールダウン+フェードアウトする(フェーズ7から変更なし)。新規挿入(`.bus-card--entering`)も同様にスケール+フェードで統一
+- **ミニ経路図(`renderMiniRoute()`)はArrivalsカードでは非表示**: `buildBusCard()`が`.bus-card-mini-route`要素自体を生成しないため、`applyRouteEnrichment()`から呼ばれても対象要素が見つからず自然に何もしない(関数自体・Timetableビュー向けの経由地情報取得ロジックは削除していない)。**Timetableビュー(`.tt-row`)は今回のスコープ対象外のため、行き先・系統番号バッジ(`.tt-badge`)等は変更なし**
 
 ### 絞り込みフィルター(ヘッダー右上)
 
@@ -74,13 +75,12 @@
 
 ### 経路モーダル(Arrivalsビューはカードタップ、Timetableビューは系統番号バッジタップで展開)
 
-フルスクリーンシート。ヘッダー(系統番号バッジ・区間・閉じるボタン、固定)+地図(flex:2)+バス停リスト(flex:1、画面の約2/3:1/3固定比率)の3段構成。
+2026-09-20フェーズ8(`.claude/plan-phase8-arrivals-grid-and-modal.md`)でフルスクリーンシートから**中央配置の小さいモーダルカード**に変更した(ユーザー指示「系統をタップしたときのモーダルは、全画面表示よりも上でいいです」)。`destination-map-modal-overlay`と同じ「暗い背景オーバーレイ+中央配置カード」パターン(`.route-modal-overlay`は`position:fixed; inset:0; background:rgba(0,0,0,0.45);`、`.route-modal`は`max-width:420px; max-height:78vh; border-radius:20px;`)。ヘッダー(系統番号バッジ・区間・閉じるボタン、固定)+地図(flex:2)+バス停リスト(flex:1、`max-height:78vh`内で画面の約2/3:1/3比率を維持)の3段構成は変更なし。**フルスクリーン時代の`env(safe-area-inset-top)`加算(ステータスバー回避用)・ボトムナビ回避用の`bottom`調整は不要になった**(中央配置カードの背後はダーク背景オーバーレイのみで、ボトムナビも他の中央配置モーダルと同様に隠れる標準的な挙動)。`openModal()`/`closeModal()`自体には元々スクロール制御等のフルスクリーン専用DOM操作がなく(`classList.add/remove('visible')`のみ)、パターン変更に伴う追加修正は不要だった。`map.fitBounds()`の`padding`はモーダルが小さくなったことに伴い`[50,60]`→`[36,44]`に縮小した(値が大きいままだと地図の実高さに対して余白の比率が大きくなり、短い区間でも不必要に大きくズームアウトしてしまうため)。
 
-- ボトムナビは`.route-modal-overlay`の`bottom: calc(84px + env(safe-area-inset-bottom))`により常時見える(ナビ側のz-index操作は不要)
 - 下部リストは「代表ウェイポイントのみ」ではなく**区間内の全停車バス停**を停車順の縦積みリストで表示(`renderRouteModalStopList()`、`/api/bus-routes/path`の`stops`配列を使用)。MRT駅は路線色、目的地一致停留所はアイコン色+カテゴリアイコンで強調。現在地行「You are here」・終点行「Destination」タグ
 - **系統番号バッジ**: `.bus-badge`(Home画面と同じニュートラル配色、`--fill-accent`緑ではない)。4文字以上は`bus-badge--long`で縮小(Home画面と共通)
 - **地図**: `/api/bus-routes/path`で取得した「現在地(表示中のバス停)→終点」の実座標をLeafletでポリライン表示(バスの発車地点=`NextBus.OriginCode`ではなく、現在画面表示中のバス停を起点にする)。循環路線を起点以外から乗車する場合は`toIndex === 0`のとき「ループの残り区間」(`stops.slice(fromIndex)`)として扱う特別分岐あり(`server.js`)。タイルは標準OSM+CSSフィルター`grayscale(0.92) brightness(1.4) saturate(0.25) contrast(0.85)` opacity 0.88 (**必ず`.leaflet-tile-pane`だけに適用**。コンテナ全体にかけると経路線・MRTマーカーの色まで薄まる)。CartoDB Positronは「API KEY REQUIRED」透かしのため使用不可。経路線の色は柳グリーン(`--fill-accent`)、白いケーシング線でコントラスト確保
-- **出発点・終点マーカー**: 出発点=青い丸(`--current-location-blue`)、終点=`--midnight`の`ti-map-pin`(`-filled`系クラスは`@tabler/icons-webfont`に存在しないため使用不可)。両方に黒文字permanentツールチップラベル。現在地ラベルは`direction:'top'`(MRT駅ラベルは右方向のため衝突回避)。`fitBounds()`の`padding`は`[50,60]`
+- **出発点・終点マーカー**: 出発点=青い丸(`--current-location-blue`)、終点=`--midnight`の`ti-map-pin`(`-filled`系クラスは`@tabler/icons-webfont`に存在しないため使用不可)。両方に黒文字permanentツールチップラベル。現在地ラベルは`direction:'top'`(MRT駅ラベルは右方向のため衝突回避)
 - **MRT駅マーカー**: `resolveMrtLineColor()`で判定した路線の公式色の丸+ラベル(12px、目的地一致は13px+塗りつぶしバッジ)。近接マーカーはラベルを左右交互配置(`map.latLngToContainerPoint()`によるピクセル距離、しきい値70px。実距離ベースだとズーム倍率依存で誤判定するため不採用)。**この近接判定・マーカー描画は`map.fitBounds()`の後に呼ぶ必要がある**(ズーム確定前は`latLngToContainerPoint()`が正しい値を返さない)
 - 経由地リスト(地図下部、代表点のみ): MRT駅は路線色文字、目的地一致はアイコン色塗りつぶし+太字+box-shadowで強調
 - waypoints選定ロジック(`selectWaypoints()`)優先順位: 1. MRT駅・インターチェンジ 2. 認知度の高い主要地名。全停留所は列挙しない
@@ -127,7 +127,7 @@ sg-weekend-app(姉妹アプリ)のSettings画面ロジックをベースに実�
 - SG在住Naviの`public/app.css`のデザイントークン(柳グリーン配色、カード角丸、フォント)を流用
 - フォントファミリーは`'Inter', sans-serif`(視認性最優先、Google Fonts経由)。ボトムナビ・カードUI等の寸法(font-size, padding, gap等)はSG在住Naviと一致させる方針
 - 共通コンポーネントは寸法(font-size, padding, gap, border-radius, box-shadow等)までSG在住Naviと一致させる。デザイン一貫性チェックには`design-checker`エージェントを使う
-- 密度が重要な画面(バスカードリスト等)では、SG在住Navi基準のpadding/gapを意図的に縮小する例外を許容する。**現行値(2026-09-15 Pattern A採用)**: `.bus-card`padding 14px、`.bus-badge`50px/20px(border-radius 14px)、`.bus-card-dest-name`16px、`.bus-card-row`gap 12px、`.eta-value`19px(`.now`16px)、`.eta-unit`12px、`.bus-card-mini-route-tag`11px(padding 4px 9px)、`.bus-card-route-btn`12px(padding 6px 12px)
+- 密度が重要な画面(バスカードリスト等)では、SG在住Navi基準のpadding/gapを意図的に縮小する例外を許容する。**2026-09-15 Pattern A(横長カード時代)の具体値は、その後フェーズ7(正方形キューイングカード)→フェーズ8(ヒーローセル+グリッド)の全面刷新で`.bus-card`のDOM構造自体が変わったため陳腐化した(値の詳細はgit履歴を参照)。現行のArrivalsカード仕様は上記「バスカード」節を参照**
 - フィルターピル/チップ系は`.filter-chip`パターン(非活性=ニュートラル背景+枠線、活性=アクセント塗り+太字)で統一
 - CSS変数のエイリアス対応(`--surface-1`→`--warm-white`等)は`public/css/style.css`冒頭の「2. 意味的エイリアス」ブロック参照
 - ボトムナビ: Home / Saved / Settings の3タブ構成
