@@ -28,12 +28,21 @@
            姉妹アプリの#home-scroll-content構造と統一している
            （initPullToReflesh参照、window.scrollY方式から変更済み）。
            2026-09-20ユーザー指示「右上のRelevant Onlyいらない」により、
-           「関連のみ」フィルタートグルを撤去した（目的地一致ハイライト自体
-           ＝星バッジ・Approachingバーの強調表示は常時適用のまま維持）。 -->
+           「関連のみ」フィルタートグルを撤去した。
+           2026-09-21ユーザー指示「保存済みバス停を1件だけ選べるようにし、
+           選んだ時だけカードの色をSave停の色ベースでハイライトしたい」対応で、
+           同じ位置に目的地ハイライトピッカーを新設した（initHighlightPicker()、
+           mockups/home-destination-highlight-picker-v1.htmlユーザー承認済み）。
+           保存済み目的地が0件の時はボタン自体を非表示にする。 -->
       <header class="app-header">
         <div class="app-header-title-row">
           <div class="app-header-title">Home</div>
+          <button type="button" class="home-highlight-btn" id="home-highlight-btn" aria-haspopup="true" aria-expanded="false" hidden>
+            <i class="ti ti-map-pin" aria-hidden="true"></i>
+            <span id="home-highlight-btn-label">Select stop</span>
+          </button>
         </div>
+        <div class="home-highlight-dropdown" id="home-highlight-dropdown" hidden></div>
       </header>
 
       <!-- フェーズ6: 地図パネル（現在地+周辺バス停ピン）。initHomeMap()/renderHomeMapPins()が

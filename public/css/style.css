@@ -215,6 +215,7 @@ button {
  * ══════════════════════════════════════════════ */
 .app-header {
   flex-shrink: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -243,6 +244,120 @@ button {
   justify-content: space-between;
   gap: 10px;
   padding: 0 14px;
+}
+
+/* ══════════════════════════════════════════════
+ * 目的地ハイライトピッカー（Home画面、2026-09-21新規）
+ *
+ * 保存済み目的地を1件だけ選び、選んだ時だけTimetableの一致行をその目的地の
+ * 色でハイライトする（複数同時ハイライトによるレイアウト崩れの対策）。
+ * mockups/home-destination-highlight-picker-v1.html（ユーザー承認済み）。
+ *
+ * 未選択時はニュートラルなピル+「Select stop」ラベル。選択中は選んだ目的地の
+ * アイコン色で塗りつぶし+ラベルがその目的地名に変わる（配色はJS側
+ * updateHighlightButtonUI()がインラインstyleで動的に設定、6色固定パレットの
+ * ためCSSクラスでの出し分けはしない）。保存済み目的地が0件の時はボタン自体を
+ * hidden属性で非表示にする。
+ * ══════════════════════════════════════════════ */
+.home-highlight-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: transform 0.1s ease;
+}
+
+.home-highlight-btn:active {
+  transform: scale(0.97);
+}
+
+.home-highlight-btn i {
+  font-size: 14px;
+}
+
+.home-highlight-btn--active {
+  font-weight: 700;
+  border-color: transparent;
+}
+
+.home-highlight-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 14px;
+  width: 230px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  z-index: 500;
+}
+
+.home-highlight-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.home-highlight-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.home-highlight-dropdown-item:active {
+  background: var(--surface-2);
+}
+
+.home-highlight-dropdown-item-icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-accent);
+}
+
+.home-highlight-dropdown-item-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.home-highlight-dropdown-item-icon--none {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.home-highlight-dropdown-item-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-highlight-dropdown-item--selected .home-highlight-dropdown-item-label {
+  color: var(--fill-accent);
+}
+
+.home-highlight-dropdown-item-check {
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--fill-accent);
 }
 
 /* バス停切替ピル行（SG在住Naviの.filter-chip行と寸法を一致させる:
@@ -587,6 +702,9 @@ button {
   z-index: 3;
 }
 
+/* 2026-09-20ユーザー指示「文字は大きくしなくていい」対応。ドット自体は
+   引き続き拡大(サイズ+アクセント色で強調)するが、文字サイズは通常ドットと
+   同じ13pxのまま据え置く。 */
 .home-approaching-bus--saved .home-approaching-bus-dot {
   min-width: 40px;
   height: 40px;
@@ -595,7 +713,7 @@ button {
   background: var(--fill-accent);
   border-color: var(--fill-accent);
   color: var(--on-accent);
-  font-size: 15px;
+  font-size: 13px;
   box-shadow: 0 0 0 3px var(--surface-1), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
@@ -652,11 +770,15 @@ button {
   border-bottom: none;
 }
 
-/* 2026-09-20ユーザー指示「バッジがついた系統だけカードの色を変えてると
-   思うんだけど、変えなくていいですよ。バッジだけで」により、行全体の
-   背景ハイライトは廃止した(renderMatchTag()がクラス自体は引き続き付与するが
-   CSSルールを持たないため視覚効果はない。目的地一致インジケーターは
-   .tt-badge-match-icon(角バッジ)のみで表現する)。 */
+/* 2026-09-21ユーザー指示「ハイライトはカードの色をSave停の色ベースに、
+   バッジはいらない」対応。ヘッダーの目的地ハイライトピッカー(.home-highlight-btn)
+   で選択中の目的地を経由する行にのみ、行の背景・左端カラーバー・系統番号
+   バッジの塗りつぶしをその目的地の色で適用する（JS側applyHighlightIndicator()
+   がinline styleで動的に色を設定、6色固定パレットのためCSSクラスでの色分けは
+   しない。左端の色バーはpaddingを崩さないようbox-shadow(inset)で表現）。 */
+.tt-row--highlight .tt-badge {
+  color: var(--on-accent);
+}
 
 /* 系統番号バッジをタップすると経路モーダルを開く（2-12節「系統の番号をタップ
    したら表示されるようにして」）。Timetable行は横幅が狭くArrivalsカードのような
@@ -686,37 +808,6 @@ button {
    同じ縮小ルールを適用する（4節エッジケース）。 */
 .tt-badge--long {
   font-size: 11px;
-}
-
-/* 2026-09-20ユーザー指示「バッジはみやすいようにもっと大きくして。系統の
-   カードそのものにつけて」対応。従来は.tt-badge(38px角丸)基準で16pxの
-   小さいアイコンを右上角に重ねていたが視認しづらいため、.tt-row(行全体)
-   基準のabsolute配置に変更し、サイズも16px→24pxに拡大した(位置は
-   .tt-badgeの右上角付近を踏襲、buildTimetableRow()側でDOM構造も
-   .tt-row直下に変更済み)。 */
-.tt-badge-match-icon {
-  position: absolute;
-  top: 4px;
-  left: 34px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid var(--surface-1);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
-  z-index: 2;
-}
-
-.tt-badge-match-icon--2 {
-  left: 54px;
-  z-index: 1;
-}
-
-.tt-badge-match-icon svg {
-  width: 13px;
-  height: 13px;
 }
 
 .tt-dest {

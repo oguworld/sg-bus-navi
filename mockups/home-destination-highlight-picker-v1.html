@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGBusNavi — Home: destination highlight picker + colored match badge (mockup, not wired to app)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAFAF8; --warm-white: #FFFFFF; --sand: #EAEAE6; --sand-dark: #DCDCD6;
+    --caramel: #6F8F63; --caramel-pale: #EEF3EA;
+    --midnight: #2B2B27; --warm-gray: #767268; --light-gray: #A8A49A;
+    --font-heading: 'Inter', sans-serif;
+    --surface-2: var(--cream); --surface-1: var(--warm-white);
+    --text-primary: var(--midnight); --text-secondary: var(--warm-gray); --text-muted: var(--light-gray);
+    --fill-accent: var(--caramel); --border: var(--sand); --border-strong: var(--sand-dark); --on-accent: var(--warm-white);
+    --load-green: #4C9A5B; --load-amber: #C79A2E; --load-red: #C0392B;
+    --category-color-gold: #B8962E; --category-color-lime: #7FA23C; --category-color-turquoise: #2E96A3;
+    --category-color-indigo: #6B5CA5; --category-color-magenta: #B8508C; --category-color-rose: #D4788A;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; font-family: var(--font-heading); }
+  body { background: #ECECE8; color: var(--text-primary); padding: 24px 0 80px; }
+
+  .note { max-width: 480px; margin: 0 auto 20px; padding: 0 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+  .note b { color: var(--text-primary); }
+  .note ul { padding-left: 18px; margin-top: 6px; }
+
+  .row { display:flex; gap:20px; justify-content:center; flex-wrap:wrap; }
+
+  .phone {
+    width: 380px;
+    background: var(--surface-2);
+    border-radius: 32px;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+    height: 720px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .phone-caption { text-align:center; font-size:12px; font-weight:700; color:var(--text-secondary); margin-bottom:8px; }
+
+  .app-header { flex-shrink:0; padding: 16px 14px 10px; position:relative; }
+  .app-header-title-row { display:flex; align-items:center; justify-content:space-between; }
+  .app-header-title { font-size: 20px; font-weight: 700; }
+
+  /* ── ヘッダーの目的地ハイライトピッカー ── */
+  .highlight-picker-btn { display:flex; align-items:center; gap:6px; background: var(--surface-2); border:1px solid var(--border); border-radius:999px; padding:7px 14px; font-size:14px; font-weight:500; color:var(--text-secondary); }
+  .highlight-picker-btn i { font-size:14px; }
+  .highlight-picker-btn--active { border-color: transparent; font-weight:700; }
+  /* ボタン自体の配色は選択中の目的地の色をそのまま使う(インラインstyleで動的に設定する想定) */
+
+  .highlight-dropdown { position:absolute; top:56px; right:14px; width:230px; background:var(--surface-1); border:1px solid var(--border); border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,0.18); overflow:hidden; z-index:10; }
+  .highlight-dropdown-item { display:flex; align-items:center; gap:10px; padding:11px 12px; border-bottom:1px solid var(--border); cursor:pointer; }
+  .highlight-dropdown-item:last-child { border-bottom:none; }
+  .highlight-dropdown-item-icon { flex-shrink:0; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; }
+  .highlight-dropdown-item-icon svg { width:14px; height:14px; }
+  .highlight-dropdown-item-icon--none { background: var(--surface-2); color: var(--text-muted); }
+  .highlight-dropdown-item-label { flex:1; font-size:14px; font-weight:600; color:var(--text-primary); }
+  .highlight-dropdown-item-check { flex-shrink:0; font-size:16px; color: var(--fill-accent); }
+
+  .stop-pill-row { flex-shrink:0; display:flex; gap:8px; padding: 4px 14px 10px; }
+  .stop-pill { flex-shrink:0; padding:6px 12px; border:1px solid var(--border); border-radius:999px; background:var(--surface-2); color:var(--text-secondary); font-size:13px; font-weight:500; }
+  .stop-pill--active { background: var(--fill-accent); color: var(--on-accent); border-color: var(--fill-accent); font-weight:700; }
+
+  .scroll-content { flex:1; overflow-y:auto; padding: 0 14px 20px; }
+  .section-caption { font-size:11px; color:var(--text-muted); padding: 10px 2px 6px; }
+  .timetable-list { background: var(--surface-1); border-radius: 18px; box-shadow: 0 4px 18px rgba(43,43,39,0.08); overflow:hidden; }
+
+  .tt-row { position:relative; display:flex; align-items:center; gap:12px; padding: 12px 14px; border-bottom:1px solid var(--border); }
+  .tt-row:last-child { border-bottom:none; }
+  .tt-badge { flex-shrink:0; width:38px; height:38px; border-radius:10px; background:var(--surface-2); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; color:var(--text-primary); }
+  .tt-dest { flex:1; min-width:0; font-size:15px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tt-times { flex-shrink:0; display:flex; gap:16px; }
+  .tt-time-cell { text-align:center; min-width:28px; }
+  .tt-time-value { font-size:16px; font-weight:800; color: var(--text-primary); }
+  .tt-time-value.load-green { color: var(--load-green); }
+  .tt-time-value.load-amber { color: var(--load-amber); }
+  .tt-time-value.load-red { color: var(--load-red); }
+  .tt-time-value.dash { color: var(--text-muted); font-weight:600; }
+
+  /* ── Save停の色でハイライトした行 ──
+     背景=その色の薄いトーン(lightenHexColor相当)、左端に太いカラーバー、
+     系統番号バッジ自体もうっすら同系色に。 */
+  .tt-row--highlight { background: var(--hl-bg); }
+  .tt-row--highlight::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; background: var(--hl-color); }
+  .tt-row--highlight .tt-badge { background: var(--hl-color); color:#fff; }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>SGBusNavi — Home「目的地ハイライトピッカー」+ カード色ハイライト＋バッジ（モックアップ）</b><br>
+  ユーザー指示「保存済みバス停を1件だけ選べるようにし、選んだ時だけカードの色をSave停の色ベースでハイライト＋バッジをつける」を反映。
+  <ul>
+    <li><b>左: ヘッダーのピッカーボタン</b>。未選択時はニュートラルなピル、選択中は選んだ目的地のアイコン色で塗りつぶし、ラベルもその目的地名に変わる</li>
+    <li><b>中央: タップ時のドロップダウン</b>。先頭に「Don't highlight」、以降は保存済み目的地(カテゴリアイコン+色)。選択中の行にチェック</li>
+    <li><b>右: 選択後のTimetable</b>。一致した行の背景をその目的地の色の薄いトーンに、左端に色バー、系統番号バッジもその色に。<b>2026-09-21ユーザー指示「バッジはいらない、色のハイライトだけでいい」によりバッジ表示は廃止</b>(色のみで一致を表現)</li>
+  </ul>
+</div>
+
+<div class="row">
+
+  <div>
+    <div class="phone-caption">1. ヘッダー: 未選択 / 選択中(Home=lime)</div>
+    <div class="phone" style="height:180px;">
+      <div class="app-header">
+        <div class="app-header-title-row">
+          <div class="app-header-title">Home</div>
+          <button class="highlight-picker-btn"><i class="ti ti-map-pin"></i><span>Highlight</span></button>
+        </div>
+      </div>
+      <div class="app-header" style="padding-top:0;">
+        <div class="app-header-title-row">
+          <div class="app-header-title">Home</div>
+          <button class="highlight-picker-btn highlight-picker-btn--active" style="background:var(--category-color-lime); color:#fff;"><i class="ti ti-map-pin"></i><span>Home</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="phone-caption">2. ドロップダウン(開いた状態)</div>
+    <div class="phone" style="height:320px;">
+      <div class="app-header">
+        <div class="app-header-title-row">
+          <div class="app-header-title">Home</div>
+          <button class="highlight-picker-btn highlight-picker-btn--active" style="background:var(--category-color-lime); color:#fff;"><i class="ti ti-map-pin"></i><span>Home</span></button>
+        </div>
+        <div class="highlight-dropdown">
+          <div class="highlight-dropdown-item">
+            <span class="highlight-dropdown-item-icon highlight-dropdown-item-icon--none"><i class="ti ti-circle-off" style="font-size:14px;"></i></span>
+            <span class="highlight-dropdown-item-label" style="color:var(--text-secondary); font-weight:500;">Don't highlight</span>
+          </div>
+          <div class="highlight-dropdown-item">
+            <span class="highlight-dropdown-item-icon" style="background:var(--category-color-lime);">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg>
+            </span>
+            <span class="highlight-dropdown-item-label">Home</span>
+            <i class="ti ti-check highlight-dropdown-item-check"></i>
+          </div>
+          <div class="highlight-dropdown-item">
+            <span class="highlight-dropdown-item-icon" style="background:var(--category-color-turquoise);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20"/><path d="M9 6h1M14 6h1M9 10h1M14 10h1M9 14h1M14 14h1M10 22v-4h4v4"/></svg>
+            </span>
+            <span class="highlight-dropdown-item-label">Office</span>
+          </div>
+          <div class="highlight-dropdown-item">
+            <span class="highlight-dropdown-item-icon" style="background:var(--category-color-magenta);">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 22 8 12 13 2 8Z"/><path d="M6 10.3V16c0 1.7 2.7 3 6 3s6-1.3 6-3v-5.7l-6 3-6-3Z"/></svg>
+            </span>
+            <span class="highlight-dropdown-item-label">Kid's School</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="phone-caption">3. 選択後のTimetable(Home=lime を選択中)</div>
+    <div class="phone">
+      <div class="app-header">
+        <div class="app-header-title-row">
+          <div class="app-header-title">Home</div>
+          <button class="highlight-picker-btn highlight-picker-btn--active" style="background:var(--category-color-lime); color:#fff;"><i class="ti ti-map-pin"></i><span>Home</span></button>
+        </div>
+      </div>
+      <div class="stop-pill-row">
+        <div class="stop-pill stop-pill--active">42041 The Nexus</div>
+        <div class="stop-pill">42049 Hua Guan Gdns</div>
+      </div>
+      <div class="scroll-content">
+        <div class="section-caption">The Nexus · 42041</div>
+        <div class="timetable-list">
+
+          <div class="tt-row tt-row--highlight" style="--hl-color:var(--category-color-lime); --hl-bg: color-mix(in srgb, var(--category-color-lime) 14%, white);">
+            <div class="tt-badge">67</div>
+            <div class="tt-dest">Choa Chu Kang Int</div>
+            <div class="tt-times">
+              <div class="tt-time-cell"><div class="tt-time-value load-green">7</div></div>
+              <div class="tt-time-cell"><div class="tt-time-value load-green">13</div></div>
+              <div class="tt-time-cell"><div class="tt-time-value load-green">23</div></div>
+            </div>
+          </div>
+
+          <div class="tt-row">
+            <div class="tt-badge">74</div>
+            <div class="tt-dest">Buona Vista Ter</div>
+            <div class="tt-times">
+              <div class="tt-time-cell"><div class="tt-time-value load-green">10</div></div>
+              <div class="tt-time-cell"><div class="tt-time-value load-green">25</div></div>
+              <div class="tt-time-cell"><div class="tt-time-value load-green">39</div></div>
+            </div>
+          </div>
+
+          <div class="tt-row">
+            <div class="tt-badge">77</div>
+            <div class="tt-dest">Bt Batok Int</div>
+            <div class="tt-times">
+              <div class="tt-time-cell"><div class="tt-time-value load-amber">5</div></div>
+              <div class="tt-time-cell"><div class="tt-time-value load-amber">18</div></div>
+              <div class="tt-time-cell"><div class="tt-time-value load-amber">31</div></div>
+            </div>
+          </div>
+
+          <div class="tt-row tt-row--highlight" style="--hl-color:var(--category-color-lime); --hl-bg: color-mix(in srgb, var(--category-color-lime) 14%, white);">
+            <div class="tt-badge">151</div>
+            <div class="tt-dest">Kent Ridge Ter</div>
+            <div class="tt-times">
+              <div class="tt-time-cell"><div class="tt-time-value load-green">9</div></div>
+              <div class="tt-time-cell"><div class="tt-time-value load-green">23</div></div>
+              <div class="tt-time-cell"><div class="tt-time-value load-green">42</div></div>
+            </div>
+          </div>
+
+          <div class="tt-row">
+            <div class="tt-badge">154</div>
+            <div class="tt-dest">Boon Lay Int</div>
+            <div class="tt-times">
+              <div class="tt-time-cell"><div class="tt-time-value load-green">2</div></div>
+              <div class="tt-time-cell"><div class="tt-time-value load-green">20</div></div>
+              <div class="tt-time-cell"><div class="tt-time-value load-green">28</div></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

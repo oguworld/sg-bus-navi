@@ -156,6 +156,12 @@
   // Home画面への目的地追加ボタンの実装に使用）。
   let currentDisplayedStop = null;
 
+  // 目的地ハイライトピッカー（2026-09-21新規）: 選択中の目的地id
+  // （loadDestinations()の各エントリのid）。nullは未選択（ハイライトなし）。
+  // セッション内のみ保持し、localStorageへの永続化はしない（旧「関連のみ」
+  // フィルターと同方針）。initHighlightPicker()/selectHighlightDestination()参照。
+  let highlightDestinationId = null;
+
   /* ══════════════════════════════════════════════
    * フェーズ6: Home画面 地図パネル
    * （.claude/plan-phase6-map-timetable-toggle.md 2-1節〜2-12節、8節、10節）
@@ -207,6 +213,10 @@
       // switchToStopIndex()の早期returnと無関係に、ここで確実に行う。
       const stopPillRow = document.getElementById('stop-pill-row');
       if (stopPillRow) stopPillRow.scrollTo({ left: 0, behavior: 'smooth' });
+
+      // Saved画面で目的地を追加・削除した後にHomeへ戻った場合に備え、
+      // ハイライトピッカーボタンの表示/非表示・ラベルを最新の状態に同期する。
+      updateHighlightButtonUI();
     }
   }
 
@@ -714,21 +724,13 @@
         // アクセント緑ではない)・4文字以上の系統番号での縮小ルールに揃える。
         badgeEl.className = number.length >= 4 ? 'bus-badge bus-badge--long' : 'bus-badge';
 
-        // 2026-09-14ユーザー指示「この画面にもバッジ表示されるようにして」
-        // 対応。Arrivals画面のカードは目的地一致時にバッジ右上角へ色付き
-        // アイコンを表示するが(renderMatchTag)、経路モーダルのバッジには
-        // 同等の表示が一切なかった。タップ元のカード(`card`)は
-        // applyRouteEnrichment()で既に一致判定・アイコン描画済みのため、
-        // 再判定・再フェッチはせずカード側バッジの状態をそのまま複製する
-        // （同一系統は常に同じ一致結果になるため、複製で視覚的に一致する）。
-        //
-        // フェーズ6: タップ元がTimetableビューの行（.tt-badge、renderMatchTag()が
-        // 同じロジックでtt-badge--matched/.tt-badge-match-icon--*に描画する、
-        // 2-8節・2-12節）の場合にも同じ複製が効くよう、バッジのセレクタを
-        // .bus-badge/.tt-badgeどちらにも対応させる。
-        // フェーズ7: Arrivalsカードは.bus-badge子要素を持たなくなった
-        // （card自身がバッジ相当、renderMatchTag()参照）ため、.bus-badgeが
-        // 見つからない場合はcard自身を「バッジ」として扱う。
+        // 旧仕様（フェーズ6〜7）ではTimetable行・Arrivalsカードの目的地一致時に
+        // 系統番号バッジへ角アイコンを重ねており、このモーダルバッジにもその
+        // 状態を複製していた。2026-09-21の目的地ハイライトピッカー刷新で
+        // 一致表現がバッジから行全体の色ハイライト(.tt-row--highlight)に
+        // 変わったため、このブロックは現在常にelse分岐（未一致扱い）になる。
+        // モーダル側の対応表示自体は今回のスコープ外のため、コード自体は
+        // 残しつつ挙動は変更しない。
         const cardBadge = card.querySelector('.bus-badge, .tt-badge') || card;
         const iconSuffixes = ['1', '2'];
         const isMatched =
@@ -1042,90 +1044,6 @@
   }
 
   /* ══════════════════════════════════════════════
-   * 目的地一致タグ（.claude/plan.md 第2-2節「4. 目的地一致タグ」）
-   *
-   * mockups/home-card-redesign-v3.html の .match-tag（星アイコン+
-   * 「Passes {バス停名}」の塗りつぶしピル）をそのまま移植する。
-   * バス停名は実際に一致した登録済み目的地（sgbusnavi_destinations）の
-   * descriptionを使う（モックアップは決め打ちテキストだったが、実装では
-   * applyRouteEnrichment()が動的に解決した名前を渡す）。
-   * ══════════════════════════════════════════════ */
-  // destsは一致した登録済み目的地の配列（{category, iconColor, description, ...}、
-  // 1〜2件）。カテゴリアイコン（Saved画面と同じSVG）をその目的地のアイコン色で
-  // 表示する、控えめなインジケーターにする（2026-09-14変更）。
-  // 表現方法の変遷: 「アイコン+カテゴリ名」タグ(目立ちすぎるとの指摘)→
-  // カード左上の角から生える旗型リボン→2026-09-14「リボンはカードそのもの
-  // じゃなくて、経路番号のように色として表示したい。右上の方には小さく
-  // アイコンを表示するような形がいい」との指示により、系統番号バッジ自体を
-  // 目的地のアイコン色で塗りつぶし、バッジ右上角に白背景+色付きアイコンの
-  // 小さな丸バッジを重ねる方式に変更した（モック比較
-  // mockups/badge-corner-match-v1.html パターンB）。
-  // 2026-09-14さらに「アイコンを2個重ねることできる?」との指示で、1つの
-  // バスが複数の登録済み目的地を経由する場合、右上の角に最大2件まで
-  // 縦に少し重ねて表示できるようにした（3件以上一致してもUIが煩雑になる
-  // ため先頭2件のみ表示、バッジ自体の色は代表として1件目の色を使う）。
-  // フェーズ6・2-8節: cardはArrivalsビューの.bus-card(.bus-badge)でも
-  // Timetableビューの.tt-row(.tt-badge)でもよい。バッジのクラス名だけ
-  // 実際の種類に応じて出し分け、アイコン部分の描画ロジックは完全に共通化する。
-  //
-  // フェーズ7（2026-09-20）: Arrivalsカードは正方形の遠近クイーニングカードに
-  // 刷新され、バッジ相当の子要素(.bus-badge)自体が存在しなくなった
-  // （カード全体=バッジのような1枚岩のデザインになったため）。この場合は
-  // card自身(.bus-card)を「バッジ」として扱い、角アイコン
-  // (.bus-badge-match-icon--1/--2)はカード直下の子要素のまま維持する。
-  function renderMatchTag(card, dests) {
-    const isTimetableRow = card.classList.contains('tt-row');
-    const badge = isTimetableRow ? card.querySelector('.tt-badge') : card;
-    const iconEls = [
-      card.querySelector('.bus-badge-match-icon--1, .tt-badge-match-icon--1'),
-      card.querySelector('.bus-badge-match-icon--2, .tt-badge-match-icon--2'),
-    ];
-    if (!badge || !iconEls[0]) return;
-
-    const list = Array.isArray(dests) ? dests.filter(Boolean).slice(0, 2) : [dests].filter(Boolean);
-    if (list.length === 0) return;
-
-    const labels = list.map((dest) => {
-      const category = normalizeDestinationCategory(dest.category);
-      return dest.title && dest.title.trim() ? escapeHtml(dest.title.trim()) : DESTINATION_CATEGORY_LABELS[category];
-    });
-
-    // 2026-09-14ユーザー指摘「経路の色連動が残ってます」対応。バッジ本体の
-    // 塗りつぶし(背景色・文字色)は当初「濃色ベタ塗り→薄い色付き背景」と
-    // 変遷してきたが、「系統の色付けをやめる、バッジだけでいい」との一連の
-    // 指摘を踏まえ、バッジ本体の色連動は完全に廃止した。バッジはニュートラル
-    // (未一致時と同じクリーム背景+黒文字)のまま、右上の角アイコンだけが
-    // 一致した目的地の色を示す唯一の視覚要素になる。
-    // フェーズ6: Timetableビューの行は.tt-badge--matchedに加え、行全体を
-    // 薄くハイライトする.tt-row--matchも付与する（mockup .tt-row--match、
-    // カードと違い横幅が狭くバッジ単体だと見落としやすいため）。
-    // フェーズ7: Arrivalsカードは.bus-card--matchedをcard自身に付与する
-    // （旧.bus-badge--matchedに相当。カード=バッジのため）。
-    if (isTimetableRow) {
-      badge.classList.add('tt-badge--matched');
-      card.classList.add('tt-row--match');
-    } else {
-      card.classList.add('bus-card--matched');
-    }
-    badge.setAttribute('aria-label', `Passes ${labels.join(', ')}`);
-    badge.setAttribute('title', labels.join(', '));
-
-    // バッジ本体が淡色になった分、右上の角アイコンは彩度のある色でしっかり
-    // 塗りつぶし、白抜きアイコンにしてコントラストと視認性を保つ
-    // （白背景+色付きアイコンのままだと、淡い背景に対して浮きが弱くなるため）。
-    list.forEach((dest, index) => {
-      const iconEl = iconEls[index];
-      if (!iconEl) return;
-      const category = normalizeDestinationCategory(dest.category);
-      const hex = getCategoryColorHex(normalizeDestinationIconColor(dest.iconColor)) || 'var(--text-secondary)';
-      iconEl.hidden = false;
-      iconEl.style.background = hex;
-      iconEl.style.color = '#FAFAF8';
-      iconEl.innerHTML = DESTINATION_CATEGORY_ICON_SVG[category];
-    });
-  }
-
-  /* ══════════════════════════════════════════════
    * ミニ経路図（縦並びテキストリスト版、静的表示のみ）
    * （.claude/plan.md 第2-2節「5. ミニ経路図」・第2-3節・第2-5節・第3-1節・第8-1節）
    *
@@ -1394,44 +1312,59 @@
   }
 
   /* ══════════════════════════════════════════════
-   * 星アイコンハイライト＋目的地一致タグ＋ミニ経路図の適用
-   * （CLAUDE.md「登録済み目的地に一致する系統には星アイコン+アクセント
-   * カラーでハイライト」、.claude/plan.md 第2-2節・第2-3節）
+   * 目的地ハイライトの適用（2026-09-21全面刷新）
    *
-   * getOrFetchServiceRouteInfo経由のcardMatchesAnyDestination()で判定する。
+   * 旧仕様は保存済み目的地「全件」を対象に一致判定し、いずれか1つでも
+   * 経由すれば星バッジで強調していたが、目的地を複数保存しているほど
+   * 多くの系統が同時にハイライトされ表示が崩れる問題があった
+   * （mockups/home-destination-highlight-picker-v1.html検討時にユーザー指摘）。
    *
-   * ミニ経路図（中間点表示）は目的地登録の有無に関わらず全カードに必要なため、
-   * 目的地0件の場合でもsummary取得（fetchRouteSummary）自体は系統単位で行う。
-   * 目的地一致タグ・ハイライトは目的地0件時は何もしない（安全側）。
-   *
-   * フェーズ4 タスク分解ステップ1に伴う改修: フィルターと同様、
-   * groupCardsByServiceNo()で系統番号ごとにグルーピングし、代表カード1枚のみ
-   * 判定した上で、その結果を同一系統に属する全カードへ一貫して適用する。
+   * 新仕様: ヘッダーの目的地ハイライトピッカー(highlightDestinationId)で
+   * 選択中の目的地「1件のみ」を対象に判定し、一致した行をその目的地の色
+   * （iconColor）でハイライトする(バッジは使わず色のみ、ユーザー指示)。
+   * 何も選択していなければ判定自体を行わない。
    * ══════════════════════════════════════════════ */
   async function applyRouteEnrichment() {
-    // フェーズ6・2-8節: Timetableビューの行（.tt-row）にも同じハイライト・
-    // 目的地一致判定を適用する（ミニ経路図renderMiniRoute()は.bus-card-mini-route
-    // を持たない.tt-rowに対しては自然に何もしないため、そのまま使い回せる）。
     const cards = collectEnrichableElements();
-    if (cards.length === 0) return;
 
-    // 2026-09-14ユーザー指示で発見・修正: 現在表示中のバス停自体が登録済み
-    // 目的地の場合、そのバス停はどの系統の経路にも(出発点として)必ず含まれる
-    // ため、「関連あり」判定が常にtrueになり全カードが無条件でハイライトされて
-    // しまっていた（自宅最寄りのバス停をSaveした場合に顕著）。ハイライトが
-    // 意味を持つのは「このバスが自分の目的地を通るか」であって「今立っている
-    // 場所がSave済みかどうか」ではないため、現在表示中のバス停自体は判定対象の
-    // 目的地一覧から除外する。
+    // 選択変更・解除のたびに、まず全行から前回のハイライトを取り除く
+    // （再判定を待たず即座に見た目へ反映するため、ポーリングによる
+    // Timetable再描画を待たない）。
+    clearHighlightIndicators(cards);
+
+    if (cards.length === 0) {
+      syncApproachingBarMatches(null);
+      return;
+    }
+
     const destinations = loadDestinations();
+
+    // 選択中の目的地がSaved画面側で削除されていた場合は選択解除する
+    // （2026-09-21確定仕様）。
+    if (highlightDestinationId && !destinations.some((dest) => dest.id === highlightDestinationId)) {
+      highlightDestinationId = null;
+      updateHighlightButtonUI();
+    }
+
+    if (!highlightDestinationId) {
+      syncApproachingBarMatches(null);
+      return;
+    }
+
+    const selectedDestination = destinations.find((dest) => dest.id === highlightDestinationId);
+    if (!selectedDestination || !selectedDestination.busStopCode) {
+      syncApproachingBarMatches(null);
+      return;
+    }
+
+    // 2026-09-14ユーザー指示で発見・修正した既存の考慮を踏襲: 現在表示中の
+    // バス停自体が選択中の目的地の場合、どの系統の経路にも(出発点として)
+    // 必ず含まれ「関連あり」判定が常にtrueになってしまうため、判定を行わない。
     const currentStopCode = currentDisplayedStop ? currentDisplayedStop.BusStopCode : null;
-    const destinationStopCodes = destinations
-      .map((dest) => dest.busStopCode)
-      .filter((code) => Boolean(code) && code !== currentStopCode);
-    const destinationByStopCode = new Map(
-      destinations
-        .filter((dest) => dest.busStopCode && dest.busStopCode !== currentStopCode)
-        .map((dest) => [dest.busStopCode, dest])
-    );
+    if (selectedDestination.busStopCode === currentStopCode) {
+      syncApproachingBarMatches(null);
+      return;
+    }
 
     // 系統番号ごとにグルーピングし、グループの代表カード1枚のみ判定する
     // （同一系統の複数到着インスタンスに対して重複してAPIを叩かないため）。
@@ -1443,64 +1376,172 @@
       routeInfos = await Promise.all(
         serviceNos.map((serviceNo) => {
           const representativeCard = groups.get(serviceNo)[0];
-          return getOrFetchServiceRouteInfo(serviceNo, representativeCard, destinationStopCodes);
+          return getOrFetchServiceRouteInfo(serviceNo, representativeCard, [selectedDestination.busStopCode]);
         })
       );
     } catch (err) {
+      syncApproachingBarMatches(null);
       return;
     }
 
-    // 判定結果は系統ごとに1回のみ確定し、同一系統に属する全カードに
-    // 一貫してハイライト・目的地一致タグ・ミニ経路図を適用する。
+    const colorKey = normalizeDestinationIconColor(selectedDestination.iconColor);
+    const hex = getCategoryColorHex(colorKey);
+    if (!hex) {
+      syncApproachingBarMatches(null);
+      return;
+    }
+
     serviceNos.forEach((serviceNo, index) => {
       const routeInfo = routeInfos[index] || {};
-      const groupCards = groups.get(serviceNo);
-
-      // 実際に一致した登録済み目的地を（最大2件まで、renderMatchTag側で
-      // バッジ右上角の2アイコンスタックに使う）集める。
-      // 2026-09-14ユーザー指示: 従来はカード全体の背景・枠線・バッジ色・
-      // 星アイコン・「Passes {バス停名}」の塗りつぶしタグと視覚要素が多く
-      // 「カードが目立ちすぎる」との指摘があったため、カード自体の見た目は
-      // 変えず、色付きの小さなカテゴリアイコン+ラベル（例: 「Home」）だけを
-      // 表示するトーンダウンしたデザインに変更した。
-      const matchedDests = [];
-      if (routeInfo.matched === true && Array.isArray(routeInfo.matchedStopCodes)) {
-        for (const code of routeInfo.matchedStopCodes) {
-          const dest = destinationByStopCode.get(code);
-          if (dest) matchedDests.push(dest);
-          if (matchedDests.length >= 2) break;
-        }
-      }
-
-      // 2026-09-14ユーザー指示「セーブしているバス停がある場合は経由地にも
-      // 必ず表示したい」対応。サーバー選定のwaypoints（MRT駅・ランドマークのみ）
-      // に、実際に一致した登録済み目的地(routeInfo.matchedStopCodes)を追加で
-      // マージする。経路の起点・終点は別途タイトル等で表示済みのため除外する。
-      const summary = routeInfo.summary || null;
-      const excludeStopCodes = [
-        summary && summary.origin ? summary.origin.BusStopCode : null,
-        summary && summary.destination ? summary.destination.BusStopCode : null,
-      ];
-      const mergedWaypoints = mergeSavedDestinationWaypoints(
-        summary ? summary.waypoints : [],
-        routeInfo.matchedStopCodes,
-        destinationByStopCode,
-        excludeStopCodes,
-        routeInfo.matchedPositions
-      );
-
-      groupCards.forEach((card) => {
-        if (routeInfo.matched === true && matchedDests.length > 0) {
-          renderMatchTag(card, matchedDests);
-        }
-
-        renderMiniRoute(card, { waypoints: mergedWaypoints });
-      });
+      if (routeInfo.matched !== true) return;
+      groups.get(serviceNo).forEach((card) => applyHighlightIndicator(card, hex));
     });
 
-    // Timetable側の一致判定（.tt-row--match）が確定したので、Approachingバーの
-    // 該当ドットにも同じ強調表示を反映する（系統単位の判定を二重に行わない）。
-    syncApproachingBarMatches();
+    // Timetable側のハイライトが確定したので、Approachingバーの該当ドットにも
+    // 同じ色を反映する（系統単位の判定を二重に行わない）。
+    syncApproachingBarMatches(hex);
+  }
+
+  // 行(.tt-row)1件に選択中目的地の色でハイライトを適用する（背景の薄いトーン+
+  // 左端カラーバー(box-shadow insetでpaddingを崩さない)+系統番号バッジの
+  // 塗りつぶし）。Saved画面のアイコン色編集と同じlightenHexColor()を使う。
+  function applyHighlightIndicator(card, hex) {
+    card.classList.add('tt-row--highlight');
+    card.style.backgroundColor = lightenHexColor(hex, 0.86);
+    card.style.boxShadow = `inset 4px 0 0 0 ${hex}`;
+    const badge = card.querySelector('.tt-badge');
+    if (badge) badge.style.background = hex;
+  }
+
+  // 全カード/行からハイライトを取り除く（選択解除・選択変更・再判定の
+  // たびに呼ぶ）。
+  function clearHighlightIndicators(cards) {
+    cards.forEach((card) => {
+      card.classList.remove('tt-row--highlight');
+      card.style.backgroundColor = '';
+      card.style.boxShadow = '';
+      const badge = card.querySelector('.tt-badge');
+      if (badge) badge.style.background = '';
+    });
+  }
+
+  /* ══════════════════════════════════════════════
+   * 目的地ハイライトピッカー（Home画面ヘッダー、2026-09-21新規）
+   * mockups/home-destination-highlight-picker-v1.html（ユーザー承認済み）
+   * ══════════════════════════════════════════════ */
+
+  function closeHighlightDropdown() {
+    const dropdown = document.getElementById('home-highlight-dropdown');
+    const btn = document.getElementById('home-highlight-btn');
+    if (dropdown) dropdown.hidden = true;
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+
+  // ドロップダウンの中身を開くたびに最新のloadDestinations()から再構築する
+  // （Saved画面での追加・削除・タイトル変更を常に反映するため）。
+  function renderHighlightDropdown() {
+    const dropdown = document.getElementById('home-highlight-dropdown');
+    if (!dropdown) return;
+
+    const destinations = loadDestinations();
+    const noneSelected = !highlightDestinationId;
+
+    let html = `
+      <div class="home-highlight-dropdown-item${noneSelected ? ' home-highlight-dropdown-item--selected' : ''}" data-highlight-id="">
+        <span class="home-highlight-dropdown-item-icon home-highlight-dropdown-item-icon--none"><i class="ti ti-circle-off" aria-hidden="true"></i></span>
+        <span class="home-highlight-dropdown-item-label">Don't highlight</span>
+        ${noneSelected ? '<i class="ti ti-check home-highlight-dropdown-item-check" aria-hidden="true"></i>' : ''}
+      </div>
+    `;
+
+    destinations.forEach((dest) => {
+      const isSelected = dest.id === highlightDestinationId;
+      const colorKey = normalizeDestinationIconColor(dest.iconColor);
+      const hex = getCategoryColorHex(colorKey) || 'var(--fill-accent)';
+      const category = normalizeDestinationCategory(dest.category);
+      const label = dest.title && dest.title.trim() ? dest.title.trim() : dest.description;
+      html += `
+        <div class="home-highlight-dropdown-item${isSelected ? ' home-highlight-dropdown-item--selected' : ''}" data-highlight-id="${escapeHtml(dest.id)}">
+          <span class="home-highlight-dropdown-item-icon" style="background:${hex};">${DESTINATION_CATEGORY_ICON_SVG[category]}</span>
+          <span class="home-highlight-dropdown-item-label">${escapeHtml(label)}</span>
+          ${isSelected ? '<i class="ti ti-check home-highlight-dropdown-item-check" aria-hidden="true"></i>' : ''}
+        </div>
+      `;
+    });
+
+    dropdown.innerHTML = html;
+  }
+
+  // ボタンの見た目（ラベル・配色・表示/非表示）を現在の選択状態に同期する。
+  function updateHighlightButtonUI() {
+    const btn = document.getElementById('home-highlight-btn');
+    const labelEl = document.getElementById('home-highlight-btn-label');
+    if (!btn || !labelEl) return;
+
+    const destinations = loadDestinations();
+    // 保存済み目的地が0件ならボタン自体を隠す（選びようがないため）。
+    btn.hidden = destinations.length === 0;
+
+    const selected = highlightDestinationId
+      ? destinations.find((dest) => dest.id === highlightDestinationId)
+      : null;
+
+    if (selected) {
+      const colorKey = normalizeDestinationIconColor(selected.iconColor);
+      const hex = getCategoryColorHex(colorKey);
+      labelEl.textContent = selected.title && selected.title.trim() ? selected.title.trim() : selected.description;
+      btn.classList.add('home-highlight-btn--active');
+      btn.style.background = hex || '';
+      btn.style.color = hex ? 'var(--on-accent)' : '';
+    } else {
+      labelEl.textContent = 'Select stop';
+      btn.classList.remove('home-highlight-btn--active');
+      btn.style.background = '';
+      btn.style.color = '';
+    }
+  }
+
+  // 選択を確定する（idがnull/空文字なら「選択解除」）。系統単位のルート情報
+  // キャッシュは対象の目的地が変わると判定結果も変わりうるため、
+  // 選択変更のたびに破棄してから再判定する。
+  function selectHighlightDestination(id) {
+    highlightDestinationId = id || null;
+    closeHighlightDropdown();
+    updateHighlightButtonUI();
+    clearServiceRouteInfoCache();
+    applyRouteEnrichment();
+  }
+
+  function initHighlightPicker() {
+    const btn = document.getElementById('home-highlight-btn');
+    const dropdown = document.getElementById('home-highlight-dropdown');
+    if (!btn || !dropdown) return;
+
+    updateHighlightButtonUI();
+
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (!dropdown.hidden) {
+        closeHighlightDropdown();
+        return;
+      }
+      renderHighlightDropdown();
+      dropdown.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+    });
+
+    dropdown.addEventListener('click', (event) => {
+      const item = event.target.closest('.home-highlight-dropdown-item');
+      if (!item) return;
+      selectHighlightDestination(item.getAttribute('data-highlight-id'));
+    });
+
+    // ドロップダウン外タップで変更せず閉じる。
+    document.addEventListener('click', (event) => {
+      if (dropdown.hidden) return;
+      if (dropdown.contains(event.target) || btn.contains(event.target)) return;
+      closeHighlightDropdown();
+    });
   }
 
   // Saved画面のアイコン色ピッカーで使う--category-color-*変数の実際の16進値を取得する。
@@ -1664,9 +1705,10 @@
    * 単純に全ドットを再生成する（Timetableビューと同じ方針、5節「Timetableは
    * 数値の更新のみで良い」を踏襲）。
    *
-   * Save済み目的地行きの系統ハイライトはapplyRouteEnrichment()が確定した
-   * Timetable側の.tt-row--matchクラスを流用する（syncApproachingBarMatches()、
-   * 系統単位の判定を二重に行わない）。
+   * 選択中目的地行きの系統ハイライトはapplyRouteEnrichment()が確定した
+   * Timetable側の.tt-row--highlightクラス（2026-09-21目的地ハイライト
+   * ピッカー刷新、色は選択中目的地のiconColor）を流用する
+   * （syncApproachingBarMatches()、系統単位の判定を二重に行わない）。
    * ══════════════════════════════════════════════ */
   // Save済み目的地行きの系統は後からドットが拡大される（.home-approaching-
   // bus--saved、syncApproachingBarMatches()が非同期に付与）ため、衝突回避の
@@ -1722,24 +1764,43 @@
       track.appendChild(dot);
     });
 
-    syncApproachingBarMatches();
+    // Timetable側の直近の判定結果（前回のapplyRouteEnrichment()確定分）を
+    // 再生成直後のドットにも反映しておく。実際の再判定はこの後
+    // renderTimetableView()→applyRouteEnrichment()の順で走り、そこで
+    // 改めてsyncApproachingBarMatches()が呼ばれる。
+    syncApproachingBarMatches(getCurrentHighlightColorHex());
   }
 
-  // applyRouteEnrichment()が確定させたTimetable行の一致状態（.tt-row--match）を
-  // 読み取り、同じ系統番号のApproachingバードットにも強調表示を反映する。
-  function syncApproachingBarMatches() {
+  // 選択中の目的地のアイコン色（16進）を返す。未選択・削除済みならnull。
+  function getCurrentHighlightColorHex() {
+    if (!highlightDestinationId) return null;
+    const dest = loadDestinations().find((d) => d.id === highlightDestinationId);
+    if (!dest) return null;
+    return getCategoryColorHex(normalizeDestinationIconColor(dest.iconColor)) || null;
+  }
+
+  // applyRouteEnrichment()が確定させたTimetable行のハイライト状態
+  // （.tt-row--highlight）を読み取り、同じ系統番号のApproachingバードットにも
+  // 同じ色で強調表示を反映する。colorHexがnullの場合は「ハイライトなし」。
+  function syncApproachingBarMatches(colorHex) {
     const track = document.getElementById('home-approaching-track');
     if (!track) return;
 
     const matchedServiceNos = new Set(
-      Array.from(document.querySelectorAll('#home-timetable-list .tt-row--match')).map((row) =>
+      Array.from(document.querySelectorAll('#home-timetable-list .tt-row--highlight')).map((row) =>
         row.getAttribute('data-route-number')
       )
     );
 
     track.querySelectorAll('.home-approaching-bus').forEach((dot) => {
       const serviceNo = dot.getAttribute('data-route-number');
-      dot.classList.toggle('home-approaching-bus--saved', matchedServiceNos.has(serviceNo));
+      const isMatched = colorHex && matchedServiceNos.has(serviceNo);
+      dot.classList.toggle('home-approaching-bus--saved', Boolean(isMatched));
+      const inner = dot.querySelector('.home-approaching-bus-dot');
+      if (inner) {
+        inner.style.background = isMatched ? colorHex : '';
+        inner.style.borderColor = isMatched ? colorHex : '';
+      }
     });
   }
 
@@ -1843,19 +1904,14 @@
     // badge/times間のflexレイアウトが崩れないようにする）。
     const destText = representative.DestinationName || '';
 
-    // 2026-09-20ユーザー指示「バッジはみやすいようにもっと大きくして。系統の
-    // カードそのものにつけて」対応。従来は.tt-badge(38px角丸)の右上角に
-    // 16px程度の小さいアイコンを重ねていたが、視認しづらいため.tt-row（行全体、
-    // カード相当）を基準に大きめのアイコンを重ねる形に変更した。位置決めの
-    // 都合上、.tt-badgeの子要素ではなく.tt-rowの直下に置く（CSS側は
-    // .tt-row基準のabsolute配置、route-modal-badgeへの複製ロジック
-    // (openModal内srcIcon検索)もcard.querySelector基準に合わせて修正済み）。
+    // 2026-09-21目的地ハイライトピッカー刷新により、目的地一致は行全体の
+    // 色ハイライト(.tt-row--highlight、applyHighlightIndicator())で表現する
+    // ようになり、バッジは使わなくなった（ユーザー指示「バッジはいらない、
+    // 色のハイライトだけでいい」）。
     row.innerHTML = `
       <div class="tt-badge${badgeLengthClass}">
         <span class="tt-badge-number">${escapeHtml(serviceNo)}</span>
       </div>
-      <span class="tt-badge-match-icon tt-badge-match-icon--1" hidden></span>
-      <span class="tt-badge-match-icon tt-badge-match-icon--2" hidden></span>
       <div class="tt-dest">${escapeHtml(destText)}</div>
       <div class="tt-times">${timesHtml}</div>
     `;
@@ -2660,6 +2716,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     initBottomNav();
     initRouteModal();
+    initHighlightPicker();
     initSwipeGesture();
     initGpsLocation();
 
