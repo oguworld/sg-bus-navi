@@ -161,31 +161,14 @@
    * （.claude/plan-phase6-map-timetable-toggle.md 2-1節〜2-12節、8節、10節）
    * ══════════════════════════════════════════════ */
 
-  // ビュー選択状態の永続化キー（8節ユーザー確定「ビュー選択状態は永続化する」）。
-  const HOME_VIEW_STORAGE_KEY = 'sgbusnavi_home_view';
-
   // 現在のホーム画面ビュー（'timetable' | 'arrivals'）。初期表示はTimetable
   // （2-6節「Timetableが一般的なので左かな」を単一フリップボタンでは
   // 「どちらを先に見せるか」と解釈）。
+  // 2026-09-20ユーザー指示「起動しなおしたときはやっぱり基本Timetableを
+  // 表示する感じでいいかな」により、localStorageへの永続化(8節で一度確定した
+  // 仕様)は廃止した。セッション内の切替(toggleHomeView)自体は変更なし、
+  // アプリを再起動するたびに常にTimetableから始まる。
   let currentHomeView = 'timetable';
-
-  function loadHomeViewPreference() {
-    try {
-      const stored = window.localStorage.getItem(HOME_VIEW_STORAGE_KEY);
-      return stored === 'arrivals' || stored === 'timetable' ? stored : 'timetable';
-    } catch (err) {
-      return 'timetable';
-    }
-  }
-
-  function persistHomeViewPreference(view) {
-    try {
-      window.localStorage.setItem(HOME_VIEW_STORAGE_KEY, view);
-    } catch (err) {
-      // ビュー選択の永続化は補助的な利便性機能のため、保存失敗は無視してよい
-      // （保存できなくても今回のセッション内では正しく切り替わり続ける）。
-    }
-  }
 
   // Leafletの地図インスタンス（モジュールスコープで使い回す、経路モーダルの
   // routeModalMapInstanceと同じパターン）。
@@ -231,6 +214,16 @@
       // switchToStopIndex()の早期returnと無関係に、ここで確実に行う。
       const stopPillRow = document.getElementById('stop-pill-row');
       if (stopPillRow) stopPillRow.scrollTo({ left: 0, behavior: 'smooth' });
+
+      // 2026-09-20ユーザー指示「ボトムメニューのHome押した時はtimetableを
+      // 表示した状態に戻すようにして」対応。Arrivalsビューを見ている状態で
+      // Homeタブに戻った場合も、常にTimetableビューから再スタートする。
+      if (currentHomeView !== 'timetable') {
+        currentHomeView = 'timetable';
+        clearFilterAuxiliaryStates();
+        applyHomeViewToDom();
+        reapplyFilterIfActive();
+      }
     }
   }
 
@@ -931,18 +924,15 @@
     const timetableList = document.getElementById('home-timetable-list');
     if (timetableList) {
       timetableList.addEventListener('click', (event) => {
-        const trigger = event.target.closest('.tt-badge');
-        if (!trigger) return;
-        const row = trigger.closest('.tt-row');
+        const row = event.target.closest('.tt-row');
         if (row) openModal(row);
       });
       timetableList.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
-        const trigger = event.target.closest('.tt-badge');
-        if (!trigger) return;
+        const row = event.target.closest('.tt-row');
+        if (!row) return;
         event.preventDefault();
-        const row = trigger.closest('.tt-row');
-        if (row) openModal(row);
+        openModal(row);
       });
     }
 
@@ -2143,15 +2133,20 @@
       ? `<span class="bus-card-operator">${escapeHtml(instance.Operator)}</span>`
       : '';
 
+    // ユーザー指示「系統番号の下に、時間とバスアイコンを並べてほしい。
+    // 時間が左、バスアイコンが右、その下にバス会社」(2026-09-20)対応。
+    // 従来はETA単独行→(アイコン+Operatorの縦積み)だったが、ETAとアイコンを
+    // 横並びの1行(.bus-card-meta-row、space-between)にし、Operatorはその
+    // 下の別行にした。
     card.innerHTML = `
       <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
       <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
       <span class="bus-card-num${badgeLengthClass}">${escapeHtml(serviceNo)}</span>
-      <span class="bus-card-eta">${etaHtml}</span>
-      <span class="bus-card-sub-row">
+      <span class="bus-card-meta-row">
+        <span class="bus-card-eta">${etaHtml}</span>
         <span class="bus-card-vehicle-icon-wrap">${vehicleIconHtml}</span>
-        ${operatorHtml}
       </span>
+      ${operatorHtml}
     `;
 
     return card;
@@ -2267,6 +2262,13 @@
     row.setAttribute('data-origin-code', representative.OriginCode || '');
     row.setAttribute('data-destination-code', representative.DestinationCode || '');
     row.setAttribute('data-current-stop-code', currentStopCode || '');
+    // 2026-09-20ユーザー指示「Routeの表示は系統番号だけでなく、カードの
+    // どこを叩いても表示するように」対応。従来は.tt-badge単体がタップ対象
+    // だったが、行全体(.tt-row)をタップターゲットにする(Arrivalsカード側が
+    // カード全体タップな点とも一貫性が取れる)。
+    row.setAttribute('role', 'button');
+    row.setAttribute('tabindex', '0');
+    row.setAttribute('aria-label', `View route for service ${serviceNo}`);
 
     const badgeLengthClass = serviceNo.length >= 4 ? ' tt-badge--long' : '';
     const timesHtml = nextBuses.map((nb) => buildTimetableTimeCellHtml(nb)).join('');
@@ -2281,7 +2283,7 @@
     const destText = representative.DestinationName || '';
 
     row.innerHTML = `
-      <div class="tt-badge${badgeLengthClass}" role="button" tabindex="0" aria-label="View route for service ${escapeHtml(serviceNo)}">
+      <div class="tt-badge${badgeLengthClass}">
         <span class="tt-badge-number">${escapeHtml(serviceNo)}</span>
         <span class="tt-badge-match-icon tt-badge-match-icon--1" hidden></span>
         <span class="tt-badge-match-icon tt-badge-match-icon--2" hidden></span>
@@ -2956,15 +2958,14 @@
     if (timetableList) timetableList.hidden = isArrivals;
   }
 
-  // フリップボタンタップ時: ビューを反転し、永続化する（8節「ビュー選択状態は
-  // 永続化する」）。loadBusArrivals()/pollBusArrivals()が両ビューのDOMを
-  // 常に同期して描画済みのため（2-7節・2-8節）、ここでは表示の切替のみで
-  // 再フェッチ・再描画は不要。フィルターの空状態メッセージ（活性コンテナの
-  // 直後に挿入される、getActiveListContainer参照）だけは切替のたびに
-  // 正しい側へ再配置する必要があるため、いったん除去してから再適用する。
+  // フリップボタンタップ時: ビューを反転する（セッション内のみ、永続化はしない）。
+  // loadBusArrivals()/pollBusArrivals()が両ビューのDOMを常に同期して描画済み
+  // のため（2-7節・2-8節）、ここでは表示の切替のみで再フェッチ・再描画は
+  // 不要。フィルターの空状態メッセージ（活性コンテナの直後に挿入される、
+  // getActiveListContainer参照）だけは切替のたびに正しい側へ再配置する
+  // 必要があるため、いったん除去してから再適用する。
   function toggleHomeView() {
     currentHomeView = currentHomeView === 'timetable' ? 'arrivals' : 'timetable';
-    persistHomeViewPreference(currentHomeView);
     clearFilterAuxiliaryStates();
     applyHomeViewToDom();
     reapplyFilterIfActive();
@@ -2973,7 +2974,6 @@
   function initHomeViewFlip() {
     const flipBtn = document.getElementById('home-view-flip');
     if (!flipBtn) return;
-    currentHomeView = loadHomeViewPreference();
     applyHomeViewToDom();
     flipBtn.addEventListener('click', toggleHomeView);
   }

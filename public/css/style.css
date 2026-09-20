@@ -342,6 +342,16 @@ button {
   position: relative;
   background: var(--surface-1);
   border-bottom: 1px solid var(--border);
+  /* 2026-09-20ユーザー指摘「モーダルのレイヤーの順番を調べて。系統の図が
+     一番上になってないはず」で発見・修正。position:relativeだけでは
+     新しいスタッキングコンテキストが作られないため、内部の
+     .home-view-flip(z-index:450)やLeaflet内部のペイン(markerPane等、
+     z-index 200〜700)がこのパネルの外、ページ全体レベルで
+     .route-modal-overlay(z-index:100)等のモーダルと直接比較され、
+     本来モーダルの下にあるべきホーム画面の地図・ボタンがモーダルより
+     前面に出てしまう不具合があった。isolation:isolateでスタッキング
+     コンテキストを確立し、内部のz-indexをこのパネル内に閉じ込める。 */
+  isolation: isolate;
 }
 
 .home-map-el {
@@ -536,17 +546,25 @@ button {
   gap: 12px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
+  /* 2026-09-20ユーザー指示で行全体がタップ対象になったため、
+     カーソル・押下フィードバックを.tt-badgeからこちらに移した。 */
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.tt-row:active {
+  transform: scale(0.98);
 }
 
 .tt-row:last-child {
   border-bottom: none;
 }
 
-/* 目的地一致系統の行全体を薄くハイライトする（renderMatchTagのバッジ角
-   アイコンと同じ判定結果を使う、2-8節「両ビューで結果を共有」）。 */
-.tt-row--match {
-  background: var(--bg-accent-muted);
-}
+/* 2026-09-20ユーザー指示「バッジがついた系統だけカードの色を変えてると
+   思うんだけど、変えなくていいですよ。バッジだけで」により、行全体の
+   背景ハイライトは廃止した(renderMatchTag()がクラス自体は引き続き付与するが
+   CSSルールを持たないため視覚効果はない。目的地一致インジケーターは
+   .tt-badge-match-icon(角バッジ)のみで表現する)。 */
 
 /* 系統番号バッジをタップすると経路モーダルを開く（2-12節「系統の番号をタップ
    したら表示されるようにして」）。Timetable行は横幅が狭くArrivalsカードのような
@@ -862,14 +880,15 @@ button {
 .bus-card-eta {
   font-weight: 700;
   color: var(--text-secondary);
-  margin-top: 3px;
-  font-size: 9px;
+  /* ユーザー指摘「到着までの分数の時間のフォントサイズが小さい」対応
+     (2026-09-20実機で発見、9px→12pxに拡大)。縦の余白は親の
+     .bus-card-meta-row側で管理するためここでは持たない。 */
+  font-size: 12px;
   white-space: nowrap;
 }
 
 .bus-card--hero .bus-card-eta {
-  font-size: 18px;
-  margin-top: 6px;
+  font-size: 20px;
 }
 
 .bus-card-eta-value--now {
@@ -885,18 +904,26 @@ button {
    バスイラストは通常セル・ヒーローセル両方に表示する（1台のイラストで
    車種(形)+混雑度(窓の色)の両方を表現するため、通常セルでも省略しない）。
    Operator(バス会社)テキストのみスペースの都合上ヒーローセル限定で表示する
-   （.claude/plan-phase8-arrivals-grid-and-modal.md 1-2節）。 */
-.bus-card-sub-row {
+   （.claude/plan-phase8-arrivals-grid-and-modal.md 1-2節）。
+   2026-09-20ユーザー指示「時間とバスアイコンを並べてほしい。時間が左、
+   バスアイコンが右、その下にバス会社」により、縦積み(.bus-card-sub-row)を
+   廃止し、ETA(.bus-card-eta)とアイコンを横並びの1行(.bus-card-meta-row)に
+   変更。Operatorはその下の別要素として続く。 */
+.bus-card-meta-row {
+  /* ユーザー指摘「左右の端によってるので近づけて」(2026-09-20)対応で
+     space-between→center+gapに変更後、さらに「分とバスアイコンもっと
+     近づけて」との指摘を受けgapを再縮小(10px→5px、14px→7px)。 */
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 2px;
-  margin-top: 4px;
+  justify-content: center;
+  width: 100%;
+  gap: 5px;
+  margin-top: 2px;
 }
 
-.bus-card--hero .bus-card-sub-row {
-  margin-top: 10px;
-  gap: 4px;
+.bus-card--hero .bus-card-meta-row {
+  gap: 7px;
+  margin-top: 4px;
 }
 
 .bus-card-operator {
@@ -905,13 +932,12 @@ button {
   color: var(--text-muted);
   letter-spacing: 0.03em;
   font-size: 10px;
+  margin-top: 4px;
 }
 
 .bus-card--hero .bus-card-operator {
   font-size: 12px;
-}
-
-.bus-card--hero .bus-card-operator {
+  margin-top: 8px;
   display: inline;
 }
 
@@ -942,15 +968,46 @@ button {
   width: 60px;
 }
 
+/* 経路モーダルヘッダー(#route-modal-badge)専用の系統番号バッジ。
+   フェーズ7でArrivalsカード自体がバッジ相当のデザインに変わった際、
+   Home画面側で.bus-badgeを使わなくなったため誤って基本スタイル一式が
+   削除されていた(2026-09-20実機で発見・修正。「Routeの表示が変です」の
+   スクリーンショットでバッジが完全に無地・無サイズになっていたのが
+   この削除が原因と判明)。経路モーダルは引き続きこのクラスに依存しているため
+   復元する(値はフェーズ6時点のPattern A密度、50px/20pxのまま)。 */
+.bus-badge {
+  flex-shrink: 0;
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 800;
+  box-shadow: 0 2px 6px rgba(42, 37, 32, 0.15);
+  position: relative;
+}
+
+/* 4文字以上の系統番号（118A等）用。 */
+.bus-badge--long {
+  font-size: 17px;
+  letter-spacing: -0.5px;
+}
+
 /* 目的地一致インジケーター: 角に重ねる小さな丸アイコン（既存.bus-badge-
    match-iconと同じ考え方、CLAUDE.md「バスカード」節参照）。カード自体が
    バッジ相当のため、カードの角に直接重ねる。白背景化後もこの表示方法は
    変更なし（.claude/plan-phase8-arrivals-grid-and-modal.md 1-4節）。 */
 .bus-badge-match-icon {
   position: absolute;
-  top: -6px;
-  width: 20px;
-  height: 20px;
+  top: -8px;
+  /* ユーザー指摘「Saveしたバス停のバッジも小さい」対応
+     (2026-09-20実機で発見、20px→28pxに拡大) */
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1941,7 +1998,20 @@ button {
   background: var(--surface-1);
   width: 100%;
   max-width: 420px;
-  max-height: 78vh;
+  /* 2026-09-20実機で発見・修正: max-heightのみ(heightなし)だと、フレックス
+     コンテナ自体の高さがコンテンツに依存する(auto)ままになり、
+     .route-modal-map(flex:2)/.route-modal-stop-list(flex:1)の
+     flex-basis:0%な子要素には「分配すべき余白」が一切生まれず、
+     地図(中身が空のLeafletコンテナ、自身の内容による最低限の高さを持たない)
+     が実質0pxに潰れて完全に見えなくなる不具合があった(ユーザー指摘
+     「Routeの表示が変です」のスクリーンショットで発覚。リスト側は行の
+     テキストという実コンテンツがあるため0pxにはならず見た目上は動いている
+     ように見えていた)。旧フルスクリーン版はheight:100%という定数の高さを
+     持っていたため問題が起きていなかった。中央配置カードでも同様に確定した
+     高さを持たせる必要があるため、max-heightをheightに変更した
+     （コンテンツが少ない場合でも常に一定の高さを保つ、旧フルスクリーン版と
+     同じ挙動）。 */
+  height: 78vh;
   border-radius: 20px;
   overflow: hidden;
   border: 0.5px solid var(--border-strong);
