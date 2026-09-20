@@ -606,7 +606,8 @@ button {
 .tt-dest {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  /* ユーザー指示「行先テキストを大きくする」対応(2026-09-20実機で発見) */
+  font-size: 15px;
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -840,11 +841,15 @@ button {
    色塗りつぶし背景が前提だったため、白背景化に伴い濃色に変更）。 */
 .bus-card-num {
   line-height: 1;
-  font-size: 17px;
+  font-size: 18px;
 }
 
 .bus-card--hero .bus-card-num {
-  font-size: 34px;
+  /* ユーザー指摘「文字サイズにバランス整えて」対応(2026-09-20実機で発見)。
+     2x2ヒーローセルに対し34px以下の要素群だと下部に余白が目立ちすぎたため、
+     ヒーローセル内の各要素(数字・ETA・アイコン・Operator)を全体的に拡大し
+     余白を埋める方向で調整した。 */
+  font-size: 42px;
 }
 
 /* 4文字以上の系統番号（118A、961M等）用。正方形カードの狭い横幅に
@@ -863,8 +868,8 @@ button {
 }
 
 .bus-card--hero .bus-card-eta {
-  font-size: 15px;
-  margin-top: 4px;
+  font-size: 18px;
+  margin-top: 6px;
 }
 
 .bus-card-eta-value--now {
@@ -890,7 +895,8 @@ button {
 }
 
 .bus-card--hero .bus-card-sub-row {
-  margin-top: 6px;
+  margin-top: 10px;
+  gap: 4px;
 }
 
 .bus-card-operator {
@@ -899,6 +905,10 @@ button {
   color: var(--text-muted);
   letter-spacing: 0.03em;
   font-size: 10px;
+}
+
+.bus-card--hero .bus-card-operator {
+  font-size: 12px;
 }
 
 .bus-card--hero .bus-card-operator {
@@ -929,7 +939,7 @@ button {
 
 .bus-card--hero .bus-card-vehicle-icon--single,
 .bus-card--hero .bus-card-vehicle-icon--double {
-  width: 46px;
+  width: 60px;
 }
 
 /* 目的地一致インジケーター: 角に重ねる小さな丸アイコン（既存.bus-badge-

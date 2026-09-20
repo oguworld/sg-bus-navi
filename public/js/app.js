@@ -1983,7 +1983,9 @@
   // エンリッチメント（星ハイライト・ミニ経路図判定）のAPI呼び出しが
   // 膨らむため、表示件数自体を絞ることでAPI呼び出し数も抑える
   // （到着時刻が早い順に上位10件のみ表示、以降は次回ポーリングで自然に繰り上がる）。
-  const MAX_DISPLAYED_ARRIVALS = 10;
+  // 2026-09-20ユーザー指示で10→12件に増加(グリッドレイアウト化に伴い
+  // 3列で割り切れる件数の方が見た目が揃うため)。
+  const MAX_DISPLAYED_ARRIVALS = 12;
 
   function flattenServicesToArrivalInstances(services) {
     const instances = [];
