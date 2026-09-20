@@ -157,18 +157,11 @@
   let currentDisplayedStop = null;
 
   /* ══════════════════════════════════════════════
-   * フェーズ6: Home画面 地図パネル + Arrivals/Timetable切替
+   * フェーズ6: Home画面 地図パネル
    * （.claude/plan-phase6-map-timetable-toggle.md 2-1節〜2-12節、8節、10節）
+   * 2026-09-20: Arrivals/Timetable切替は廃止し、Timetableのみの単一ビューに
+   * なった（Approachingバーとの1画面統合、CLAUDE.md画面構成節参照）。
    * ══════════════════════════════════════════════ */
-
-  // 現在のホーム画面ビュー（'timetable' | 'arrivals'）。初期表示はTimetable
-  // （2-6節「Timetableが一般的なので左かな」を単一フリップボタンでは
-  // 「どちらを先に見せるか」と解釈）。
-  // 2026-09-20ユーザー指示「起動しなおしたときはやっぱり基本Timetableを
-  // 表示する感じでいいかな」により、localStorageへの永続化(8節で一度確定した
-  // 仕様)は廃止した。セッション内の切替(toggleHomeView)自体は変更なし、
-  // アプリを再起動するたびに常にTimetableから始まる。
-  let currentHomeView = 'timetable';
 
   // Leafletの地図インスタンス（モジュールスコープで使い回す、経路モーダルの
   // routeModalMapInstanceと同じパターン）。
@@ -214,16 +207,6 @@
       // switchToStopIndex()の早期returnと無関係に、ここで確実に行う。
       const stopPillRow = document.getElementById('stop-pill-row');
       if (stopPillRow) stopPillRow.scrollTo({ left: 0, behavior: 'smooth' });
-
-      // 2026-09-20ユーザー指示「ボトムメニューのHome押した時はtimetableを
-      // 表示した状態に戻すようにして」対応。Arrivalsビューを見ている状態で
-      // Homeタブに戻った場合も、常にTimetableビューから再スタートする。
-      if (currentHomeView !== 'timetable') {
-        currentHomeView = 'timetable';
-        clearFilterAuxiliaryStates();
-        applyHomeViewToDom();
-        reapplyFilterIfActive();
-      }
     }
   }
 
@@ -248,8 +231,8 @@
 
   /* ══════════════════════════════════════════════
    * 経路モーダルの開閉・実地図(Leaflet)ベースのルート表示
-   * バスカードは動的に描画されるため、リスナーは
-   * イベント委譲（bus-card-list への委譲）で登録する。
+   * Timetable行は動的に描画されるため、リスナーは
+   * イベント委譲（home-timetable-list への委譲）で登録する。
    *
    * 2026-09-13改修: 従来の模式的な直線SVG図から、実際のシンガポール地図上に
    * 実座標（/api/bus-routes/path、全停留所のStopSequence順の緯度経度）で
@@ -621,10 +604,9 @@
   // direction=1を先に試し、originCode/destinationCodeと一致しなければ
   // direction=2を試す（circular routeはdestinationCodeのみで判定）。
   //
-  // 経路モーダル（initRouteModal）・「関連のみ」フィルター（initFilterToggle）の
+  // 経路モーダル（initRouteModal）・星アイコンハイライト（applyRouteEnrichment）の
   // 両方がdirection特定に同じロジックを必要とするため、モジュールスコープの
-  // 共通関数として切り出している（plan.md 第10節「星アイコンハイライトは
-  // 関連のみフィルターと同じ判定ロジックを共用」という方針にも合わせやすくするため）。
+  // 共通関数として切り出している。
   //
   // fromStopCode（省略可、2026-09-14追加）: 現在地のバス停コード。渡すと
   // サーバー側がwaypoints選定を「現在地より後〜終点の手前まで」に絞り込む。
@@ -698,7 +680,6 @@
     const badgeEl = document.getElementById('route-modal-badge');
     const statusEl = document.getElementById('route-modal-status');
     const mapEl = document.getElementById('route-modal-map-el');
-    const cardList = document.getElementById('bus-card-list');
 
     if (!overlay) return;
 
@@ -762,7 +743,11 @@
           if (ariaLabel) badgeEl.setAttribute('aria-label', ariaLabel);
           if (title) badgeEl.setAttribute('title', title);
           iconSuffixes.forEach((suffix) => {
-            const srcIcon = cardBadge.querySelector(
+            // 2026-09-20改修: .tt-badge-match-iconは.tt-badgeの子要素から
+            // .tt-row直下に移動した（見やすさのため行全体基準の大きい
+            // アイコンに変更）ため、検索元をcardBadge(.tt-badge)ではなく
+            // card(.tt-row/.bus-card全体)にする。
+            const srcIcon = card.querySelector(
               `.bus-badge-match-icon--${suffix}, .tt-badge-match-icon--${suffix}`
             );
             const destIcon = badgeEl.querySelector(`.bus-badge-match-icon--${suffix}`);
@@ -906,18 +891,6 @@
       overlay.classList.remove('visible');
     }
 
-    if (cardList) {
-      // フェーズ7（.claude/plan-phase7-arrivals-queue-cards.md 2節2項）:
-      // 正方形の小さいクイーニングカードには専用の「Route」ボタンを置く
-      // スペースがないため、カード全体（.bus-card自体がbutton要素）のタップで
-      // 経路モーダルを開く方式に戻した（2026-09-14に一度「ボタンのみ」に
-      // 変更した経緯があるが、今回のデザイン制約により再度カードタップに戻す）。
-      cardList.addEventListener('click', (event) => {
-        const card = event.target.closest('.bus-card');
-        if (card) openModal(card);
-      });
-    }
-
     // フェーズ6・2-12節: Timetableビューの各行は横幅が狭くカードのような
     // 専用ボタンを置く余地がないため、系統番号バッジ自体（.tt-badge）を
     // タップすると同じ経路モーダルを開く。
@@ -949,97 +922,15 @@
   }
 
   /* ══════════════════════════════════════════════
-   * 「関連のみ」フィルタートグル（実絞り込みロジック）
-   *（.claude/plan.md 第2節・第10節・第12節タスク分解ステップ9）
-   *
-   * ON時: 表示中の各バスカードについて方向を特定し（経路モーダルと同じ
-   * fetchRouteSummaryのdirection特定ロジックを共用）、登録済み目的地
-   * （loadDestinations()）のいずれか1つでも経由する系統のみを表示する
-   * （OR判定、plan.md第12節ステップ9決定事項）。
-   *
-   * 目的地0件時: 全件非表示にし、「Savedタブから目的地を登録してください」
-   * 等の空状態メッセージを表示する（今回確定。トグル自体を無効化する案より、
-   * 押せるが空状態メッセージを出す方がUI実装がシンプルなため）。
-   *
-   * API失敗時（BusRoutesキャッシュ未準備・通信エラー等）: 安全側で
-   * 全件表示にフォールバックする（plan.md第5-C節の失敗系の方針）。
-   * ══════════════════════════════════════════════ */
-
-  /* ══════════════════════════════════════════════
-   * フェーズ6・2-8節: 「関連のみ」フィルター・目的地一致ハイライトを
-   * Arrivals/Timetable両ビューで共有する。
-   *
-   * Timetableビューの行（.tt-row、data-route-number等はbuildTimetableRow()が
-   * .bus-cardと同じ属性を付与済み）にも同じhidden切替・判定ロジックを
-   * 適用できるよう、対象要素を「#bus-card-list .bus-cardと#home-timetable-list
-   * .tt-rowを合わせた配列」として扱う（2-8節「テーブル行にも.bus-cardと同様の
-   * クラス・data-route-number属性を持たせて既存関数をほぼそのまま使い回せる
-   * ようにする」方針を採用）。
+   * 目的地一致ハイライト（星アイコンバッジ・Approachingバーの強調表示）の
+   * 対象要素収集。2026-09-20「関連のみ」フィルタートグル廃止・Arrivals廃止に
+   * 伴い、対象は#home-timetable-list .tt-rowのみになった（旧仕様は当時の
+   * フェーズ4カード由来のdata-route-number等の属性をtt-rowにも持たせて
+   * 既存関数を使い回す設計だったが、その名残の属性名はそのまま踏襲している）。
    * ══════════════════════════════════════════════ */
   function collectEnrichableElements() {
-    const cardList = document.getElementById('bus-card-list');
     const timetableList = document.getElementById('home-timetable-list');
-    const cards = cardList ? Array.from(cardList.querySelectorAll('.bus-card')) : [];
-    const rows = timetableList ? Array.from(timetableList.querySelectorAll('.tt-row')) : [];
-    return cards.concat(rows);
-  }
-
-  // フィルターの空状態・ローディング表示は、現在ユーザーに見えている側の
-  // コンテナの直後にのみ挿入する（両方に同時挿入すると非表示側のメッセージが
-  // 別のビューに切り替えた際に取り残されるため、toggleHomeView()側で
-  // 都度clearFilterAuxiliaryStates()してから再適用する運用とセットで機能する）。
-  function getActiveListContainer() {
-    return currentHomeView === 'arrivals'
-      ? document.getElementById('bus-card-list')
-      : document.getElementById('home-timetable-list');
-  }
-
-  // 直前にフィルターが表示・非表示にしたカード/行を記録しておき、
-  // OFFに戻す際に確実に全カード/行を復元できるようにする
-  // （フィルター処理中にloadBusArrivals等で描画し直された場合の考慮は
-  // 「カードリストが再描画されたらフィルターは自動解除しない」仕様のため、
-  // ここでは現在DOM上にある.bus-card/.tt-rowをそのまま復元対象とする）。
-  function showAllBusCards() {
-    collectEnrichableElements().forEach((card) => {
-      card.hidden = false;
-    });
-    const emptyState = document.getElementById('filter-empty-state');
-    if (emptyState) emptyState.remove();
-  }
-
-  // カードリストの直後に「目的地が登録されていません」メッセージを表示する。
-  function renderFilterEmptyState(cardList, message) {
-    let emptyState = document.getElementById('filter-empty-state');
-    if (!emptyState) {
-      emptyState = document.createElement('div');
-      emptyState.id = 'filter-empty-state';
-      emptyState.className = 'placeholder-screen';
-      cardList.insertAdjacentElement('afterend', emptyState);
-    }
-    emptyState.innerHTML = `
-      <i class="ti ti-map-pin-off" aria-hidden="true"></i>
-      <p>${message}</p>
-    `;
-  }
-
-  // フィルター判定中の軽いローディング表示（カードは隠さず、リスト末尾に添える）。
-  function renderFilterLoadingState(cardList) {
-    let loadingState = document.getElementById('filter-loading-state');
-    if (!loadingState) {
-      loadingState = document.createElement('div');
-      loadingState.id = 'filter-loading-state';
-      loadingState.className = 'placeholder-screen';
-      cardList.insertAdjacentElement('afterend', loadingState);
-    }
-    loadingState.innerHTML = `
-      <i class="ti ti-loader-2" aria-hidden="true"></i>
-      <p>Filtering…</p>
-    `;
-  }
-
-  function removeFilterLoadingState() {
-    const loadingState = document.getElementById('filter-loading-state');
-    if (loadingState) loadingState.remove();
+    return timetableList ? Array.from(timetableList.querySelectorAll('.tt-row')) : [];
   }
 
   // 指定カード1件について、登録済み目的地のいずれか1つでも経由するかを判定する。
@@ -1117,123 +1008,12 @@
     return groups;
   }
 
-  // 現在表示中の全バスカード・Timetable行に対してフィルタリングを適用する
-  // （2-8節「両ビューで結果を共有」）。
-  async function applyRelatedOnlyFilter() {
-    const cards = collectEnrichableElements();
-    if (cards.length === 0) return;
-
-    const activeContainer = getActiveListContainer();
-    const destinations = loadDestinations();
-
-    // 目的地0件: 全件非表示にして空状態メッセージを表示する
-    // （plan.md第5-C節「目的地未登録時の挙動は不明」に対する今回の確定仕様）。
-    if (destinations.length === 0) {
-      cards.forEach((card) => {
-        card.hidden = true;
-      });
-      if (activeContainer) {
-        renderFilterEmptyState(
-          activeContainer,
-          'No bus stops saved yet. Add one from the Bus Stops tab.'
-        );
-      }
-      return;
-    }
-
-    // applyRouteEnrichment()と同じ理由（現在地自体をSave済みの場合に全件が
-    // 常に一致してしまう不具合対策）で、現在表示中のバス停は判定対象から除外する。
-    const currentStopCode = currentDisplayedStop ? currentDisplayedStop.BusStopCode : null;
-    const destinationStopCodes = destinations
-      .map((dest) => dest.busStopCode)
-      .filter((code) => Boolean(code) && code !== currentStopCode);
-
-    if (destinationStopCodes.length === 0) {
-      cards.forEach((card) => {
-        card.hidden = true;
-      });
-      if (activeContainer) {
-        renderFilterEmptyState(
-          activeContainer,
-          'No bus stops saved yet. Add one from the Bus Stops tab.'
-        );
-      }
-      return;
-    }
-
-    if (activeContainer) renderFilterLoadingState(activeContainer);
-
-    // 系統番号ごとにグルーピングし、グループの代表カード1枚のみ判定する
-    // （同一系統の複数到着インスタンスに対して重複してAPIを叩かないため）。
-    // getOrFetchServiceRouteInfo()は系統単位の結果キャッシュを使うため、
-    // applyDestinationHighlight()等が既に同一系統を解決済みであれば
-    // 再度fetchRouteSummary/contains-stopを呼ばない（N+1回避）。
-    const groups = groupCardsByServiceNo(cards);
-    const serviceNos = Array.from(groups.keys());
-
-    let matchResults;
-    try {
-      matchResults = await Promise.all(
-        serviceNos.map((serviceNo) => {
-          const representativeCard = groups.get(serviceNo)[0];
-          return getOrFetchServiceRouteInfo(serviceNo, representativeCard, destinationStopCodes);
-        })
-      );
-    } catch (err) {
-      matchResults = serviceNos.map(() => ({ matched: null, matchedStopCodes: [], summary: null }));
-    }
-
-    removeFilterLoadingState();
-
-    // API失敗等でnullが混ざった場合、その系統だけを安全側で表示にとどめる
-    // （判定不能=非表示にすると、実際は関連ある系統を誤って隠してしまう
-    // リスクがあるため）。全件nullだった場合は実質的に全件表示にフォールバックする。
-    // 判定結果は系統ごとに1回のみ確定し、同一系統に属する全カードに
-    // 一貫して適用する。
-    serviceNos.forEach((serviceNo, index) => {
-      const matched = matchResults[index].matched;
-      const groupCards = groups.get(serviceNo);
-      groupCards.forEach((card) => {
-        card.hidden = matched === false;
-      });
-    });
-  }
-
-  function initFilterToggle() {
-    const toggle = document.getElementById('filter-toggle');
-    if (!toggle) return;
-
-    toggle.addEventListener('click', () => {
-      const isPressed = toggle.getAttribute('aria-pressed') === 'true';
-      const nextPressed = !isPressed;
-      toggle.setAttribute('aria-pressed', String(nextPressed));
-
-      if (nextPressed) {
-        applyRelatedOnlyFilter();
-      } else {
-        showAllBusCards();
-      }
-    });
-  }
-
-  // Home画面でバス停切替（スワイプ・GPS更新・検索結果選択等）によって
-  // バスカードリストが再描画された際、「関連のみ」がONのままなら
-  // 新しいカードリストにも同じ絞り込みを再適用する。
-  // OFFの場合や、フィルター用DOM未初期化（初回描画前）の場合は何もしない。
-  function reapplyFilterIfActive() {
-    const toggle = document.getElementById('filter-toggle');
-    if (!toggle) return;
-    if (toggle.getAttribute('aria-pressed') === 'true') {
-      applyRelatedOnlyFilter();
-    }
-  }
-
   /* ══════════════════════════════════════════════
    * 系統単位のルート情報キャッシュ（フェーズ4 タスク分解ステップ2）
    *
    * cardMatchesAnyDestination()はfetchRouteSummary（direction特定）+
    * /api/bus-routes/contains-stopの2回のAPI呼び出しを伴う。
-   * 目的地一致判定（星ハイライト・目的地一致タグ・関連のみフィルター）と
+   * 目的地一致判定（星ハイライト・目的地一致タグ）と
    * ミニ経路図の中間点（waypoints）表示はいずれも「系統単位で1回だけ
    * fetchRouteSummaryすれば済む」情報を必要とするため、系統番号(ServiceNo)を
    * キーにPromiseをキャッシュし、同一系統の複数到着インスタンス・複数の
@@ -1618,10 +1398,7 @@
    * （CLAUDE.md「登録済み目的地に一致する系統には星アイコン+アクセント
    * カラーでハイライト」、.claude/plan.md 第2-2節・第2-3節）
    *
-   * 「関連のみ」フィルターと同じ判定ロジック（getOrFetchServiceRouteInfo経由の
-   * cardMatchesAnyDestination）を共用する（plan.md 第10節の方針）。
-   * フィルターのON/OFFに関わらず常時適用する（星表示自体はフィルター状態と
-   * 独立した機能のため）。
+   * getOrFetchServiceRouteInfo経由のcardMatchesAnyDestination()で判定する。
    *
    * ミニ経路図（中間点表示）は目的地登録の有無に関わらず全カードに必要なため、
    * 目的地0件の場合でもsummary取得（fetchRouteSummary）自体は系統単位で行う。
@@ -1720,6 +1497,10 @@
         renderMiniRoute(card, { waypoints: mergedWaypoints });
       });
     });
+
+    // Timetable側の一致判定（.tt-row--match）が確定したので、Approachingバーの
+    // 該当ドットにも同じ強調表示を反映する（系統単位の判定を二重に行わない）。
+    syncApproachingBarMatches();
   }
 
   // Saved画面のアイコン色ピッカーで使う--category-color-*変数の実際の16進値を取得する。
@@ -1794,132 +1575,16 @@
     `;
   }
 
-  /* ══════════════════════════════════════════════
-   * フェーズ7（.claude/plan-phase7-arrivals-queue-cards.md）で情報を系統番号・
-   * ETA・車種+混雑度・バス会社に絞る方針を確立（行き先・「Next: N min」・
-   * 車椅子(WAB)アイコンは非表示のまま）。フェーズ8（.claude/
-   * plan-phase8-arrivals-grid-and-modal.md）でヒーローセル+グリッドに
-   * レイアウトを刷新し、車種+混雑度の表現をバスイラストSVGに戻した
-   * （buildBusCard()参照）。
-   * ══════════════════════════════════════════════ */
-
-  // 既存カードDOMを再生成せず、ETA表示（.bus-card-eta の中身）・バスイラスト
-  // （車種+混雑度）のみを最新の到着インスタンス情報で更新する。出発検出の
-  // 差分更新（変化のないカードの不要な再描画・アニメーションのちらつきを
-  // 避ける）用（.claude/plan.md 第9節タスク分解ステップ6）。
-  //
-  // Operatorは同一系統内で変化しないためここでは更新しない
-  // （buildBusCard()生成時点の値のまま、フェーズ8で追加）。
-  function updateBusCardEta(card, instance, allInstances) {
-    const etaEl = card.querySelector('.bus-card-eta');
-    if (!etaEl) return;
-
-    const minutes = estimateMinutesFromNow(instance.EstimatedArrival);
-    const typeCode = instance.Type || 'SD';
-
-    const etaHtml =
-      minutes === null
-        ? '<span class="bus-card-eta-value">—</span>'
-        : minutes === 0
-          ? '<span class="bus-card-eta-value bus-card-eta-value--now">Now</span>'
-          : `<span class="bus-card-eta-value">${minutes}</span><span class="bus-card-eta-unit">min</span>`;
-    etaEl.innerHTML = etaHtml;
-    card.setAttribute('data-eta-minutes', minutes === null ? '' : String(minutes));
-
-    // 混雑度(Load)・車種は毎ポーリングで変わりうるため、バスイラストSVGごと
-    // 再生成する。
-    const iconWrapEl = card.querySelector('.bus-card-vehicle-icon-wrap');
-    if (iconWrapEl) iconWrapEl.innerHTML = buildBusIllustrationSvg(typeCode, instance.Load);
-  }
-
   // LTA Loadコード（SEA/SDA/LSD）から混雑状況インジケーター用の
   // { colorClass, label } を決める。未知の値・欠落時はnullを返し、
   // 呼び出し元がインジケーター自体を非表示にできるようにする
-  // （plan.md 2-4節「偽の色を出さない」要件）。
+  // （plan.md 2-4節「偽の色を出さない」要件）。Timetableビューの各時刻セル
+  // （buildTimetableTimeCellHtml）が色分けに使う。
   function getLoadIndicatorInfo(loadCode) {
     if (loadCode === 'SEA') return { colorClass: 'green', label: 'Seats available' };
     if (loadCode === 'SDA') return { colorClass: 'amber', label: 'Standing room' };
     if (loadCode === 'LSD') return { colorClass: 'red', label: 'Crowded' };
     return null;
-  }
-
-  // 車種(単一/二階建て)+混雑度を1つの小さなバスイラストで表現する
-  // （2026-09-14ユーザー指示。テキスト表示「Single Deck」+「Seats available」等が
-  // 目立ちすぎる・分かりにくいとの指摘のため。バス本体の"形"で単一/二階建てを、
-  // "窓の色"で混雑度(緑/黄/赤)を示す。混雑状況が不明（Loadフィールド欠落・
-  // 未知の値）の場合は窓を中立色にする。
-  //
-  // 本体色の変遷: 淡いテーマグリーンの単色 →（「グリーンじゃなくグレーで」との
-  // 指摘）グレーの縦グラデーション →（「車椅子アイコンと同じくらい控えめに、
-  // もっとバスっぽく」との指摘、モック比較mockups/bus-icon-outline-v1.html
-  // パターン1）塗りつぶしをやめ、車椅子アイコン(.bus-card-wab-tag)と全く同じ
-  // var(--text-muted)の線画のみに変更（現在）。窓の色だけが唯一の塗りつぶし
-  // 要素になり、混雑度がより主役として見えるようになった。
-  //
-  // 2026-09-14 改修: 初版はタイヤ(円)付きだったが「タイヤは要らない、もっと
-  // バス感が出るように、一階建て/二階建てがぱっと見で分かるように」との
-  // 指摘を受け、タイヤを廃止。一階建ては横長・低いシルエット、二階建ては
-  // 窓2段の縦長シルエットにして形そのもので瞬時に見分けられるようにした。
-  //
-  // 2026-09-20フェーズ7でArrivalsカードを「遠近クイーニング」デザインに全面
-  // 刷新した際、表示情報を系統番号・ETA・車種(SD/DD)のみに絞ったためこの
-  // SVGイラスト自体は一時未使用になっていたが、直後のフェーズ8（ヒーロー
-  // セル+グリッド化、.claude/plan-phase8-arrivals-grid-and-modal.md）で
-  // ユーザー指示「2階建てと1階建ての情報も表示したい。例のアイコンと窓の色の
-  // 形で」により復活し、buildBusCard()から再度呼び出されるようになった
-  // （ヒーローセルの.bus-card-sub-row内、車種+混雑度を1つのイラストで表現）。
-  function buildBusIllustrationSvg(typeCode, loadCode) {
-    const isDoubleDeck = typeCode === 'DD';
-    const loadInfo = getLoadIndicatorInfo(loadCode);
-    const windowColor = loadInfo ? `var(--load-${loadInfo.colorClass})` : 'var(--sand-dark)';
-    const label = getBusTypeLabel(typeCode) + (loadInfo ? ` · ${loadInfo.label}` : '');
-
-    if (isDoubleDeck) {
-      return `
-        <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--double" viewBox="0 0 34 30" role="img" aria-label="${label}">
-          <rect x="1.5" y="1.5" width="31" height="27" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4"/>
-          <rect x="4" y="4" width="7" height="6" rx="1.4" fill="${windowColor}"/>
-          <rect x="13.5" y="4" width="7" height="6" rx="1.4" fill="${windowColor}"/>
-          <rect x="23" y="4" width="7" height="6" rx="1.4" fill="${windowColor}"/>
-          <rect x="4" y="18" width="7" height="6" rx="1.4" fill="${windowColor}"/>
-          <rect x="13.5" y="18" width="7" height="6" rx="1.4" fill="${windowColor}"/>
-          <rect x="23" y="18" width="7" height="6" rx="1.4" fill="${windowColor}"/>
-        </svg>
-      `;
-    }
-
-    return `
-      <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20" role="img" aria-label="${label}">
-        <rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4"/>
-        <rect x="4" y="4" width="9" height="8" rx="1.6" fill="${windowColor}"/>
-        <rect x="15" y="4" width="9" height="8" rx="1.6" fill="${windowColor}"/>
-        <rect x="26" y="4" width="9" height="8" rx="1.6" fill="${windowColor}"/>
-      </svg>
-    `;
-  }
-
-  // メタ行（バスイラスト + 車椅子対応アイコン）のHTMLを組み立てる。
-  // featureはLTA DataMallのFeatureフィールド（車椅子対応車両の場合"WAB"、
-  // それ以外は空文字列）。2026-09-14ユーザー指示で追加。
-  // 現在未使用（2026-09-20フェーズ7、上記buildBusIllustrationSvg()と同じ理由）。
-  function buildMetaRowHtml(typeCode, loadCode, feature) {
-    const vehicleIconHtml = buildBusIllustrationSvg(typeCode, loadCode);
-
-    const wabTagHtml =
-      feature === 'WAB'
-        ? '<div class="bus-card-wab-tag" aria-label="Wheelchair accessible"><i class="ti ti-wheelchair" aria-hidden="true"></i></div>'
-        : '';
-
-    // 2026-09-14ユーザー指示「時間のすぐ左に位置固定で表示、時間とまとめて
-    // 右寄せ」により、.eta-time-row(buildEtaBlockHtml側)内で大きな分数の
-    // 直前に置かれる想定のクラス名(.eta-icon-cluster)に変更した。表示順は
-    // 車椅子→バスイラスト(先の指示「バスが右、車椅子が左の順」を踏襲)。
-    return `
-      <div class="eta-icon-cluster">
-        ${wabTagHtml}
-        <div class="bus-card-vehicle-icon-wrap">${vehicleIconHtml}</div>
-      </div>
-    `;
   }
 
   /* ══════════════════════════════════════════════
@@ -1968,14 +1633,10 @@
   // Services[]全体を「1到着=1件」のフラットな配列に変換し、EstimatedArrivalの
   // 昇順でソートする。同時刻（同分・同秒）の場合は系統番号順という決定的な
   // 順序にする（plan.md第4節「エッジケース」要実装判断分の対応）。
-  // Home画面フィードに表示する到着インスタンスの最大件数。
-  // 2026-09-14ユーザー指示: バス停によっては系統数が多く、経路情報
-  // エンリッチメント（星ハイライト・ミニ経路図判定）のAPI呼び出しが
-  // 膨らむため、表示件数自体を絞ることでAPI呼び出し数も抑える
-  // （到着時刻が早い順に上位10件のみ表示、以降は次回ポーリングで自然に繰り上がる）。
-  // 2026-09-20ユーザー指示で10→12件に増加(グリッドレイアウト化に伴い
-  // 3列で割り切れる件数の方が見た目が揃うため)。
-  const MAX_DISPLAYED_ARRIVALS = 12;
+  // Approachingバーに表示する到着インスタンスの最大件数
+  // （2026-09-20ユーザー指示「バスは10本だけでいい」。旧Arrivalsグリッド時代の
+  // MAX_DISPLAYED_ARRIVALS=12はArrivals廃止に伴い置き換え）。
+  const MAX_APPROACHING_BAR_BUSES = 10;
 
   function flattenServicesToArrivalInstances(services) {
     const instances = [];
@@ -1990,203 +1651,105 @@
       return String(a.ServiceNo).localeCompare(String(b.ServiceNo));
     });
 
-    return instances.slice(0, MAX_DISPLAYED_ARRIVALS);
+    return instances.slice(0, MAX_APPROACHING_BAR_BUSES);
   }
 
   /* ══════════════════════════════════════════════
-   * フェーズ4 タスク分解ステップ6（.claude/plan.md 第2-6節・第8節リスク6）:
-   * 到着インスタンスの識別キー（カードDOM要素の一意なdata属性用）。
+   * Approachingバー（Home画面、2026-09-20新規、Arrivalsグリッド廃止に伴う置き換え）
    *
-   * 注意（実データ検証で判明した重要な制約）: 当初はServiceNo+OriginCode+
-   * EstimatedArrival（秒まで含む）の完全一致をそのまま出発検出にも使う設計を
-   * 想定していたが、実際のLTA v3/BusArrivalではポーリングのたびに
-   * EstimatedArrivalが同一バスでも数十秒単位で前後に変動する（GPSベースの
-   * 再計算のため）ことが実測で確認された。そのため完全一致判定では
-   * 「実際には出発していないのに秒がずれただけで出発と誤検出する」問題が
-   * 頻発する。分単位に丸めても分の境界をまたぐ変動があり解決しない。
+   * mockups/arrivals-bar-timetable-combined-v1.html（ユーザー承認済み）に基づく。
+   * ETA（0〜15分でクランプ）に応じてバスをドットとして横帯上に配置する。
+   * 左端=Now（バス停マーカー）、右端=15分以上（ユーザー指示「Nowが左のほうが
+   * いい」）。出発演出・新規挿入アニメーションは持たず、ポーリングのたびに
+   * 単純に全ドットを再生成する（Timetableビューと同じ方針、5節「Timetableは
+   * 数値の更新のみで良い」を踏襲）。
    *
-   * この関数はDOM要素の識別子（data-arrival-key、Reactでいうkeyに相当）
-   * としてのみ使用し、実際の出発検出は下記matchArrivalAcrossPolls()の
-   * 「同一系統・同一起点内で最も時刻が近いものを同一実体とみなす近似
-   * マッチング」で行う（許容誤差内なら同一バスとして扱う）。
+   * Save済み目的地行きの系統ハイライトはapplyRouteEnrichment()が確定した
+   * Timetable側の.tt-row--matchクラスを流用する（syncApproachingBarMatches()、
+   * 系統単位の判定を二重に行わない）。
    * ══════════════════════════════════════════════ */
-  function buildArrivalKey(instance) {
-    return `${instance.ServiceNo || '?'}-${instance.OriginCode || ''}-${instance.EstimatedArrival || ''}`;
-  }
+  // Save済み目的地行きの系統は後からドットが拡大される（.home-approaching-
+  // bus--saved、syncApproachingBarMatches()が非同期に付与）ため、衝突回避の
+  // 最小間隔はSave済みドットの幅を前提に計算し、後から拡大されても重ならない
+  // ようにしておく。
+  const APPROACHING_MIN_GAP_PX = 56;
+  // 左端の停留所ピン（.home-approaching-stop-flag、4px〜30px幅26pxで表示）と
+  // 最初のドットが重ならないだけの余白を確保する。
+  const APPROACHING_START_PAD_PX = 54;
+  const APPROACHING_PX_PER_MIN = 40;
 
-  // 出発検出の近似マッチングにおける許容誤差（ミリ秒）。実データ検証では
-  // 同一バスのEstimatedArrival変動は数十秒程度だったため、余裕を持って
-  // 3分（ポーリング間隔15秒の12回分相当）を閾値とする。この範囲を超えて
-  // 対応する到着インスタンスが見つからない場合のみ「出発した」とみなす。
-  const ARRIVAL_MATCH_TOLERANCE_MS = 3 * 60 * 1000;
+  function renderApproachingBar(arrivalInstances) {
+    const track = document.getElementById('home-approaching-track');
+    const ticks = document.getElementById('home-approaching-ticks');
+    if (!track) return;
 
-  // 同一系統の「次の到着インスタンス」（現在のインスタンスより後の時刻で
-  // 最も早いもの）を探す。カード右下の「Next: N min」小表示用。
-  // 見つからない場合はnullを返す。
-  function findNextArrivalForSameService(instance, allInstances) {
-    const currentTime = new Date(instance.EstimatedArrival).getTime();
-    let best = null;
-    let bestTime = Infinity;
+    track.querySelectorAll('.home-approaching-bus').forEach((el) => el.remove());
 
-    allInstances.forEach((candidate) => {
-      if (candidate === instance) return;
-      if (candidate.ServiceNo !== instance.ServiceNo) return;
-
-      const candidateTime = new Date(candidate.EstimatedArrival).getTime();
-      if (candidateTime <= currentTime) return; // 同時刻・過去は「次」扱いしない
-
-      if (candidateTime < bestTime) {
-        bestTime = candidateTime;
-        best = candidate;
-      }
+    // ETA（0〜15分でクランプ）に比例した位置を仮に割り当てた後、左から順に
+    // 最小間隔（APPROACHING_MIN_GAP_PX）を確保するよう押し出す（2026-09-20
+    // ユーザー指示「バス情報は重ならないように」対応）。arrivalInstancesは
+    // 既にETA昇順のため、そのまま左から確定させていける。
+    let prevX = -Infinity;
+    const positions = arrivalInstances.map((instance) => {
+      const minutes = estimateMinutesFromNow(instance.EstimatedArrival);
+      const clampedMinutes = Math.min(minutes === null ? 15 : minutes, 15);
+      let x = APPROACHING_START_PAD_PX + clampedMinutes * APPROACHING_PX_PER_MIN;
+      if (x < prevX + APPROACHING_MIN_GAP_PX) x = prevX + APPROACHING_MIN_GAP_PX;
+      prevX = x;
+      return { instance, x };
     });
 
-    return best;
-  }
+    // 2026-09-20ユーザー指示「文字が細かい、横スクロールしてもよい」対応。
+    // ドット・文字サイズを拡大した分、台数が多いバス停では画面幅に収まらなく
+    // なるため、トラック自体を実際に必要な幅まで広げ横スクロール可能にする
+    // （.home-approaching-scroll、CSS側）。台数が少ない時はmin-width:100%
+    // （CSS既定）のままで済むよう、それを下回る幅は明示的に設定しない。
+    const trackWidth = Math.max(0, prevX + APPROACHING_START_PAD_PX);
+    track.style.width = `${trackWidth}px`;
+    if (ticks) ticks.style.width = `${trackWidth}px`;
 
-  // 1件の到着インスタンス（NextBus/NextBus2/NextBus3のいずれか1本）から
-  // バスカードのHTMLを組み立てる。
-  //
-  // フェーズ8（.claude/plan-phase8-arrivals-grid-and-modal.md）: 「ヒーローセル
-  // +グリッド」への刷新。フェーズ7の縦一列S字カーブキューイングは
-  // 「スペースを無駄遣いしすぎている」とのフィードバックにより、3列グリッド+
-  // 最も近い1件だけを2×2で強調する構成に変更した（mockups/
-  // arrivals-queue-multicolumn-v1.html Option 3）。
-  //
-  // カードが「ヒーロー(先頭)か通常セルか」はリスト内の順位に依存するため、
-  // この関数自体は.bus-card--heroクラスを付与しない。生成直後に必ず
-  // reapplyQueueTiers()（関数名はフェーズ7から維持、内部実装のみ簡略化）を
-  // 呼び、現在のDOM順から一括で付け直す設計とする（applyArrivalDiff()の
-  // 出発演出・新規挿入後もこの関数を呼べば整合する）。
-  //
-  // 表示情報は系統番号・ETA・バスイラスト(車種+混雑度)・バス会社(Operator)。
-  // 行き先・ミニ経路図・「Next: N min」は引き続き表示しない
-  // （フェーズ7の方針を踏襲）。バスイラストはヒーロー・通常セル両方に表示し、
-  // Operatorはスペースの都合上ヒーローセルのみ表示する（CSS側
-  // .bus-card-sub-row/.bus-card-operator参照、mockups/
-  // arrivals-card-white-saved-v2.html準拠）。
-  //
-  // 目的地一致タグ（角の.bus-badge-match-icon）は系統単位のfetchRouteSummary
-  // 結果に依存するため、この時点では空のプレースホルダーとして生成し、
-  // applyRouteEnrichment()が非同期にrenderMatchTag()で内容を差し込む
-  // （groupCardsByServiceNoによる系統単位キャッシュ経由、N+1回避は既存踏襲）。
-  //
-  // data-origin-code / data-destination-code: instance.OriginCode /
-  // instance.DestinationCode（バス停コード）をそのまま保持しておく。
-  // v3/BusArrivalにはDirectionフィールドが存在しないため（plan.md 2-2節）、
-  // 経路モーダルを開く際にこの2値と/api/bus-routes/summaryのorigin/destination
-  // を突き合わせてdirection（1 or 2）を特定するために使う。
-  //
-  // data-current-stop-code: 現在表示中のバス停コード（loadBusArrivals()の
-  // 引数stopCodeをそのまま保持）。
-  //
-  // data-arrival-key: 到着インスタンスを一意に識別するキー
-  // （フェーズ4 タスク分解ステップ6、.claude/plan.md 第2-6節・第8節リスク6）。
-  // buildArrivalKey()で生成し、ポーリング結果の新旧比較（出発検出）・
-  // 差分更新（ETAのみ変化した既存カードの再利用）に使う。
-  function buildBusCard(instance, allInstances, currentStopCode) {
-    const serviceNo = instance.ServiceNo || '?';
-    const minutes = estimateMinutesFromNow(instance.EstimatedArrival);
-    const typeCode = instance.Type || 'SD';
+    positions.forEach(({ instance, x }) => {
+      const dot = document.createElement('div');
+      dot.className = 'home-approaching-bus';
+      dot.style.left = `${x}px`;
+      dot.setAttribute('data-route-number', instance.ServiceNo || '?');
 
-    // フェーズ7で「カードタップで経路モーダルを開く」方式に変更済み
-    // （正方形の小カードには専用ボタンを置くスペースがないため）。フェーズ8
-    // のグリッド化でもこの挙動は維持する（plan-phase8 2節4項）。button要素の
-    // ままにすることでキーボード操作・アクセシビリティのフォーカスも保たれる。
-    const card = document.createElement('button');
-    card.type = 'button';
-    card.className = 'bus-card';
-    card.setAttribute('data-route-from', '');
-    card.setAttribute('data-route-to', instance.DestinationName || '');
-    card.setAttribute('data-route-number', serviceNo);
-    card.setAttribute('data-origin-code', instance.OriginCode || '');
-    card.setAttribute('data-destination-code', instance.DestinationCode || '');
-    card.setAttribute('data-current-stop-code', currentStopCode || '');
-    card.setAttribute('data-arrival-key', buildArrivalKey(instance));
-    card.setAttribute('aria-label', `Service ${serviceNo}, ${minutes === null ? 'unknown' : minutes} minutes, view route`);
-    // data-eta-minutes: 新規到着カードのソート順維持のための挿入位置計算
-    // （findInsertionPointForNewArrival）に使う、ETAの分数（nullは空文字列）。
-    card.setAttribute('data-eta-minutes', minutes === null ? '' : String(minutes));
+      const inner = document.createElement('div');
+      inner.className = 'home-approaching-bus-dot';
+      inner.textContent = instance.ServiceNo || '?';
+      dot.appendChild(inner);
 
-    // 4文字以上の系統番号（118A、961M等、全801系統中160件）は正方形セルに
-    // 数字が収まりきらず文字が縁に張り付いて見えるため、文字数に応じて
-    // フォントサイズを落とす修飾クラスを付与する（2026-09-13実機で発見・修正、
-    // フェーズ7・8でも踏襲）。
-    const badgeLengthClass = serviceNo.length >= 4 ? ' bus-card-num--long' : '';
-
-    const etaHtml =
-      minutes === null
-        ? '<span class="bus-card-eta-value">—</span>'
-        : minutes === 0
-          ? '<span class="bus-card-eta-value bus-card-eta-value--now">Now</span>'
-          : `<span class="bus-card-eta-value">${minutes}</span><span class="bus-card-eta-unit">min</span>`;
-
-    // バスイラスト(車種+混雑度)はヒーロー・通常セル両方に表示する
-    // （mockups/arrivals-card-white-saved-v2.html、ユーザー承認済み）。
-    // バス会社(Operator)はスペースの都合上ヒーローセルのみ表示するが、CSS側
-    // (.bus-card-operator、display:none既定・.bus-card--hero配下でinline)が
-    // 出し分けを担うため、マークアップ自体は常に出力する(reapplyQueueTiers()が
-    // .bus-card--heroを付与した後、CSSがヒーロー/通常セルに応じて表示/非表示を
-    // 切り替える)。
-    const vehicleIconHtml = buildBusIllustrationSvg(typeCode, instance.Load);
-    const operatorHtml = instance.Operator
-      ? `<span class="bus-card-operator">${escapeHtml(instance.Operator)}</span>`
-      : '';
-
-    // ユーザー指示「系統番号の下に、時間とバスアイコンを並べてほしい。
-    // 時間が左、バスアイコンが右、その下にバス会社」(2026-09-20)対応。
-    // 従来はETA単独行→(アイコン+Operatorの縦積み)だったが、ETAとアイコンを
-    // 横並びの1行(.bus-card-meta-row、space-between)にし、Operatorはその
-    // 下の別行にした。
-    card.innerHTML = `
-      <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
-      <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
-      <span class="bus-card-num${badgeLengthClass}">${escapeHtml(serviceNo)}</span>
-      <span class="bus-card-meta-row">
-        <span class="bus-card-eta">${etaHtml}</span>
-        <span class="bus-card-vehicle-icon-wrap">${vehicleIconHtml}</span>
-      </span>
-      ${operatorHtml}
-    `;
-
-    return card;
-  }
-
-  /* ══════════════════════════════════════════════
-   * フェーズ8: ヒーローセル判定の再計算
-   * （.claude/plan-phase8-arrivals-grid-and-modal.md 1-5節・2節2項）
-   *
-   * フェーズ7のtier（.t1〜.t7、6段階サイズ縮小+S字カーブオフセット）は
-   * 「スペースを無駄遣いしすぎている」とのフィードバックを受けて廃止し、
-   * 「先頭(最も到着が近い1件)かどうか」だけを判定する単純なロジックに
-   * 置き換えた。ポーリングで1台出発すると2番目以降の到着インスタンスが
-   * 繰り上がるため、出発演出・新規挿入・ETA更新が終わった後に必ずこの関数を
-   * 呼び、現在のDOM順（=到着時刻順、フラットフィードのソート順をそのまま
-   * 反映）から先頭カードにのみ.bus-card--heroを付け直す。
-   *
-   * 出発アニメーション中のカード（.bus-card--departing）はDOM上にまだ
-   * 存在するが表示上は消えていく途中のため、順位カウントから除外する
-   * （除外しないと、消えかけのカードがヒーロー扱いのまま残る一瞬のガクつきが
-   * 起きる、フェーズ7から踏襲の方針）。
-   * ══════════════════════════════════════════════ */
-  function reapplyQueueTiers() {
-    const container = document.getElementById('bus-card-list');
-    if (!container) return;
-
-    const allCards = Array.from(container.querySelectorAll('.bus-card'));
-
-    // 出発演出中のカード（.bus-card--departing）は順位カウントの対象外だが、
-    // それが直前までヒーローだった場合に.bus-card--heroが残ったままだと、
-    // 新たにヒーローになったカードと2件同時に2×2グリッド領域を主張して
-    // レイアウトが崩れる（2026-09-20 jsdomスモークテストで発見・修正）。
-    // 順位カウントの対象外にする前に、まず全カードから一旦外す。
-    allCards.forEach((card) => card.classList.remove('bus-card--hero'));
-
-    const cards = allCards.filter((card) => !card.classList.contains('bus-card--departing'));
-
-    cards.forEach((card, index) => {
-      if (index === 0) card.classList.add('bus-card--hero');
+      track.appendChild(dot);
     });
+
+    syncApproachingBarMatches();
+  }
+
+  // applyRouteEnrichment()が確定させたTimetable行の一致状態（.tt-row--match）を
+  // 読み取り、同じ系統番号のApproachingバードットにも強調表示を反映する。
+  function syncApproachingBarMatches() {
+    const track = document.getElementById('home-approaching-track');
+    if (!track) return;
+
+    const matchedServiceNos = new Set(
+      Array.from(document.querySelectorAll('#home-timetable-list .tt-row--match')).map((row) =>
+        row.getAttribute('data-route-number')
+      )
+    );
+
+    track.querySelectorAll('.home-approaching-bus').forEach((dot) => {
+      const serviceNo = dot.getAttribute('data-route-number');
+      dot.classList.toggle('home-approaching-bus--saved', matchedServiceNos.has(serviceNo));
+    });
+  }
+
+  function clearApproachingBar() {
+    const track = document.getElementById('home-approaching-track');
+    const ticks = document.getElementById('home-approaching-ticks');
+    if (!track) return;
+    track.querySelectorAll('.home-approaching-bus').forEach((el) => el.remove());
+    track.style.width = '';
+    if (ticks) ticks.style.width = '';
   }
 
   /* ══════════════════════════════════════════════
@@ -2241,11 +1804,9 @@
   }
 
   // 1系統分の行（.tt-row）を組み立てる。系統番号バッジ（.tt-badge）は
-  // .bus-badgeと同様のdata属性（data-route-number/data-origin-code/
-  // data-destination-code/data-current-stop-code）を持ち、applyRouteEnrichment()・
-  // applyRelatedOnlyFilter()が.bus-cardと同じロジックで扱えるようにする
-  // （2-8節「両ビューで結果を共有」）。バッジタップで経路モーダルを開く
-  // （2-12節）。
+  // data-route-number/data-origin-code/data-destination-code/
+  // data-current-stop-code属性を持ち、applyRouteEnrichment()が
+  // 目的地一致判定に使う。バッジタップで経路モーダルを開く。
   function buildTimetableRow(service, currentStopCode) {
     const serviceNo = service.ServiceNo || '?';
     const nextBuses = [service.NextBus, service.NextBus2, service.NextBus3];
@@ -2282,12 +1843,19 @@
     // badge/times間のflexレイアウトが崩れないようにする）。
     const destText = representative.DestinationName || '';
 
+    // 2026-09-20ユーザー指示「バッジはみやすいようにもっと大きくして。系統の
+    // カードそのものにつけて」対応。従来は.tt-badge(38px角丸)の右上角に
+    // 16px程度の小さいアイコンを重ねていたが、視認しづらいため.tt-row（行全体、
+    // カード相当）を基準に大きめのアイコンを重ねる形に変更した。位置決めの
+    // 都合上、.tt-badgeの子要素ではなく.tt-rowの直下に置く（CSS側は
+    // .tt-row基準のabsolute配置、route-modal-badgeへの複製ロジック
+    // (openModal内srcIcon検索)もcard.querySelector基準に合わせて修正済み）。
     row.innerHTML = `
       <div class="tt-badge${badgeLengthClass}">
         <span class="tt-badge-number">${escapeHtml(serviceNo)}</span>
-        <span class="tt-badge-match-icon tt-badge-match-icon--1" hidden></span>
-        <span class="tt-badge-match-icon tt-badge-match-icon--2" hidden></span>
       </div>
+      <span class="tt-badge-match-icon tt-badge-match-icon--1" hidden></span>
+      <span class="tt-badge-match-icon tt-badge-match-icon--2" hidden></span>
       <div class="tt-dest">${escapeHtml(destText)}</div>
       <div class="tt-times">${timesHtml}</div>
     `;
@@ -2338,46 +1906,7 @@
     `;
   }
 
-  // エラー時のフォールバックUI（「Unable to load bus arrival information」）
-  function renderErrorState(container, message) {
-    container.innerHTML = `
-      <div class="placeholder-screen">
-        <i class="ti ti-alert-triangle" aria-hidden="true"></i>
-        <p>${message || 'Unable to load bus arrival information'}</p>
-      </div>
-    `;
-  }
-
-  // ローディング表示
-  function renderLoadingState(container) {
-    container.innerHTML = `
-      <div class="placeholder-screen">
-        <i class="ti ti-loader-2" aria-hidden="true"></i>
-        <p>Loading…</p>
-      </div>
-    `;
-  }
-
-  // フィルター用の補助表示（#filter-empty-state / #filter-loading-state）は
-  // #bus-card-listの外側（直後）に追加されるため、renderLoadingState/
-  // renderErrorStateによるcontainer.innerHTMLの書き換えでは消えない。
-  // バス停切替のたびに古いフィルター表示が残らないよう、ここで明示的に除去する。
-  function clearFilterAuxiliaryStates() {
-    const emptyState = document.getElementById('filter-empty-state');
-    if (emptyState) emptyState.remove();
-    const loadingState = document.getElementById('filter-loading-state');
-    if (loadingState) loadingState.remove();
-  }
-
   async function loadBusArrivals(stopCode) {
-    const container = document.getElementById('bus-card-list');
-    if (!container) return;
-
-    clearFilterAuxiliaryStates();
-    renderLoadingState(container);
-    // フェーズ6: Timetableビューも同じ取得結果を使い回す（2-7節・3-2節、
-    // 別APIを叩かない）。両ビューを常に同期して描画しておくことで、
-    // toggleHomeView()での切替は再フェッチ不要な表示切替のみで済む。
     renderTimetableLoadingState();
 
     // バス停切替のたびに系統単位のルート情報キャッシュを破棄する。
@@ -2397,8 +1926,8 @@
         } catch (parseErr) {
           // JSONパース失敗時はデフォルトメッセージのまま
         }
-        renderErrorState(container, message);
         renderTimetableErrorState(message);
+        clearApproachingBar();
         return;
       }
 
@@ -2406,65 +1935,45 @@
       const services = Array.isArray(data.Services) ? data.Services : [];
 
       if (services.length === 0) {
-        renderErrorState(container, 'No buses are currently running from this stop');
         renderTimetableErrorState('No buses are currently running from this stop');
+        clearApproachingBar();
         return;
       }
 
-      // フェーズ4 タスク分解ステップ1: 「1系統1カード×3時刻内包」から
-      // 「1到着=1カード」のフラット時系列フィードに転換する（.claude/plan.md 第2-1節）。
-      // 到着予定が1件もない系統（Services[]には存在するが全NextBus*が空）は
-      // ここで自然に除外される（flattenServicesToArrivalInstances内でEstimatedArrival
-      // が空のインスタンスを弾くため）。
       const arrivalInstances = flattenServicesToArrivalInstances(services);
 
       if (arrivalInstances.length === 0) {
-        renderErrorState(container, 'No buses are currently running from this stop');
         renderTimetableErrorState('No buses are currently running from this stop');
+        clearApproachingBar();
         return;
       }
 
       lastRawServices = services;
 
-      container.innerHTML = '';
-      arrivalInstances.forEach((instance) => {
-        container.appendChild(buildBusCard(instance, arrivalInstances, stopCode));
-      });
-      // フェーズ8: カード生成直後に先頭（最も到着が近い1件）へヒーローセル
-      // クラスを一括付与する（.claude/plan-phase8-arrivals-grid-and-modal.md）。
-      reapplyQueueTiers();
+      renderApproachingBar(arrivalInstances);
 
       // フェーズ6: Timetableビューは上限なし・生のServices[]をそのまま行データに
       // する（8節確定「表示系統数は上限なし」、2-7節）。
       renderTimetableView(services);
 
-      // 星アイコンハイライト・目的地一致タグ（applyRouteEnrichment）を
-      // 先に適用してから、「関連のみ」フィルターがON状態のままバス停が
-      // 切り替わった場合の絞り込み再適用を行う。両ビューの行・カードに対して
-      // 同じ判定結果を共有する（2-8節）。
+      // 星アイコンハイライト・目的地一致タグを適用する。
       applyRouteEnrichment();
-      reapplyFilterIfActive();
 
-      // フェーズ4 タスク分解ステップ6（出発演出）: このバス停の自動ポーリングを
-      // （再）開始する。バス停切替のたびに古いポーリングを止めて新しいバス停用に
-      // 張り直す（startArrivalPolling内でタイマーの再作成・キー集合のリセットを行う）。
-      startArrivalPolling(stopCode, arrivalInstances);
+      // このバス停の自動ポーリングを（再）開始する。バス停切替のたびに
+      // 古いポーリングを止めて新しいバス停用に張り直す。
+      startArrivalPolling(stopCode);
     } catch (err) {
       // ネットワークエラー等（サーバー自体に到達できない場合を含む）
-      renderErrorState(container, 'Unable to load bus arrival information');
       renderTimetableErrorState('Unable to load bus arrival information');
+      clearApproachingBar();
     }
   }
 
   /* ══════════════════════════════════════════════
-   * フェーズ4 タスク分解ステップ6（出発演出）: 自動ポーリング
-   * （.claude/plan.md 第2-6節・第8節リスク6・第9節タスク分解ステップ6）
-   *
-   * 既存実装には自動ポーリングが存在しなかった（画面を開いた時/バス停切替時
-   * のみ/api/bus-arrivalを取得）。出発演出はポーリングによる新旧データの
-   * diffがあって初めて意味を持つため、今回15秒間隔のsetIntervalポーリングを
-   * 新規追加する。サーバー側の12秒TTLキャッシュ（server.js参照）と整合させつつ、
-   * 毎回キャッシュがちょうど切れているとは限らないため少し余裕を持たせた値。
+   * 自動ポーリング（15秒間隔）。Approachingバー・Timetableとも、出発演出等の
+   * 差分アニメーションは持たず、ポーリングのたびに単純に全体を再描画する
+   * （旧Arrivalsグリッド時代のmatchArrivalAcrossPolls()による近似マッチング・
+   * 出発検出は、グリッド廃止に伴い不要になった）。
    * ══════════════════════════════════════════════ */
   const ARRIVAL_POLL_INTERVAL_MS = 15000;
 
@@ -2476,12 +1985,6 @@
   // 「まだこのバス停を見ているか」を確認するために使う（stopArrivalPollingで
   // nullにし、応答時にコード不一致なら古い応答として破棄する）。
   let polledStopCode = null;
-
-  // 直近に描画した到着インスタンスの配列（instanceオブジェクトそのもの）。
-  // ポーリング結果との近似マッチング（matchArrivalAcrossPolls）で
-  // 「出発したバス（対応する新インスタンスが見つからない）」
-  // 「新規出現したバス」を検出するために使う。
-  let lastArrivalSnapshot = [];
 
   // フェーズ6: 直近に取得した生のServices[]（NextBus/NextBus2/NextBus3を
   // 内包したまま、flattenServicesToArrivalInstances()を経由する前のデータ）。
@@ -2504,13 +2007,11 @@
   }
 
   // 指定バス停の自動ポーリングを開始する。既に別バス停向けのタイマーが
-  // 動いていれば止めてから張り直す。初期スナップショットはloadBusArrivals()で
-  // 直前に描画した内容（arrivalInstances）から作る。
-  function startArrivalPolling(stopCode, initialInstances) {
+  // 動いていれば止めてから張り直す。
+  function startArrivalPolling(stopCode) {
     stopArrivalPolling();
 
     polledStopCode = stopCode;
-    lastArrivalSnapshot = (initialInstances || []).slice();
 
     arrivalPollTimerId = setInterval(() => {
       // Home画面が非アクティブな間は無駄なAPI呼び出しをしない
@@ -2520,71 +2021,8 @@
     }, ARRIVAL_POLL_INTERVAL_MS);
   }
 
-  /* ══════════════════════════════════════════════
-   * 出発検出の近似マッチング（実データ検証結果を踏まえた設計、上記
-   * buildArrivalKey()のコメント参照）。
-   *
-   * 前回スナップショットの各到着インスタンスに対し、今回のレスポンスの中から
-   * 「同一系統番号（ServiceNo）・同一起点（OriginCode）」を持つインスタンスの
-   * うち、EstimatedArrivalが最も近い（かつ許容誤差ARRIVAL_MATCH_TOLERANCE_MS
-   * 以内の）ものを「同じ実バス」として対応付ける。1つの新インスタンスは
-   * 1つの前回インスタンスにしか対応しない（貪欲法、時刻差が小さい順に確定）。
-   *
-   * 対応が見つからなかった前回のインスタンス＝出発したバスとみなす。
-   * ══════════════════════════════════════════════ */
-  function matchArrivalAcrossPolls(previousInstances, currentInstances) {
-    // 候補ペア（前回インデックス, 今回インデックス, 時刻差ms）を全列挙し、
-    // 時刻差が小さい順にソートしてから貪欲に確定する。
-    const candidates = [];
-    previousInstances.forEach((prev, prevIndex) => {
-      const prevTime = new Date(prev.EstimatedArrival).getTime();
-      if (Number.isNaN(prevTime)) return;
-
-      currentInstances.forEach((curr, currIndex) => {
-        if (curr.ServiceNo !== prev.ServiceNo) return;
-        if ((curr.OriginCode || '') !== (prev.OriginCode || '')) return;
-
-        const currTime = new Date(curr.EstimatedArrival).getTime();
-        if (Number.isNaN(currTime)) return;
-
-        const diff = Math.abs(currTime - prevTime);
-        if (diff > ARRIVAL_MATCH_TOLERANCE_MS) return;
-
-        candidates.push({ prevIndex, currIndex, diff });
-      });
-    });
-
-    candidates.sort((a, b) => a.diff - b.diff);
-
-    const matchedPrev = new Set();
-    const matchedCurr = new Set();
-    const prevToCurr = new Map(); // prevIndex -> currIndex
-
-    candidates.forEach(({ prevIndex, currIndex }) => {
-      if (matchedPrev.has(prevIndex) || matchedCurr.has(currIndex)) return;
-      matchedPrev.add(prevIndex);
-      matchedCurr.add(currIndex);
-      prevToCurr.set(prevIndex, currIndex);
-    });
-
-    // 対応が見つからなかった前回のインスタンス＝出発したバス
-    const departedPrevIndexes = [];
-    previousInstances.forEach((_, index) => {
-      if (!matchedPrev.has(index)) departedPrevIndexes.push(index);
-    });
-
-    // 対応が見つからなかった今回のインスタンス＝新規出現したバス
-    const newCurrIndexes = [];
-    currentInstances.forEach((_, index) => {
-      if (!matchedCurr.has(index)) newCurrIndexes.push(index);
-    });
-
-    return { prevToCurr, departedPrevIndexes, newCurrIndexes };
-  }
-
-  // ポーリング1回分: 最新の到着情報を取得し、既存カードとdiffを取って
-  // 出発演出（消えたキー）・新規追加（増えたキー）・ETA差分更新
-  // （変化のないキー）を適用する。バス停切替・画面遷移との競合を避けるため、
+  // ポーリング1回分: 最新の到着情報を取得し、Approachingバー・Timetableとも
+  // 単純に全体を再描画する。バス停切替・画面遷移との競合を避けるため、
   // レスポンスが返ってきた時点でまだ同じバス停をポーリング対象としているか
   // 確認してから描画する。
   async function pollBusArrivals(stopCode) {
@@ -2610,159 +2048,10 @@
     const services = Array.isArray(data.Services) ? data.Services : [];
     const arrivalInstances = flattenServicesToArrivalInstances(services);
 
-    // フェーズ6: Timetableビューは出発演出・diffの対象外（5節スコープ外
-    // 「Timetableビューは数値の更新のみで良く、アニメーションは今回追加しない」）
-    // のため、ポーリングのたびに単純に全体を再描画する。
     lastRawServices = services;
+    renderApproachingBar(arrivalInstances);
     renderTimetableView(services);
-
-    applyArrivalDiff(stopCode, arrivalInstances);
-  }
-
-  // ポーリング結果と前回スナップショットをmatchArrivalAcrossPolls()で
-  // 近似マッチングし、
-  // - 対応が見つからなかった前回のインスタンス → 出発演出付きで除去
-  // - 対応が見つからなかった今回のインスタンス → 新規カードとして挿入（フェードイン）
-  // - 対応が見つかったペア → カード全体は再生成せず、ETA表示のみ差分更新
-  // を行う。地図パネルが開いていた場合はちらつき防止のため演出開始前に閉じる
-  // （前ステップ申し送り事項、.claude/plan.md 第2-6節）。
-  function applyArrivalDiff(stopCode, arrivalInstances) {
-    const container = document.getElementById('bus-card-list');
-    if (!container) return;
-
-    const existingCardsByKey = new Map();
-    Array.from(container.querySelectorAll('.bus-card')).forEach((card) => {
-      const key = card.getAttribute('data-arrival-key');
-      if (key) existingCardsByKey.set(key, card);
-    });
-
-    const { prevToCurr, departedPrevIndexes, newCurrIndexes } = matchArrivalAcrossPolls(
-      lastArrivalSnapshot,
-      arrivalInstances
-    );
-
-    // 1. 出発検出: 前回のインスタンスのうち、今回対応が見つからなかったもの
-    departedPrevIndexes.forEach((prevIndex) => {
-      const prevInstance = lastArrivalSnapshot[prevIndex];
-      const key = buildArrivalKey(prevInstance);
-      const card = existingCardsByKey.get(key);
-      if (card) {
-        playDepartAnimation(card);
-      }
-    });
-
-    // 2. 差分更新: 対応が見つかったペアは、既存カードのETA表示のみ更新する
-    //    （data-arrival-keyは新しいEstimatedArrivalの値に更新し、次回ポーリングの
-    //    近似マッチングでも一貫してこのカード要素を辿れるようにする）。
-    prevToCurr.forEach((currIndex, prevIndex) => {
-      const prevInstance = lastArrivalSnapshot[prevIndex];
-      const currInstance = arrivalInstances[currIndex];
-      const prevKey = buildArrivalKey(prevInstance);
-      const card = existingCardsByKey.get(prevKey);
-      if (!card) return;
-
-      updateBusCardEta(card, currInstance, arrivalInstances);
-      const newKey = buildArrivalKey(currInstance);
-      card.setAttribute('data-arrival-key', newKey);
-
-      existingCardsByKey.delete(prevKey);
-      existingCardsByKey.set(newKey, card);
-    });
-
-    // 3. 新規挿入: 今回のインスタンスのうち、前回に対応するものが見つからなかったもの。
-    //    到着時刻昇順を保つため、挿入位置は「自分より後の時刻を持つ既存カードの
-    //    直前」に置く（末尾挿入だと新規到着が最下部に紛れ込みソート順が崩れるため）。
-    newCurrIndexes.forEach((currIndex) => {
-      const instance = arrivalInstances[currIndex];
-      const newCard = buildBusCard(instance, arrivalInstances, stopCode);
-      newCard.classList.add('bus-card--entering');
-
-      const insertBeforeCard = findInsertionPointForNewArrival(container, instance);
-      if (insertBeforeCard) {
-        container.insertBefore(newCard, insertBeforeCard);
-      } else {
-        container.appendChild(newCard);
-      }
-
-      // 挿入直後にクラスを外してフェードインtransitionを発火させる
-      // （同フレーム内でclass付与→除去するとtransitionが走らないため、
-      // 次フレームまで待つ）。
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          newCard.classList.remove('bus-card--entering');
-        });
-      });
-    });
-
-    lastArrivalSnapshot = arrivalInstances.slice();
-
-    // フェーズ8: 出発・新規挿入によりリスト内の順位が変わったため、
-    // ヒーローセル判定（先頭かどうか）を再計算する。出発演出中のカード
-    // （.bus-card--departing）はreapplyQueueTiers()内で順位カウントから
-    // 除外されるため、消えかけのカードの分だけ後続がずれることはない
-    // （.claude/plan-phase8-arrivals-grid-and-modal.md 1-5節）。
-    reapplyQueueTiers();
-
-    // 新規追加・出発によりDOM構成が変わったため、ハイライト・目的地一致タグ・
-    // フィルターを再適用する。既存の系統単位キャッシュ
-    // （serviceRouteInfoCache）があるため、新規カード以外への追加API呼び出しは
-    // 発生しない想定。
     applyRouteEnrichment();
-    reapplyFilterIfActive();
-  }
-
-  // 新規到着カードの挿入位置（到着時刻の昇順を維持するための「直前に置くべき
-  // 既存カード」）を探す。見つからない場合はnull（末尾に追加）を返す。
-  // 比較にはETAの分数（data-eta-minutes、buildBusCard/updateBusCardEtaが
-  // 常に付与）を使う。同じ秒単位までの厳密なソートではないが、
-  // カード一覧の見た目上の順序としては十分な精度。
-  function findInsertionPointForNewArrival(container, instance) {
-    const newMinutes = estimateMinutesFromNow(instance.EstimatedArrival);
-    if (newMinutes === null) return null;
-
-    const cards = Array.from(container.querySelectorAll('.bus-card'));
-    for (const card of cards) {
-      const cardMinutesAttr = card.getAttribute('data-eta-minutes');
-      if (cardMinutesAttr === null || cardMinutesAttr === '') continue;
-      const cardMinutes = Number(cardMinutesAttr);
-      if (cardMinutes > newMinutes) return card;
-    }
-    return null;
-  }
-
-  // 出発演出: カードに.bus-card--departingクラスを付与してCSSアニメーション
-  // （スライド+フェードアウト+高さ縮小、mockup v2 .departing/@keyframes depart
-  // 相当）を再生し、アニメーション終了後にDOMから除去する
-  // （.claude/plan.md 第2-6節・第8節リスク6）。
-  //
-  // 地図パネルが開いていた場合、アニメーション中にLeaflet地図がちらつくのを
-  // 防ぐため、演出開始前に.bus-card-mini-route.openクラスを外して閉じる
-  // （前ステップ申し送り事項）。
-  function playDepartAnimation(card) {
-    if (card.classList.contains('bus-card--departing')) return; // 二重再生防止
-
-    const openMiniRoute = card.querySelector('.bus-card-mini-route.open');
-    if (openMiniRoute) {
-      openMiniRoute.classList.remove('open');
-    }
-
-    card.classList.add('bus-card--departing');
-
-    const removeCard = () => {
-      if (card.parentNode) card.parentNode.removeChild(card);
-    };
-
-    // animationendが発火しない環境（テスト環境等）のフォールバックとして
-    // タイムアウトも設定しておく（CSS側のアニメーション時間より少し長めに）。
-    let removed = false;
-    const safeRemove = () => {
-      if (removed) return;
-      removed = true;
-      removeCard();
-    };
-
-    card.addEventListener('animationend', safeRemove, { once: true });
-    setTimeout(safeRemove, 3000);
   }
 
   /* ══════════════════════════════════════════════
@@ -2938,47 +2227,6 @@
   }
 
   /* ══════════════════════════════════════════════
-   * フェーズ6: Arrivals/Timetable切替フリップボタン
-   * （.claude/plan-phase6-map-timetable-toggle.md 2-6節、2-12節）
-   * ══════════════════════════════════════════════ */
-
-  // 現在のcurrentHomeViewに応じてDOM表示を切り替える（ボタン自体は反転しない、
-  // 初期化・データ再描画後の同期用）。
-  function applyHomeViewToDom() {
-    const flipBtn = document.getElementById('home-view-flip');
-    const flipLabel = document.getElementById('home-view-flip-label');
-    const cardList = document.getElementById('bus-card-list');
-    const timetableList = document.getElementById('home-timetable-list');
-
-    const isArrivals = currentHomeView === 'arrivals';
-
-    if (flipBtn) flipBtn.classList.toggle('flipped', isArrivals);
-    if (flipLabel) flipLabel.textContent = isArrivals ? 'Arrivals' : 'Timetable';
-    if (cardList) cardList.hidden = !isArrivals;
-    if (timetableList) timetableList.hidden = isArrivals;
-  }
-
-  // フリップボタンタップ時: ビューを反転する（セッション内のみ、永続化はしない）。
-  // loadBusArrivals()/pollBusArrivals()が両ビューのDOMを常に同期して描画済み
-  // のため（2-7節・2-8節）、ここでは表示の切替のみで再フェッチ・再描画は
-  // 不要。フィルターの空状態メッセージ（活性コンテナの直後に挿入される、
-  // getActiveListContainer参照）だけは切替のたびに正しい側へ再配置する
-  // 必要があるため、いったん除去してから再適用する。
-  function toggleHomeView() {
-    currentHomeView = currentHomeView === 'timetable' ? 'arrivals' : 'timetable';
-    clearFilterAuxiliaryStates();
-    applyHomeViewToDom();
-    reapplyFilterIfActive();
-  }
-
-  function initHomeViewFlip() {
-    const flipBtn = document.getElementById('home-view-flip');
-    if (!flipBtn) return;
-    applyHomeViewToDom();
-    flipBtn.addEventListener('click', toggleHomeView);
-  }
-
-  /* ══════════════════════════════════════════════
    * フェーズ2 タスク5: 横スワイプ・ドットインジケーター連携
    * ══════════════════════════════════════════════ */
 
@@ -3066,20 +2314,12 @@
     });
   }
 
-  // #bus-card-list に対してタッチ（および開発確認用のマウスドラッグ）による
-  // 横スワイプを検出し、currentStopIndex を+1/-1する。
-  // ユーザー指示「Timetableも横スワイプでバス停がかわるようにして」対応
-  // (2026-09-20)。従来はArrivalsビューの#bus-card-listにのみバインドして
-  // いたが、1コンテナ分のバインド処理を切り出し、Timetableビューの
-  // #home-timetable-listにも同じスワイプ判定を適用する。tracking状態は
-  // コンテナごとに独立させる（同時に見えているのは常に片方のビューのみだが、
-  // クロージャで完全に分離しておく方が安全）。
+  // #home-timetable-list に対してタッチ（および開発確認用のマウスドラッグ）
+  // による横スワイプを検出し、currentStopIndex を+1/-1する
+  // （ユーザー指示「Timetableも横スワイプでバス停がかわるようにして」対応）。
   function initSwipeGesture() {
-    [document.getElementById('bus-card-list'), document.getElementById('home-timetable-list')].forEach(
-      (container) => {
-        if (container) bindSwipeGestureToContainer(container);
-      }
-    );
+    const container = document.getElementById('home-timetable-list');
+    if (container) bindSwipeGestureToContainer(container);
   }
 
   function bindSwipeGestureToContainer(container) {
@@ -3162,60 +2402,52 @@
   }
 
   // GPS取得中〜nearby API呼び出し中のローディング表示。
-  // loadBusArrivals() 内の renderLoadingState() と同じ見た目パターンを流用する。
   function renderGpsLoadingState() {
-    const loadingHtml = `
-      <div class="placeholder-screen">
-        <i class="ti ti-loader-2" aria-hidden="true"></i>
-        <p>Getting your location…</p>
-      </div>
-    `;
-    const container = document.getElementById('bus-card-list');
-    if (container) container.innerHTML = loadingHtml;
-    // フェーズ6: currentHomeViewがtimetableの場合に空白のままにならないよう、
-    // Timetableコンテナにも同じローディング表示を出す（Arrivals/どちらの
-    // ビューが表示中でも一貫した挙動にする）。
     const timetableContainer = document.getElementById('home-timetable-list');
-    if (timetableContainer) timetableContainer.innerHTML = loadingHtml;
+    if (timetableContainer) {
+      timetableContainer.innerHTML = `
+        <div class="placeholder-screen">
+          <i class="ti ti-loader-2" aria-hidden="true"></i>
+          <p>Getting your location…</p>
+        </div>
+      `;
+    }
+    clearApproachingBar();
   }
 
   // GPS失敗時・マスタ未準備時のフォールバックUI表示切替。
-  // 表示中はバスカードリスト・バス停ピル行を隠し、フォールバックUIのみを見せる。
-  // フェーズ6: 地図パネルは4節失敗系「GPS取得前・取得失敗時は、地図パネルは
+  // 表示中はTimetable・バス停ピル行・Approachingバーを隠し、フォールバックUIの
+  // みを見せる。地図パネルは4節失敗系「GPS取得前・取得失敗時は、地図パネルは
   // 空またはフォールバック表示にとどめ、下部のGPSフォールバックUIの表示を
-  // 妨げない」方針のとおり、独立してフォールバック表示に切り替える
-  // （カード一覧・ピル行を隠すのとは別軸の処理）。
+  // 妨げない」方針のとおり、独立してフォールバック表示に切り替える。
   function showGpsFallback(message) {
     const fallback = document.getElementById('gps-fallback');
     const messageEl = document.getElementById('gps-fallback-message');
-    const cardList = document.getElementById('bus-card-list');
     const timetableList = document.getElementById('home-timetable-list');
     const pillRow = document.getElementById('stop-pill-row');
+    const approachingPanel = document.getElementById('home-approaching-panel');
 
     if (messageEl && message) messageEl.textContent = message;
     if (fallback) fallback.hidden = false;
-    if (cardList) cardList.hidden = true;
-    // フェーズ6: currentHomeViewがtimetableの場合に空白のTimetableコンテナが
-    // GPSフォールバックメッセージと二重表示にならないよう、こちらも隠す。
     if (timetableList) timetableList.hidden = true;
     if (pillRow) pillRow.hidden = true;
+    if (approachingPanel) approachingPanel.hidden = true;
     showHomeMapFallback('Map unavailable');
   }
 
-  // 通常コンテンツ（バスカードリスト・バス停ピル行）を再表示し、
+  // 通常コンテンツ（Timetable・バス停ピル行・Approachingバー）を再表示し、
   // フォールバックUIを隠す。GPS取得に成功した場合に呼ぶ。
-  // 地図自体の表示切替はrenderHomeMapPins()呼び出し側で行うため、ここでは
-  // ビュー状態（Timetable/Arrivals）に応じた表示のみ復元する。
+  // 地図自体の表示切替はrenderHomeMapPins()呼び出し側で行う。
   function hideGpsFallback() {
     const fallback = document.getElementById('gps-fallback');
-    const cardList = document.getElementById('bus-card-list');
     const timetableList = document.getElementById('home-timetable-list');
     const pillRow = document.getElementById('stop-pill-row');
+    const approachingPanel = document.getElementById('home-approaching-panel');
 
     if (fallback) fallback.hidden = true;
-    if (cardList) cardList.hidden = currentHomeView !== 'arrivals';
-    if (timetableList) timetableList.hidden = currentHomeView !== 'timetable';
+    if (timetableList) timetableList.hidden = false;
     if (pillRow) pillRow.hidden = false;
+    if (approachingPanel) approachingPanel.hidden = false;
   }
 
   // /api/bus-stops/nearby を呼び出し、成功時は最寄りバス停の到着情報を表示する。
@@ -3428,8 +2660,6 @@
   document.addEventListener('DOMContentLoaded', () => {
     initBottomNav();
     initRouteModal();
-    initFilterToggle();
-    initHomeViewFlip();
     initSwipeGesture();
     initGpsLocation();
 

@@ -22,21 +22,17 @@
     <!-- ═══════════ Home画面 ═══════════ -->
     <section class="screen visible" id="screen-home">
 
-      <!-- 2026-09-13デザイン刷新: SG在住Naviのカテゴリフィルターピル(.filter-chip)を
-           参考に、バス停切替UIをドット+スワイプからピル型タブに変更し、ヘッダー全体
-           （タイトル・ピル行）をスクロールに対して固定表示にした（ユーザー指示）。
-           バスカード一覧側だけがスクロールする専用コンテナ(#home-scroll-content)を
-           持つ構造は、姉妹アプリの#home-scroll-content構造と統一している
-           （initPullToReflesh参照、window.scrollY方式から変更済み）。 -->
+      <!-- 2026-09-13デザイン刷新: ヘッダー全体（タイトル・ピル行）をスクロールに
+           対して固定表示にした（ユーザー指示）。バスカード一覧側だけが
+           スクロールする専用コンテナ(#home-scroll-content)を持つ構造は、
+           姉妹アプリの#home-scroll-content構造と統一している
+           （initPullToReflesh参照、window.scrollY方式から変更済み）。
+           2026-09-20ユーザー指示「右上のRelevant Onlyいらない」により、
+           「関連のみ」フィルタートグルを撤去した（目的地一致ハイライト自体
+           ＝星バッジ・Approachingバーの強調表示は常時適用のまま維持）。 -->
       <header class="app-header">
         <div class="app-header-title-row">
           <div class="app-header-title">Home</div>
-          <div class="app-header-actions">
-            <button type="button" class="filter-toggle" id="filter-toggle" aria-pressed="false">
-              <i class="ti ti-star" aria-hidden="true"></i>
-              <span>Relevant only</span>
-            </button>
-          </div>
         </div>
       </header>
 
@@ -49,17 +45,6 @@
           <span>Loading map…</span>
         </div>
         <div class="home-map-el" id="home-map-el" hidden></div>
-
-        <!-- ユーザー指示「Timetable<>Arrivalのふりっぷは場所を取りたくない」対応。
-             専用行を廃止し、地図右下隅に浮かせる円形ボタンに変更（地図の高さは
-             変えず、レイアウトフロー外で完結する）。ラベルテキストは
-             視覚的には非表示（.home-view-flip-labelはsr-only化）、
-             aria-labelで代替する。JS側(applyHomeViewToDom()等)はDOM位置に
-             依存せずid参照のみのため変更不要。 -->
-        <button type="button" class="home-view-flip" id="home-view-flip" aria-label="Switch between Timetable and Arrivals view">
-          <span class="home-view-flip-icon"><i class="ti ti-arrows-left-right" aria-hidden="true"></i></span>
-          <span class="home-view-flip-label" id="home-view-flip-label">Timetable</span>
-        </button>
       </div>
 
       <!-- ユーザー指示「バス停の横スクロールは地図の下にもってきてください」対応。
@@ -85,83 +70,33 @@
           <button type="button" class="gps-fallback-retry-btn" id="gps-fallback-retry-btn">Try Again</button>
         </div>
 
+        <!-- 2026-09-20: Arrivalsビュー廃止に伴い新設。直近の到着バスをETA位置に
+             応じて並べる横帯（renderApproachingBar()が動的生成）。Now=左端の
+             バス停マーカー、右端=15分以上。Save済み目的地行きの系統のみ
+             サイズ+アクセント色で強調する（それ以外は混雑度の色分け無しの
+             ニュートラル表示、Timetable側で既に見えるため二重に持たせない）。
+             2026-09-20ユーザー指示「固定しなくていい、Timetableと同じように
+             動いていい。文字が細かいので大きく、横スクロールしてもよい」対応。
+             地図直下の固定パネルから#home-scroll-content内の先頭要素に移動し、
+             Timetableと同様にページスクロールで流れる。トラック自体は横幅を
+             ビューポートより広く取り、横スクロールで大きい文字のまま各バスの
+             間隔を確保する（.home-approaching-scroll参照）。 -->
+        <div class="home-approaching-panel" id="home-approaching-panel">
+          <div class="home-approaching-label">Approaching</div>
+          <div class="home-approaching-scroll">
+            <div class="home-approaching-track" id="home-approaching-track">
+              <div class="home-approaching-stop-flag"><i class="ti ti-map-pin" aria-hidden="true"></i></div>
+            </div>
+            <div class="home-approaching-ticks" id="home-approaching-ticks">
+              <span>Now</span><span>5</span><span>10</span><span>15 min+</span>
+            </div>
+          </div>
+        </div>
+
         <!-- フェーズ6: Timetableビュー（系統ごとに1行、renderTimetableView()が動的生成）。
-             初期表示状態はTimetable（2-6節）。#bus-card-listと排他的に表示切替する。 -->
+             2026-09-20 Arrivalsビュー廃止に伴い、Home画面唯一のビューになった。 -->
         <div class="timetable-list" id="home-timetable-list"></div>
 
-        <!-- バスカードはapp.js（buildBusCard）が/api/bus-arrivalの実データから動的生成する。
-             以下は#bus-card-listがJavaScript実行前後の一瞬に表示されうる静的プレースホルダー
-             （GPS取得完了後、loadBusArrivals()がcontainer.innerHTMLを上書きする）。
-             マークアップ・クラス名はbuildBusCard()が生成する実カードと同一にしてある
-             （フェーズ8: ヒーローセル+グリッド、.claude/
-             plan-phase8-arrivals-grid-and-modal.md）。
-             .bus-card--heroクラスはJS実行後にreapplyQueueTiers()が付与し直すため、
-             ここでは見た目確認用に静的に付与しておく（先頭1件のみ）。
-             フェーズ6: 初期表示はTimetableビューのためhiddenを付与、toggleHomeView()が
-             表示状態を切り替える。 -->
-        <div class="bus-card-list" id="bus-card-list" hidden>
-
-          <!-- バスカード1: 目的地一致・最も近い(ヒーローセル) -->
-          <button type="button" class="bus-card bus-card--hero" data-route-from="" data-route-to="Bukit Merah Int" data-route-number="67">
-            <span class="bus-badge-match-icon bus-badge-match-icon--1" style="background: var(--category-color-lime); color: #FAFAF8;">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg>
-            </span>
-            <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
-            <span class="bus-card-num">67</span>
-            <span class="bus-card-meta-row">
-              <span class="bus-card-eta"><span class="bus-card-eta-value bus-card-eta-value--now">Now</span></span>
-              <span class="bus-card-vehicle-icon-wrap">
-                <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20" role="img" aria-label="Single Deck">
-                  <rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4"/>
-                  <rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
-                  <rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
-                  <rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
-                </svg>
-              </span>
-            </span>
-            <span class="bus-card-operator">SBST</span>
-          </button>
-
-          <!-- バスカード2: 通常セル -->
-          <button type="button" class="bus-card" data-route-from="" data-route-to="Clementi Ave 6" data-route-number="74">
-            <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
-            <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
-            <span class="bus-card-num">74</span>
-            <span class="bus-card-meta-row">
-              <span class="bus-card-eta"><span class="bus-card-eta-value">2</span><span class="bus-card-eta-unit">min</span></span>
-              <span class="bus-card-vehicle-icon-wrap">
-                <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--double" viewBox="0 0 34 30" role="img" aria-label="Double Deck">
-                  <rect x="1.5" y="1.5" width="31" height="27" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4"/>
-                  <rect x="4" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
-                  <rect x="13.5" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
-                  <rect x="23" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
-                  <rect x="4" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
-                  <rect x="13.5" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
-                  <rect x="23" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/>
-                </svg>
-              </span>
-            </span>
-          </button>
-
-          <!-- バスカード3: 通常セル -->
-          <button type="button" class="bus-card" data-route-from="" data-route-to="Toa Payoh Int" data-route-number="151">
-            <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
-            <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
-            <span class="bus-card-num">151</span>
-            <span class="bus-card-meta-row">
-              <span class="bus-card-eta"><span class="bus-card-eta-value">4</span><span class="bus-card-eta-unit">min</span></span>
-              <span class="bus-card-vehicle-icon-wrap">
-                <svg class="bus-card-vehicle-icon bus-card-vehicle-icon--single" viewBox="0 0 40 20" role="img" aria-label="Single Deck">
-                  <rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4"/>
-                  <rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
-                  <rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
-                  <rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/>
-                </svg>
-              </span>
-            </span>
-          </button>
-
-        </div>
       </div>
     </section>
 

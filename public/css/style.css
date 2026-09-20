@@ -245,15 +245,6 @@ button {
   padding: 0 14px;
 }
 
-/* ヘッダー右側のアクション群（目的地追加ボタン＋「関連のみ」フィルター）。
-   フェーズ5第8-3節: Home画面への目的地追加ボタンを追加。 */
-.app-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
 /* バス停切替ピル行（SG在住Naviの.filter-chip行と寸法を一致させる:
    gap:8px、padding:8px 20px 12px、横スクロール、折り返しなし）。
    各ピル(.stop-pill)は最寄り/2番目/3番目に近いバス停を表す
@@ -328,17 +319,19 @@ button {
 /* ══════════════════════════════════════════════
  * フェーズ6: Home画面 地図パネル（.claude/plan-phase6-map-timetable-toggle.md 2-1節）
  *
- * #screen-homeの4段構成（ヘッダー→地図→フリップボタン→スクロール領域）のうち、
- * 上から2段目。flex-shrink:0の固定的な高さ帯とする（比率指定にすると
- * ヘッダーの実高さ変動がそのまま地図の高さに波及するため、意図的に固定高を採用）。
- * 高さは`height: 28%; min-height: 170px;`で確定済み（8節、モックアップv3提示のうえ
- * ユーザー確認済み）。グレースケール処理は経路モーダルの.route-modal-map-elと
+ * #screen-homeの4段構成（ヘッダー→地図→バス停ピル行→スクロール領域、
+ * Approachingバーは2026-09-20よりスクロール領域内に移動）のうち、
+ * 上から2段目。flex-shrink:0の
+ * 固定的な高さ帯とする（比率指定にするとヘッダーの実高さ変動がそのまま地図の
+ * 高さに波及するため、意図的に固定高を採用）。高さは当初`height: 28%;
+ * min-height: 170px;`だったが、2026-09-20ユーザー指示「地図の高さをもう少し
+ * 縮めて」により縮小。グレースケール処理は経路モーダルの.route-modal-map-elと
  * 完全に同一の値をそのまま流用し、デザインの一貫性を保つ（2-2節）。
  * ══════════════════════════════════════════════ */
 .home-map-panel {
   flex-shrink: 0;
-  height: 28%;
-  min-height: 170px;
+  height: 20%;
+  min-height: 130px;
   position: relative;
   background: var(--surface-1);
   border-bottom: 1px solid var(--border);
@@ -462,64 +455,162 @@ button {
 }
 
 /* ══════════════════════════════════════════════
- * フェーズ6: Arrivals/Timetable切替フリップボタン
- * （当初2-6節で「地図直下の専用行」として確定したが、ユーザー指示
- * 「Time<>Arrivalのふりっぷは場所を取りたくない」を受け、専用行を廃止し
- * 地図右下隅に浮かせる円形フローティングボタンに変更。地図(.home-map-panel)
- * の高さはそのまま、レイアウトフローに一切影響しない。タップのたびに
- * アイコンが180度回転して現在のビューを示す（テキストラベルは
- * aria-label相当としてDOM上は残すが視覚的にはsr-only化）。
+ * Approachingバー（Home画面、2026-09-20新規）
+ *
+ * Arrivalsビュー廃止に伴い、Arrivals/Timetable切替フリップボタン
+ * (.home-view-flip、地図右下隅の円形ボタン)も撤去した。代わりに
+ * #home-scroll-content内・Timetableの直前に、直近の到着バスをETA位置に
+ * 応じて並べる横長の帯を配置する（mockups/arrivals-bar-timetable-combined-v1.html
+ * ユーザー承認済み、その後の実機フィードバックで下記2点を追加調整）。
+ *
+ * - グレーベース: 混雑度の色分けはこのバーでは持たない（Timetable側で
+ *   既に見えるため二重に持たせない）。唯一の強調はSave済み目的地行きの
+ *   系統のみ（サイズ+アクセント色）。
+ * - トラック背景は白（当初モック案の黒っぽい道路背景はユーザー指示により
+ *   白に変更）。
+ * - 左端=Now（バス停マーカー）、右端=15分以上。ユーザー指示「Nowが
+ *   左のほうがいい」を反映。
+ * - 表示台数は最大MAX_APPROACHING_BAR_BUSES(10)本まで（app.js参照）。
+ * - 2026-09-20実機フィードバック「文字が細かい、固定しなくていい、
+ *   Timetableと同じように動いていい」対応。地図直下の固定パネルから
+ *   #home-scroll-content内の通常フロー（Timetableと一緒にスクロール）に
+ *   移動し、ドット・文字サイズを拡大。台数が多くても窮屈にならないよう
+ *   トラック自体をビューポートより広く取り、横スクロール可能にした
+ *   （.home-approaching-scroll、トラック幅はrenderApproachingBar()が
+ *   台数に応じて動的に設定する）。
  * ══════════════════════════════════════════════ */
-.home-view-flip {
+.home-approaching-panel {
+  margin: 14px 14px 14px;
+  padding: 10px 12px 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 3px 10px rgba(43, 43, 39, 0.06);
+}
+
+.home-approaching-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.home-approaching-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.home-approaching-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.home-approaching-track {
+  position: relative;
+  height: 56px;
+  min-width: 100%;
+  border-radius: 9px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  overflow: visible;
+}
+
+.home-approaching-track::before {
+  content: '';
   position: absolute;
-  right: 14px;
-  bottom: 14px;
-  z-index: 450;
-  width: 46px;
-  height: 46px;
+  left: 10px;
+  right: 10px;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background-image: repeating-linear-gradient(90deg, var(--border-strong) 0 10px, transparent 10px 20px);
+}
+
+/* 2026-09-20ユーザー指示「地図上のバス停アイコンと同じにしてください」対応。
+   .home-map-stop-pin--active（選択中バス停ピン）と同じ配色・アイコン
+   (ti-map-pin、塗りつぶし円+白いピン)に揃えた。トラック(白背景)との
+   分離用に白いリングのみ独自に追加している。 */
+.home-approaching-stop-flag {
+  position: absolute;
+  /* 2026-09-20実機で発見・修正: トラックが.home-approaching-scroll
+     （横スクロール用にoverflow-x:autoを持つ祖先）の内側に入ったため、
+     負のleft(-4px)だとスクロール領域の左端より手前にはみ出す部分が
+     クリップされ、ピンの左半分が欠けて見えていた。トラック自身の左端
+     (0px)以降に収まる正の値に変更する。 */
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: var(--fill-accent);
-  border: none;
-  box-shadow: 0 4px 14px rgba(43, 43, 39, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.1s ease;
+  box-shadow: 0 2px 6px rgba(43, 43, 39, 0.3), 0 0 0 3px var(--surface-1);
+  z-index: 3;
 }
 
-.home-view-flip:active {
-  transform: scale(0.93);
-}
-
-.home-view-flip-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.home-approaching-stop-flag i {
   color: var(--on-accent);
+  font-size: 14px;
 }
 
-.home-view-flip-icon i {
-  font-size: 18px;
-  transition: transform 0.25s ease;
-}
-
-.home-view-flip.flipped .home-view-flip-icon i {
-  transform: rotate(180deg);
-}
-
-/* テキストラベルはボタンのaria-labelで代替するため視覚的に非表示（sr-only）。
-   JS側(applyHomeViewToDom())は引き続きtextContentを更新するが、
-   円形ボタンには表示スペースが無いため画面上には出さない。 */
-.home-view-flip-label {
+.home-approaching-bus {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+.home-approaching-bus-dot {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--surface-1);
+  border: 2px solid var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-secondary);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* Save済み目的地行きの系統のみ、サイズ+アクセント色で強調する
+   （2026-09-20ユーザー指示「Saveしたバス停に行くバスを目立たせたい、
+   それ以外の色はいらない」）。 */
+.home-approaching-bus--saved {
+  z-index: 3;
+}
+
+.home-approaching-bus--saved .home-approaching-bus-dot {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--fill-accent);
+  border-color: var(--fill-accent);
+  color: var(--on-accent);
+  font-size: 15px;
+  box-shadow: 0 0 0 3px var(--surface-1), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.home-approaching-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  padding: 0 2px;
+  min-width: 100%;
+}
+
+.home-approaching-ticks span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 /* ══════════════════════════════════════════════
@@ -541,6 +632,7 @@ button {
 }
 
 .tt-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -596,29 +688,35 @@ button {
   font-size: 11px;
 }
 
+/* 2026-09-20ユーザー指示「バッジはみやすいようにもっと大きくして。系統の
+   カードそのものにつけて」対応。従来は.tt-badge(38px角丸)基準で16pxの
+   小さいアイコンを右上角に重ねていたが視認しづらいため、.tt-row(行全体)
+   基準のabsolute配置に変更し、サイズも16px→24pxに拡大した(位置は
+   .tt-badgeの右上角付近を踏襲、buildTimetableRow()側でDOM構造も
+   .tt-row直下に変更済み)。 */
 .tt-badge-match-icon {
   position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 16px;
-  height: 16px;
+  top: 4px;
+  left: 34px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 2px solid var(--surface-1);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
   z-index: 2;
 }
 
 .tt-badge-match-icon--2 {
-  right: 8px;
+  left: 54px;
   z-index: 1;
 }
 
 .tt-badge-match-icon svg {
-  width: 9px;
-  height: 9px;
+  width: 13px;
+  height: 13px;
 }
 
 .tt-dest {
@@ -693,44 +791,6 @@ button {
   letter-spacing: 0.02em;
 }
 
-.filter-toggle {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 7px 14px;
-  transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
-}
-
-.filter-toggle i {
-  font-size: 14px;
-  color: var(--text-secondary);
-}
-
-.filter-toggle span {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.filter-toggle[aria-pressed="true"] {
-  background: var(--fill-accent);
-  border-color: var(--border-accent);
-}
-
-.filter-toggle[aria-pressed="true"] i,
-.filter-toggle[aria-pressed="true"] span {
-  color: var(--on-accent);
-}
-
-.filter-toggle[aria-pressed="true"] span {
-  font-weight: 700;
-}
-
 /* ══════════════════════════════════════════════
  * GPS取得失敗時のフォールバックUI
  * 表示中はバスカードリスト・バス停ピル行を非表示にする
@@ -793,188 +853,15 @@ button {
 }
 
 /* ══════════════════════════════════════════════
- * バスカードフィード（Home画面）— ヒーローセル+グリッド（フェーズ8）
+ * バスカードフィード（Home画面のArrivalsグリッド、フェーズ4〜8）— 2026-09-20
+ * ユーザー指示によりArrivalsビュー自体を廃止し、Approachingバー
+ * （.home-approaching-panel、後述）+ Timetable単独ビューに置き換えた。
+ * 過去のヒーローセル+グリッド・出発演出等の詳細はgit履歴を参照。
  *
- * .claude/plan-phase8-arrivals-grid-and-modal.md（ユーザー承認済み）に基づき、
- * フェーズ7の縦一列S字カーブキューイングカード（.claude/plan-phase7-
- * arrivals-queue-cards.md、tier(.t1〜.t7)による6段階サイズ縮小・
- * translateXオフセット・margin-top重ね）を全面刷新した。ユーザーフィード
- * バック「少しスペースを無駄遣いしすぎてしまっているので、縦一列じゃない
- * 形がよさそう」を受け、3列グリッド+最も近い1件だけを2×2のヒーローセルで
- * 強調する構成に変更（mockups/arrivals-queue-multicolumn-v1.html Option 3）。
- *
- * さらに実装着手後の追加指示（コーディネーター経由）で、カード背景は
- * 混雑度による塗りつぶしをやめ白(--surface-1)で統一、車種+混雑度は
- * フェーズ4〜6で確立していたバスイラストSVG（形=単一/二階建て、
- * 窓の色=混雑度、buildBusIllustrationSvg()）を復活させる形に変更した
- * （mockups/arrivals-card-white-saved-v1.htmlの「小さい色ドット」案は
- * 「2階建て/1階建ての情報も表示したい」との指摘を受けて不採用、撤回済み）。
- * 最終的にmockups/arrivals-card-white-saved-v2.html（ユーザー正式承認済み）
- * に基づき、バスイラストはヒーロー・通常セル両方に表示し（1台のイラストで
- * 車種+混雑度の両方を表現するため通常セルでも省略しない）、バス会社
- * (Operator)テキストのみヒーローセル限定で表示する構成に確定した。
- *
- * サイズ階層は「先頭(ヒーロー)か、それ以外(通常セル)か」の2値のみに
- * 単純化した（tierクラス.t1〜.t7は廃止）。JS側reapplyQueueTiers()
- * （フェーズ7から関数名は維持しつつ内部実装のみ簡略化）が先頭カードにのみ
- * .bus-card--heroを付与する。
+ * .bus-badge / .bus-badge--long / .bus-badge-match-icon(--1/--2)は
+ * 経路モーダルヘッダー(#route-modal-badge)が引き続き依存しているため
+ * 残している（Arrivalsカード自体は削除済み、renderMatchTag()参照）。
  * ══════════════════════════════════════════════ */
-.bus-card-list {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  padding: 16px 14px 24px;
-}
-
-.bus-card {
-  position: relative;
-  aspect-ratio: 1 / 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  color: var(--text-primary);
-  font-weight: 800;
-  box-shadow: 0 3px 10px rgba(43, 43, 39, 0.08);
-  cursor: pointer;
-  transition: transform 0.2s ease, opacity 0.3s ease;
-}
-
-.bus-card:active {
-  transform: scale(0.96);
-}
-
-/* ヒーローセル（最も到着が近い1件のみ）: 2×2マスに拡大し、文字サイズも
-   大きくする。それ以外は全て同一サイズの通常セル（グリッドの1×1のまま）。 */
-.bus-card--hero {
-  grid-column: span 2;
-  grid-row: span 2;
-}
-
-/* 系統番号（大きな数字、電光掲示板を意識した最大の視覚要素）。文字色は
-   ニュートラル(--text-primary)に統一（フェーズ7までの白文字は、混雑度の
-   色塗りつぶし背景が前提だったため、白背景化に伴い濃色に変更）。 */
-.bus-card-num {
-  line-height: 1;
-  font-size: 18px;
-}
-
-.bus-card--hero .bus-card-num {
-  /* ユーザー指摘「文字サイズにバランス整えて」対応(2026-09-20実機で発見)。
-     2x2ヒーローセルに対し34px以下の要素群だと下部に余白が目立ちすぎたため、
-     ヒーローセル内の各要素(数字・ETA・アイコン・Operator)を全体的に拡大し
-     余白を埋める方向で調整した。 */
-  font-size: 42px;
-}
-
-/* 4文字以上の系統番号（118A、961M等）用。正方形カードの狭い横幅に
-   収まりきらず文字が縁に張り付くため縮小する（2026-09-13実機で発見・修正の
-   踏襲）。 */
-.bus-card-num--long {
-  letter-spacing: -0.5px;
-}
-
-.bus-card-eta {
-  font-weight: 700;
-  color: var(--text-secondary);
-  /* ユーザー指摘「到着までの分数の時間のフォントサイズが小さい」対応
-     (2026-09-20実機で発見、9px→12pxに拡大)。縦の余白は親の
-     .bus-card-meta-row側で管理するためここでは持たない。 */
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.bus-card--hero .bus-card-eta {
-  font-size: 20px;
-}
-
-.bus-card-eta-value--now {
-  color: var(--caramel-light);
-}
-
-.bus-card-eta-unit {
-  margin-left: 2px;
-}
-
-/* サブ行: バスイラスト(車種+混雑度)+バス会社(Operator)。
-   mockups/arrivals-card-white-saved-v2.html（ユーザー承認済み）に基づき、
-   バスイラストは通常セル・ヒーローセル両方に表示する（1台のイラストで
-   車種(形)+混雑度(窓の色)の両方を表現するため、通常セルでも省略しない）。
-   Operator(バス会社)テキストのみスペースの都合上ヒーローセル限定で表示する
-   （.claude/plan-phase8-arrivals-grid-and-modal.md 1-2節）。
-   2026-09-20ユーザー指示「時間とバスアイコンを並べてほしい。時間が左、
-   バスアイコンが右、その下にバス会社」により、縦積み(.bus-card-sub-row)を
-   廃止し、ETA(.bus-card-eta)とアイコンを横並びの1行(.bus-card-meta-row)に
-   変更。Operatorはその下の別要素として続く。 */
-.bus-card-meta-row {
-  /* ユーザー指摘「左右の端によってるので近づけて」(2026-09-20)対応で
-     space-between→center+gapに変更後、さらに「分とバスアイコンもっと
-     近づけて」との指摘を受けgapを再縮小(10px→5px、14px→7px)。 */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  gap: 5px;
-  margin-top: 2px;
-}
-
-.bus-card--hero .bus-card-meta-row {
-  gap: 7px;
-  margin-top: 4px;
-}
-
-.bus-card-operator {
-  display: none;
-  font-weight: 700;
-  color: var(--text-muted);
-  letter-spacing: 0.03em;
-  font-size: 10px;
-  margin-top: 4px;
-}
-
-.bus-card--hero .bus-card-operator {
-  font-size: 12px;
-  margin-top: 8px;
-  display: inline;
-}
-
-/* バスイラストアイコン（フェーズ4〜6で確立、フェーズ7で一時廃止していたが
-   フェーズ8で復活。形=単一/二階建てのシルエット、窓の色=混雑度。本体の
-   輪郭線は車椅子アイコンと同じ--text-mutedの線画のみで、グラデーション等の
-   塗りつぶしは行わない（git 36bdd0c時点のbuildBusIllustrationSvg()をそのまま
-   復元・流用、コーディネーター指示により確認済み）。
-   サイズはmockups/arrivals-card-white-saved-v2.htmlの値をそのまま採用
-   （svgのwidthのみ指定し、height:autoでviewBoxの縦横比を保つ）。 */
-.bus-card-vehicle-icon-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.bus-card-vehicle-icon {
-  height: auto;
-}
-
-.bus-card-vehicle-icon--single,
-.bus-card-vehicle-icon--double {
-  width: 26px;
-}
-
-.bus-card--hero .bus-card-vehicle-icon--single,
-.bus-card--hero .bus-card-vehicle-icon--double {
-  width: 60px;
-}
-
-/* 経路モーダルヘッダー(#route-modal-badge)専用の系統番号バッジ。
-   フェーズ7でArrivalsカード自体がバッジ相当のデザインに変わった際、
-   Home画面側で.bus-badgeを使わなくなったため誤って基本スタイル一式が
-   削除されていた(2026-09-20実機で発見・修正。「Routeの表示が変です」の
-   スクリーンショットでバッジが完全に無地・無サイズになっていたのが
-   この削除が原因と判明)。経路モーダルは引き続きこのクラスに依存しているため
-   復元する(値はフェーズ6時点のPattern A密度、50px/20pxのまま)。 */
 .bus-badge {
   flex-shrink: 0;
   width: 50px;
@@ -997,15 +884,10 @@ button {
   letter-spacing: -0.5px;
 }
 
-/* 目的地一致インジケーター: 角に重ねる小さな丸アイコン（既存.bus-badge-
-   match-iconと同じ考え方、CLAUDE.md「バスカード」節参照）。カード自体が
-   バッジ相当のため、カードの角に直接重ねる。白背景化後もこの表示方法は
-   変更なし（.claude/plan-phase8-arrivals-grid-and-modal.md 1-4節）。 */
+/* 目的地一致インジケーター: 角に重ねる小さな丸アイコン。 */
 .bus-badge-match-icon {
   position: absolute;
   top: -8px;
-  /* ユーザー指摘「Saveしたバス停のバッジも小さい」対応
-     (2026-09-20実機で発見、20px→28pxに拡大) */
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -1015,11 +897,6 @@ button {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   border: 2px solid var(--surface-1);
   z-index: 3;
-}
-
-.bus-card--hero .bus-badge-match-icon {
-  width: 24px;
-  height: 24px;
 }
 
 .bus-badge-match-icon--1 {
@@ -1032,51 +909,9 @@ button {
   z-index: 1;
 }
 
-.bus-card--hero .bus-badge-match-icon--2 {
-  right: 10px;
-}
-
 .bus-badge-match-icon svg {
   width: 11px;
   height: 11px;
-}
-
-.bus-card--hero .bus-badge-match-icon svg {
-  width: 13px;
-  height: 13px;
-}
-
-/* ══════════════════════════════════════════════
- * 出発演出（フェーズ4由来、フェーズ7・8でも継続採用）。
- *
- * その場でスケールダウンしながらフェードアウトする（「バスが発車して
- * 見えなくなる」演出）。JS側（playDepartAnimation）が到着インスタンスの
- * 消失を検出したカードに.bus-card--departingを付与し、animationend後に
- * DOMから除去する。
- * ══════════════════════════════════════════════ */
-.bus-card--departing {
-  animation: bus-card-depart 0.5s ease-in forwards;
-  pointer-events: none;
-}
-
-@keyframes bus-card-depart {
-  0% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(0.4);
-  }
-}
-
-/* 新規到着カードのフェードイン（出発演出と対になる入場演出、plan.md 第2節
-   「新しく出現したキーは新規追加として自然に挿入、フェードイン等の入場演出が
-   あれば良い」に対応）。JS側（applyArrivalDiff）が挿入直後に
-   .bus-card--enteringを付与し、次フレームで除去することでtransitionを発火させる。 */
-.bus-card--entering {
-  opacity: 0;
-  transform: scale(0.7);
 }
 
 /*

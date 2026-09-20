@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGBusNavi — Arrivals: time-bucket sections (mockup, not wired to app)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAFAF8; --warm-white: #FFFFFF; --sand: #EAEAE6; --sand-dark: #DCDCD6;
+    --caramel: #6F8F63; --caramel-pale: #EEF3EA;
+    --midnight: #2B2B27; --warm-gray: #767268; --light-gray: #A8A49A;
+    --font-heading: 'Inter', sans-serif;
+    --surface-2: var(--cream); --surface-1: var(--warm-white);
+    --text-primary: var(--midnight); --text-secondary: var(--warm-gray); --text-muted: var(--light-gray);
+    --fill-accent: var(--caramel); --border: var(--sand); --on-accent: var(--warm-white);
+    --load-green: #4C9A5B; --load-amber: #C79A2E; --load-red: #C0392B;
+    --lime: #8FA85E;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; font-family: var(--font-heading); }
+  body { background: #ECECE8; color: var(--text-primary); padding: 24px 0 80px; }
+
+  .note { max-width: 480px; margin: 0 auto 20px; padding: 0 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+  .note b { color: var(--text-primary); }
+  .note ul { padding-left: 18px; margin-top: 6px; }
+
+  .phone {
+    max-width: 380px; margin: 0 auto;
+    background: var(--surface-2);
+    border-radius: 32px;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+    height: 760px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-header { flex-shrink:0; padding: 16px 14px 8px; display:flex; align-items:center; justify-content:space-between; }
+  .app-header-title { font-size: 20px; font-weight: 700; }
+  .filter-toggle { display:flex; align-items:center; gap:5px; background: var(--surface-2); border:1px solid var(--border); border-radius:999px; padding:6px 12px; font-size:13px; color:var(--text-secondary); }
+
+  .scroll-content { flex:1; overflow-y:auto; padding: 4px 14px 24px; }
+
+  .bucket { margin-top: 18px; }
+  .bucket:first-child { margin-top: 6px; }
+  .bucket-label-row { display:flex; align-items:baseline; gap:8px; margin-bottom:8px; }
+  .bucket-label { font-size: 12px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; color: var(--text-primary); }
+  .bucket-label.now { color: var(--fill-accent); }
+  .bucket-count { font-size:11px; color: var(--text-muted); font-weight:600; }
+  .bucket-rule { flex:1; height:1px; background: var(--border); }
+
+  .qcard {
+    position: relative;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color: var(--text-primary);
+    font-weight:800;
+    box-shadow: 0 3px 10px rgba(43,43,39,0.06);
+  }
+  .qcard .num { line-height:1; }
+  .qcard .eta { font-weight:700; color: var(--text-secondary); margin-top:2px; }
+  .qcard .veh { margin-top:4px; }
+
+  /* NOW bucket: full-width hero row, biggest cards (usually 1, occasionally 2) */
+  .now-row { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:10px; }
+  .now-row .qcard { aspect-ratio: 2.4/1; border-color: var(--fill-accent); border-width:1.5px; }
+  .now-row .num { font-size:30px; }
+  .now-row .eta { font-size:14px; }
+  .now-row .veh svg { width:40px; }
+  .now-row .qcard { flex-direction:row; gap:14px; padding: 0 18px; }
+
+  /* <=5 min bucket: 3-col medium cards */
+  .grid-3 { display:grid; grid-template-columns: repeat(3, 1fr); gap:9px; }
+  .grid-3 .qcard { aspect-ratio:1/1; }
+  .grid-3 .num { font-size:18px; }
+  .grid-3 .eta { font-size:10px; }
+  .grid-3 .veh svg { width:26px; }
+
+  /* 5-15 min bucket: 4-col compact cards */
+  .grid-4 { display:grid; grid-template-columns: repeat(4, 1fr); gap:7px; }
+  .grid-4 .qcard { aspect-ratio:1/1; border-radius:13px; }
+  .grid-4 .num { font-size:14px; }
+  .grid-4 .eta { font-size:9px; }
+  .grid-4 .veh svg { width:18px; }
+
+  /* 15+ min bucket: flat chip row, least urgent = least space */
+  .chip-row { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { display:flex; align-items:center; gap:5px; background: var(--surface-1); border:1px solid var(--border); border-radius:999px; padding:5px 10px 5px 8px; font-size:12px; font-weight:700; color: var(--text-secondary); }
+  .chip .num { color: var(--text-primary); font-weight:800; }
+  .chip .eta { color: var(--text-muted); font-weight:600; }
+
+  .saved-badge { position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,0.22); border:2px solid var(--surface-1); }
+  .saved-badge svg { width:11px !important; height:11px; }
+  .now-row .saved-badge { width:24px; height:24px; top:-8px; right:-8px; }
+  .now-row .saved-badge svg { width:13px !important; height:13px; }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>SGBusNavi — Arrivals方向A「タイムバケット・セクション分割」(モックアップ)</b><br>
+  現行のヒーロー+3列グリッドを「Now」「≤5 min」「5–15 min」「15 min+」の4セクションに再構成する案。緊急度が下がるほどカードサイズを段階的に縮小し(Nowは横長ヒーロー→5分以内は3列→5-15分は4列→15分以上はテキストチップ)、遠いバスに画面を割きすぎないようにする。
+  <ul>
+    <li>カード自体の見た目(白背景・枠線・バスイラスト・Saveバッジ)は現行フェーズ8のデザインをそのまま流用</li>
+    <li>セクションラベルは時間帯のみ(混雑度の緑/黄/赤とは別の意味なので色を流用しない)</li>
+    <li>バス台数が少ない時間帯は自然と余白が減る(グリッドが埋まらない分だけ縮む)</li>
+  </ul>
+</div>
+
+<div class="phone">
+  <div class="app-header">
+    <div class="app-header-title">Home</div>
+    <button class="filter-toggle" aria-pressed="false"><i class="ti ti-star"></i></button>
+  </div>
+
+  <div class="scroll-content">
+
+    <div class="bucket">
+      <div class="bucket-label-row"><span class="bucket-label now">Now</span><span class="bucket-rule"></span></div>
+      <div class="now-row">
+        <div class="qcard">
+          <span class="saved-badge" style="background:var(--lime);"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg></span>
+          <div>
+            <span class="num">67</span><br>
+            <span class="eta">Now</span>
+          </div>
+          <span class="veh">
+            <svg viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/></svg>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="bucket">
+      <div class="bucket-label-row"><span class="bucket-label">Within 5 min</span><span class="bucket-count">3 buses</span><span class="bucket-rule"></span></div>
+      <div class="grid-3">
+        <div class="qcard">
+          <span class="saved-badge" style="background:var(--lime);"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg></span>
+          <span class="num">151</span><span class="eta">2 min</span>
+          <span class="veh"><svg viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/></svg></span>
+        </div>
+        <div class="qcard">
+          <span class="num">74</span><span class="eta">3 min</span>
+          <span class="veh"><svg viewBox="0 0 34 30"><rect x="1.5" y="1.5" width="31" height="27" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/><rect x="13.5" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/><rect x="23" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/><rect x="4" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/><rect x="13.5" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/><rect x="23" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/></svg></span>
+        </div>
+        <div class="qcard">
+          <span class="num">45</span><span class="eta">5 min</span>
+          <span class="veh"><svg viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/></svg></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="bucket">
+      <div class="bucket-label-row"><span class="bucket-label">5–15 min</span><span class="bucket-count">4 buses</span><span class="bucket-rule"></span></div>
+      <div class="grid-4">
+        <div class="qcard"><span class="num">190</span><span class="eta">7 min</span><span class="veh"><svg viewBox="0 0 34 30"><rect x="1.5" y="1.5" width="31" height="27" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="7" height="6" rx="1.4" fill="var(--load-red)"/><rect x="13.5" y="4" width="7" height="6" rx="1.4" fill="var(--load-red)"/><rect x="23" y="4" width="7" height="6" rx="1.4" fill="var(--load-red)"/><rect x="4" y="18" width="7" height="6" rx="1.4" fill="var(--load-red)"/><rect x="13.5" y="18" width="7" height="6" rx="1.4" fill="var(--load-red)"/><rect x="23" y="18" width="7" height="6" rx="1.4" fill="var(--load-red)"/></svg></span></div>
+        <div class="qcard"><span class="num">10</span><span class="eta">9 min</span><span class="veh"><svg viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-amber)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-amber)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-amber)"/></svg></span></div>
+        <div class="qcard"><span class="num">133</span><span class="eta">11 min</span><span class="veh"><svg viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/></svg></span></div>
+        <div class="qcard"><span class="num">67</span><span class="eta">14 min</span><span class="veh"><svg viewBox="0 0 34 30"><rect x="1.5" y="1.5" width="31" height="27" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="7" height="6" rx="1.4" fill="var(--load-green)"/><rect x="13.5" y="4" width="7" height="6" rx="1.4" fill="var(--load-green)"/><rect x="23" y="4" width="7" height="6" rx="1.4" fill="var(--load-green)"/><rect x="4" y="18" width="7" height="6" rx="1.4" fill="var(--load-green)"/><rect x="13.5" y="18" width="7" height="6" rx="1.4" fill="var(--load-green)"/><rect x="23" y="18" width="7" height="6" rx="1.4" fill="var(--load-green)"/></svg></span></div>
+      </div>
+    </div>
+
+    <div class="bucket">
+      <div class="bucket-label-row"><span class="bucket-label">15 min+</span><span class="bucket-count">2 buses</span><span class="bucket-rule"></span></div>
+      <div class="chip-row">
+        <div class="chip"><span class="num">151</span><span class="eta">18 min</span></div>
+        <div class="chip"><span class="num">74</span><span class="eta">22 min</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

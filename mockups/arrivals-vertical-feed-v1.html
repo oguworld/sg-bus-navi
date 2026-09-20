@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGBusNavi — Arrivals: vertical approaching feed (mockup, not wired to app)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAFAF8; --warm-white: #FFFFFF; --sand: #EAEAE6; --sand-dark: #DCDCD6;
+    --caramel: #6F8F63; --caramel-pale: #EEF3EA;
+    --midnight: #2B2B27; --warm-gray: #767268; --light-gray: #A8A49A;
+    --font-heading: 'Inter', sans-serif;
+    --surface-2: var(--cream); --surface-1: var(--warm-white);
+    --text-primary: var(--midnight); --text-secondary: var(--warm-gray); --text-muted: var(--light-gray);
+    --fill-accent: var(--caramel); --border: var(--sand); --on-accent: var(--warm-white);
+    --load-green: #4C9A5B; --load-amber: #C79A2E; --load-red: #C0392B;
+    --lime: #8FA85E;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; font-family: var(--font-heading); }
+  body { background: #ECECE8; color: var(--text-primary); padding: 24px 0 80px; }
+
+  .note { max-width: 480px; margin: 0 auto 20px; padding: 0 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+  .note b { color: var(--text-primary); }
+  .note ul { padding-left: 18px; margin-top: 6px; }
+
+  .phone {
+    max-width: 380px; margin: 0 auto;
+    background: var(--surface-2);
+    border-radius: 32px;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+    height: 800px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-header { flex-shrink:0; padding: 16px 14px 8px; display:flex; align-items:center; justify-content:space-between; }
+  .app-header-title { font-size: 20px; font-weight: 700; }
+  .filter-toggle { display:flex; align-items:center; gap:5px; background: var(--surface-2); border:1px solid var(--border); border-radius:999px; padding:6px 12px; font-size:13px; color:var(--text-secondary); }
+
+  .map-placeholder { flex-shrink:0; margin: 4px 14px 0; height: 86px; border-radius:16px; background: linear-gradient(135deg,#DCE3D6,#C9D3C1); display:flex; align-items:center; justify-content:center; font-size:11px; color: var(--text-secondary); font-weight:600; }
+
+  .feed-panel { flex:1; overflow-y:auto; margin: 12px 14px 16px; position:relative; }
+  .feed-panel-label { font-size:11px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; color: var(--text-muted); margin-bottom:10px; padding-left:2px; }
+
+  /* vertical track: buses drive DOWN toward the stop marker at the bottom */
+  .feed-track-wrap { position:relative; min-height: 560px; padding-left: 22px; }
+  .feed-track-line {
+    position:absolute; left:9px; top:2px; bottom:22px; width:2px;
+    background-image: repeating-linear-gradient(180deg, var(--sand-dark) 0 8px, transparent 8px 16px);
+  }
+  .feed-stop-marker {
+    position:absolute; left:0; bottom:-4px; width:20px; height:20px; border-radius:50%;
+    background: var(--fill-accent); display:flex; align-items:center; justify-content:center;
+    box-shadow: 0 0 0 4px var(--surface-2);
+  }
+  .feed-stop-marker i { color: var(--on-accent); font-size:10px; }
+  .feed-stop-label { position:absolute; left:28px; bottom:-9px; font-size:11px; font-weight:700; color: var(--text-secondary); }
+
+  .feed-row {
+    position: absolute; left: 24px; right:0;
+    display:flex; align-items:center; gap:10px;
+    background: var(--surface-1); border:1px solid var(--border); border-radius:14px;
+    box-shadow: 0 3px 10px rgba(43,43,39,0.07);
+    transform: translateY(-50%);
+  }
+  .feed-row::before { /* connector stub to the track */
+    content:''; position:absolute; left:-16px; top:50%; width:14px; height:2px; background: var(--sand-dark); transform:translateY(-50%);
+  }
+  .feed-row .num { font-weight:800; color: var(--text-primary); line-height:1; }
+  .feed-row .eta { font-weight:700; color: var(--text-secondary); }
+  .feed-row .op { font-weight:700; color: var(--text-muted); letter-spacing:0.03em; }
+  .feed-row .veh svg { display:block; }
+  .feed-row .meta { display:flex; flex-direction:column; gap:1px; }
+
+  .feed-row.saved { border-color: var(--lime); border-width:1.5px; }
+  .feed-row .saved-badge { position:absolute; top:-7px; right:-7px; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,0.22); border:2px solid var(--surface-1); background: var(--lime); }
+  .feed-row .saved-badge svg { width:11px !important; height:11px; }
+
+  /* size tiers: closest = biggest/boldest, farthest = smallest pill */
+  .feed-row.tier-now { padding: 14px 16px; }
+  .feed-row.tier-now .num { font-size:26px; }
+  .feed-row.tier-now .eta { font-size:13px; }
+  .feed-row.tier-now .op { font-size:10px; }
+  .feed-row.tier-now .veh svg { width:38px; }
+
+  .feed-row.tier-near { padding: 11px 14px; }
+  .feed-row.tier-near .num { font-size:19px; }
+  .feed-row.tier-near .eta { font-size:11px; }
+  .feed-row.tier-near .veh svg { width:28px; }
+
+  .feed-row.tier-mid { padding: 8px 12px; }
+  .feed-row.tier-mid .num { font-size:15px; }
+  .feed-row.tier-mid .eta { font-size:10px; }
+  .feed-row.tier-mid .veh svg { width:20px; }
+
+  .feed-row.tier-far { padding: 6px 10px; border-radius: 999px; }
+  .feed-row.tier-far .num { font-size:12px; }
+  .feed-row.tier-far .eta { font-size:9px; color: var(--text-muted); }
+  .feed-row.tier-far .veh { display:none; }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>SGBusNavi — Arrivals方向4+5「縦型アプローチフィード(バー単体で完結)」(モックアップ)</b><br>
+  「Approaching」バーを軸に、横帯ではなく縦方向の1本の道として画面の主要領域を占有する形に展開。下部の丸いピンが現在のバス停(=自分のいる場所)で、バスはそこに向かって上から降ってくるように配置される。位置はETAに比例(0〜15分でクランプ、15分超は上端に集約)。グリッド表示は廃止し、この1本のフィードが系統番号・ETA・混雑度・Saveバッジまで全部持つ「唯一のリスト」になる。
+  <ul>
+    <li>バス停に近いカードほど大きく・遠いカードほど小さいピルに変化(緊急度の視覚的グラデーション)</li>
+    <li>地図パネル・バス停ピル行は現行のまま(このフィードは既存の#home-scroll-content部分を置き換える想定)</li>
+    <li>各行はタップで経路モーダルを開ける想定(現行カードと同じ導線)</li>
+  </ul>
+</div>
+
+<div class="phone">
+  <div class="app-header">
+    <div class="app-header-title">Home</div>
+    <button class="filter-toggle" aria-pressed="false"><i class="ti ti-star"></i></button>
+  </div>
+
+  <div class="map-placeholder">(existing map panel — unchanged)</div>
+
+  <div class="feed-panel">
+    <div class="feed-panel-label">Approaching</div>
+    <div class="feed-track-wrap">
+      <div class="feed-track-line"></div>
+      <div class="feed-stop-marker"><i class="ti ti-bus-stop"></i></div>
+      <div class="feed-stop-label">You are here</div>
+
+      <div class="feed-row saved tier-now" style="top: 94%;">
+        <span class="saved-badge"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg></span>
+        <span class="veh"><svg viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/></svg></span>
+        <div class="meta"><span class="num">67</span><span class="eta">Now</span></div>
+        <span class="op" style="margin-left:auto;">SBST</span>
+      </div>
+
+      <div class="feed-row tier-near" style="top: 78%;">
+        <span class="veh"><svg viewBox="0 0 34 30"><rect x="1.5" y="1.5" width="31" height="27" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/><rect x="13.5" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/><rect x="23" y="4" width="7" height="6" rx="1.4" fill="var(--load-amber)"/><rect x="4" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/><rect x="13.5" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/><rect x="23" y="18" width="7" height="6" rx="1.4" fill="var(--load-amber)"/></svg></span>
+        <div class="meta"><span class="num">74</span><span class="eta">2 min</span></div>
+      </div>
+
+      <div class="feed-row saved tier-near" style="top: 62%;">
+        <span class="saved-badge"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg></span>
+        <span class="veh"><svg viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/></svg></span>
+        <div class="meta"><span class="num">151</span><span class="eta">4 min</span></div>
+      </div>
+
+      <div class="feed-row tier-mid" style="top: 44%;">
+        <span class="veh"><svg viewBox="0 0 34 30"><rect x="1.5" y="1.5" width="31" height="27" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="7" height="6" rx="1.4" fill="var(--load-red)"/><rect x="13.5" y="4" width="7" height="6" rx="1.4" fill="var(--load-red)"/><rect x="23" y="4" width="7" height="6" rx="1.4" fill="var(--load-red)"/><rect x="4" y="18" width="7" height="6" rx="1.4" fill="var(--load-red)"/><rect x="13.5" y="18" width="7" height="6" rx="1.4" fill="var(--load-red)"/><rect x="23" y="18" width="7" height="6" rx="1.4" fill="var(--load-red)"/></svg></span>
+        <div class="meta"><span class="num">190</span><span class="eta">7 min</span></div>
+      </div>
+
+      <div class="feed-row tier-mid" style="top: 30%;">
+        <span class="veh"><svg viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--light-gray)" stroke-width="1.4"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--load-green)"/></svg></span>
+        <div class="meta"><span class="num">45</span><span class="eta">9 min</span></div>
+      </div>
+
+      <div class="feed-row tier-far" style="top: 17%;">
+        <div class="meta" style="flex-direction:row; gap:6px; align-items:baseline;"><span class="num">10</span><span class="eta">13 min</span></div>
+      </div>
+
+      <div class="feed-row tier-far" style="top: 6%;">
+        <div class="meta" style="flex-direction:row; gap:6px; align-items:baseline;"><span class="num">133</span><span class="eta">15+ min</span></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
