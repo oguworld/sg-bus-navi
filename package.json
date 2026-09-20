@@ -1,6 +1,6 @@
 {
   "name": "sg-bus-navi",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "SGBusNavi - シンガポール在住者向けバス到着情報PWA",
   "private": true,
   "main": "server.js",

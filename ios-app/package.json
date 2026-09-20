@@ -1,6 +1,6 @@
 {
   "name": "sgbusnavi-ios",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "SGBusNavi iOS App (Capacitor)",
   "private": true,
   "scripts": {
@@ -21,5 +21,5 @@
     "@capacitor/cli": "^6.0.0",
     "@capacitor/ios": "^6.0.0"
   },
-  "releaseNotes": "Initial release."
+  "releaseNotes": "Home screen redesign: a live map with nearby stops, a new Timetable view, and redesigned arrival cards."
 }
