@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGBusNavi — Arrivals card redesign: bus queuing visual (mockup, not wired to app)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAFAF8; --warm-white: #FFFFFF; --sand: #EAEAE6; --sand-dark: #DCDCD6;
+    --caramel: #6F8F63; --caramel-pale: #EEF3EA;
+    --midnight: #2B2B27; --warm-gray: #767268; --light-gray: #A8A49A;
+    --font-heading: 'Inter', sans-serif;
+    --radius-card: 24px; --shadow-card: 0 4px 18px rgba(43,43,39,0.08);
+    --surface-2: var(--cream); --surface-1: var(--warm-white);
+    --text-primary: var(--midnight); --text-secondary: var(--warm-gray); --text-muted: var(--light-gray);
+    --fill-accent: var(--caramel); --on-accent: var(--warm-white); --border: var(--sand);
+    --load-green: #4C9A5B; --load-amber: #C79A2E; --load-red: #C0392B;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; font-family: var(--font-heading); }
+  body { background: #ECECE8; padding: 24px 0 80px; }
+  .note { max-width: 900px; margin: 0 auto 28px; padding: 0 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+  .note b { color: var(--text-primary); }
+  .note ol { padding-left: 18px; margin-top: 6px; }
+
+  .row { display:flex; gap:28px; flex-wrap:wrap; justify-content:center; align-items:flex-start; }
+  .col { display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .col-label { font-size: 13px; font-weight:700; color: var(--text-primary); text-align:center; max-width:280px; }
+  .col-desc { font-size: 11.5px; color: var(--text-secondary); text-align:center; max-width:280px; line-height:1.5; }
+
+  .phone {
+    width: 300px; height: 560px;
+    background: var(--surface-2);
+    border-radius: 28px;
+    overflow: hidden;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.16);
+    position: relative;
+    padding: 18px 14px;
+  }
+
+  .load-green { color: var(--load-green); }
+  .load-amber { color: var(--load-amber); }
+  .load-red { color: var(--load-red); }
+  .bg-load-green { background: var(--load-green); }
+  .bg-load-amber { background: var(--load-amber); }
+  .bg-load-red { background: var(--load-red); }
+
+  /* ══ Pattern A: 遠近クイーニング（近いバス=大きく手前、遠いバス=小さく奥） ══ */
+  .queue-a { display:flex; flex-direction:column; align-items:center; gap:0; }
+  .qa-card {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    border-radius: 20px;
+    color: #fff;
+    box-shadow: 0 6px 16px rgba(43,43,39,0.18);
+    font-weight:800;
+    margin-top: -14px; /* 少し重ねて奥行き感を出す */
+  }
+  .qa-card .num { line-height:1; }
+  .qa-card .eta { font-weight:700; opacity:0.92; margin-top:2px; }
+  .qa-card .type { font-weight:700; opacity:0.8; letter-spacing:0.03em; }
+  .qa-1 { width:132px; height:132px; font-size:34px; z-index:5; margin-top:0; }
+  .qa-1 .eta { font-size:16px; }
+  .qa-1 .type { font-size:10px; margin-top:1px; }
+  .qa-2 { width:104px; height:104px; font-size:27px; z-index:4; opacity:0.94; }
+  .qa-2 .eta { font-size:13px; }
+  .qa-2 .type { font-size:9px; }
+  .qa-3 { width:80px; height:80px; font-size:21px; z-index:3; opacity:0.88; }
+  .qa-3 .eta { font-size:11px; }
+  .qa-3 .type { font-size:8px; }
+  .qa-4 { width:60px; height:60px; font-size:16px; z-index:2; opacity:0.8; }
+  .qa-4 .eta { font-size:9px; }
+
+  /* ══ Pattern B: 密度グリッド（緊急度=面積、均等グリッドに配置） ══ */
+  .grid-b {
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: min-content;
+    gap: 10px;
+    width: 100%;
+  }
+  .gb-card {
+    aspect-ratio: 1 / 1;
+    border-radius: 18px;
+    color:#fff;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-weight:800;
+    box-shadow: 0 4px 12px rgba(43,43,39,0.14);
+  }
+  .gb-card .num { line-height:1; }
+  .gb-card .eta { font-weight:700; opacity:0.9; margin-top:3px; }
+  .gb-card .type { font-weight:700; opacity:0.8; letter-spacing:0.03em; }
+  .gb-span2 { grid-column: span 2; grid-row: span 2; }
+  .gb-span2 .num { font-size: 30px; }
+  .gb-span2 .eta { font-size: 14px; }
+  .gb-span2 .type { font-size: 10px; }
+  .gb-span1 .num { font-size: 17px; }
+  .gb-span1 .eta { font-size: 10px; }
+  .gb-span1 .type { font-size: 8px; }
+
+  /* ══ Pattern C: ロードレーン（バス停を起点に横の“道”の上へ配置、
+     手前=大きい・近い、奥=小さい・遠い） ══ */
+  .lane-c { position:relative; width:100%; height:420px; }
+  .lane-c-road {
+    position:absolute; left:10%; right:10%; bottom:40px; top:60px;
+    background: linear-gradient(to top, var(--sand) 0%, var(--sand) 2px, transparent 2px, transparent 100%) repeat-y;
+    background-size: 100% 22px;
+    width: 2px;
+    left: 50%;
+    transform: translateX(-1px);
+  }
+  .lane-c-stop {
+    position:absolute; left:50%; bottom:6px; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+  }
+  .lane-c-stop i { font-size:22px; color: var(--fill-accent); }
+  .lane-c-stop span { font-size:10px; font-weight:700; color:var(--text-secondary); }
+  .lc-card {
+    position:absolute;
+    left:50%;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    border-radius:16px;
+    color:#fff;
+    font-weight:800;
+    box-shadow: 0 5px 14px rgba(43,43,39,0.18);
+  }
+  .lc-card .num { line-height:1; }
+  .lc-card .eta { font-weight:700; opacity:0.92; }
+  .lc-card .type { font-weight:700; opacity:0.8; letter-spacing:0.03em; }
+  .lc-1 { width:96px; height:96px; font-size:26px; bottom:60px; transform:translateX(-50%); z-index:5; }
+  .lc-1 .eta { font-size:13px; }
+  .lc-1 .type { font-size:9px; }
+  .lc-2 { width:76px; height:76px; font-size:20px; bottom:150px; transform:translateX(calc(-50% - 34px)); z-index:4; opacity:0.92; }
+  .lc-2 .eta { font-size:11px; }
+  .lc-2 .type { font-size:8px; }
+  .lc-3 { width:58px; height:58px; font-size:15px; bottom:230px; transform:translateX(calc(-50% + 30px)); z-index:3; opacity:0.85; }
+  .lc-3 .eta { font-size:9px; }
+  .lc-4 { width:42px; height:42px; font-size:11px; bottom:300px; transform:translateX(calc(-50% - 20px)); z-index:2; opacity:0.75; }
+  .lc-4 .eta { font-size:7px; }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>SGBusNavi — Arrivalsカード再設計 アイデア案（バスの「キューイング」視覚表現、モックアップ v1）</b><br>
+  情報は<b>系統番号+到着分数+車種(Single/Double Deck)</b>のみに絞り、行き先(Destination)は表示しない（ユーザー指示「行先とかいらないです。それこそ2階建てかどうか、そういう情報です」）。車種はテキストラベル(既存Timetableビューと同じSD/DD略記)で表現し、混雑度(Load)は背景色（緑=空いてる/黄=混雑/赤=非常に混雑）だけで表現する（既存のCLAUDE.md方針「一目でわかる」を極限まで推し進めた形）。カードは正方形に近づけ、複数のバスを縦一列に流し込むのではなく、到着までの時間＝「バス停からの物理的な距離」に見立てて、近いバスほど大きく手前に、遠いバスほど小さく奥にあるように配置することで、バスが列をなして近づいてくる様子を表現する。カードが最小サイズ(4件目)になる場合のみ、スペースの都合で車種ラベルを省略している。
+  <ol>
+    <li><b>Pattern A「遠近クイーニング」</b>: 到着が近い順に正方形カードが少しずつ重なりながら小さくなっていく。上から下へ「今にも来る→まだ遠い」という奥行きの錯覚を作る。実装は単純な重ね配置（負のmargin-top）＋サイズ・不透明度の段階的縮小のみで、複雑な3D変形は使わない。</li>
+    <li><b>Pattern B「密度グリッド」</b>: 3列グリッドに正方形を敷き詰め、最も近いバスだけ2×2マスの大きな正方形として目立たせる（残りは1×1の小さな正方形）。キューイング感より「一覧性」を優先したい場合向き。</li>
+    <li><b>Pattern C「ロードレーン」</b>: 画面下部にバス停アイコンを置き、そこから上へ伸びる一本の“道”（点線）に沿ってバスを配置。手前（下）が近い・大きい、奥（上）が遠い・小さい、さらに道の左右に少しジグザグに配置することで、バスが連なって走ってくる様子をよりリアルに表現する。3案の中で最も「キューイングして近づいてくる」感覚を視覚的に再現している。</li>
+  </ol>
+  <b>この下、実際のカード表示イメージ（系統17/45/18/61の4件、到着順）:</b>
+</div>
+
+<div class="row">
+
+  <div class="col">
+    <div class="col-label">Pattern A — 遠近クイーニング</div>
+    <div class="col-desc">縦に少し重ねながら小さくなる。シンプルな実装で「近い=大きい」を表現</div>
+    <div class="phone">
+      <div class="queue-a">
+        <div class="qa-card qa-1 bg-load-green"><span class="num">17</span><span class="eta">2 min</span><span class="type">DD</span></div>
+        <div class="qa-card qa-2 bg-load-green"><span class="num">45</span><span class="eta">9 min</span><span class="type">SD</span></div>
+        <div class="qa-card qa-3 bg-load-amber"><span class="num">18</span><span class="eta">16 min</span><span class="type">DD</span></div>
+        <div class="qa-card qa-4 bg-load-red"><span class="num">61</span><span class="eta">27 min</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="col-label">Pattern B — 密度グリッド</div>
+    <div class="col-desc">最も近い1件だけ大きく、残りはグリッドに整列。一覧性重視</div>
+    <div class="phone">
+      <div class="grid-b">
+        <div class="gb-card gb-span2 bg-load-green"><span class="num">17</span><span class="eta">2 min</span><span class="type">DD</span></div>
+        <div class="gb-card gb-span1 bg-load-green"><span class="num">45</span><span class="eta">9 min</span><span class="type">SD</span></div>
+        <div class="gb-card gb-span1 bg-load-amber"><span class="num">18</span><span class="eta">16 min</span><span class="type">DD</span></div>
+        <div class="gb-card gb-span1 bg-load-red"><span class="num">61</span><span class="eta">27 min</span><span class="type">SD</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="col-label">Pattern C — ロードレーン</div>
+    <div class="col-desc">バス停を起点に道の上をバスが連なって近づいてくる様子を再現。最もキューイング感が強い</div>
+    <div class="phone">
+      <div class="lane-c">
+        <div class="lane-c-road"></div>
+        <div class="lc-card lc-1 bg-load-green"><span class="num">17</span><span class="eta">2 min</span><span class="type">DD</span></div>
+        <div class="lc-card lc-2 bg-load-green"><span class="num">45</span><span class="eta">9 min</span><span class="type">SD</span></div>
+        <div class="lc-card lc-3 bg-load-amber"><span class="num">18</span><span class="eta">16 min</span></div>
+        <div class="lc-card lc-4 bg-load-red"><span class="num">61</span><span class="eta">27 min</span></div>
+        <div class="lane-c-stop"><i class="ti ti-map-pin-filled" aria-hidden="true"></i><span>You</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

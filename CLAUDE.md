@@ -43,34 +43,36 @@
 ### メイン画面(ホーム、フェーズ6で地図+Timetableビュー追加)
 
 1. GPSで現在地から最寄りのバス停を自動検出し、即座に表示(バス停選択の操作なし)
-2. 横スワイプ・上部ピル行タップ・地図上のピンタップのいずれでも近傍バス停に切替(`buildStopPillRow()`/`switchToStopIndex()`/`renderHomeMapPins()`内のマーカークリック、3手段とも共通の`switchToStopIndex()`に集約され全て同期する)。近傍バス停取得件数`NEARBY_LIMIT`=5(反対方向のバス停も別エントリのため、上限`NEARBY_MAX_LIMIT`=10)。ピルは`${BusStopCode} ${Description}`形式で番号を前に表示。バス停切替時はアクティブピルが`scrollIntoView`で常に表示範囲内に入る
+2. 横スワイプ・ピル行タップ・地図上のピンタップのいずれでも近傍バス停に切替(`buildStopPillRow()`/`switchToStopIndex()`/`renderHomeMapPins()`内のマーカークリック、3手段とも共通の`switchToStopIndex()`に集約され全て同期する)。近傍バス停取得件数`NEARBY_LIMIT`=5(反対方向のバス停も別エントリのため、上限`NEARBY_MAX_LIMIT`=10)。ピルは`${BusStopCode} ${Description}`形式で番号を前に表示。バス停切替時はアクティブピルが`scrollIntoView`で常に表示範囲内に入る。**ピル行(`#stop-pill-row`)はヘッダーではなく地図パネルの直下に配置**(2026-09-20ユーザー指示「バス停の横スクロールは地図の下にもってきてください」、ヘッダーはタイトル+「関連のみ」フィルターのみの1行に縮小)
 3. ヘッダー右上に「関連のみ」トグル(星アイコン)。ONで登録済み目的地行きの系統のみ絞り込み表示。Arrivals/Timetable両ビューに共通適用され、ビュー切替をまたいでも状態は保持される(セッション内のみ、永続化はしない)
 4. MRT運行障害バナー: **未実装**(データソース節参照)。実装時は画面最上部・`.app-header`より上に配置する想定
-5. `#screen-home`は`height:100dvh; overflow:hidden;`の4段構成: `.app-header`(flex-shrink:0、タイトル「Home」+ピル行)→`.home-map-panel`(flex-shrink:0、地図)→`.home-view-flip-row`(flex-shrink:0、Arrivals/Timetable切替ボタン)→`#home-scroll-content`(flex:1, overflow-y:auto、カード一覧またはTimetableテーブル)。ボトムナビ分の余白は`padding-bottom: calc(84px + env(safe-area-inset-bottom))`で統一(固定84pxだとセーフエリア込みの実高さに対して不足し、スクロール最下部のカードがボトムナビに隠れる)
-6. **地図パネル(`.home-map-panel`、`height:28%; min-height:170px;`)**: 現在地(青丸、`--current-location-blue`)+周辺バス停ピン(最大`NEARBY_LIMIT`件、`nearbyStops`をそのまま流用・別APIは叩かない)をLeafletで表示。タイル・グレースケールCSSフィルター(`grayscale(0.92) brightness(1.4) saturate(0.25) contrast(0.85)` opacity 0.88)は経路モーダルの`.route-modal-map-el`と完全に同一の値を`.home-map-el`に適用し一貫性を保つ。選択中バス停のピンのみ常時ラベル表示、非選択ピンはドットのみ(密集回避)。GPS未確定・`/api/bus-stops/nearby`失敗・Leaflet未読み込み(`window.L === 'undefined'`)のいずれでも`.home-map-fallback`にフォールバックし、下部のビュー切替・カード一覧・テーブルの動作は妨げない(`ensureHomeMap()`/`renderHomeMapPins()`/`showHomeMapFallback()`)
-7. **Arrivals/Timetable切替(`#home-view-flip`、単一フリップボタン)**: 2ボタンのセグメントコントロールではなく、タップのたびにアイコンが180度回転しラベル・内容が入れ替わる単一ボタン。地図直下・スクロール領域の外側に固定配置(スクロールしても常に押せる)。初期表示はTimetableビュー。選択状態は`sgbusnavi_home_view`(localStorage、値`'timetable'`/`'arrivals'`)に永続化し次回起動時も復元する(`toggleHomeView()`/`initHomeViewFlip()`)
+5. `#screen-home`は`height:100dvh; overflow:hidden;`の4段構成: `.app-header`(flex-shrink:0、タイトル「Home」+「関連のみ」フィルターのみ)→`.home-map-panel`(flex-shrink:0、地図。Arrivals/Timetable切替ボタンを内部に浮遊配置、下記7参照)→`#stop-pill-row`(flex-shrink:0、バス停ピル行)→`#home-scroll-content`(flex:1, overflow-y:auto、カード一覧またはTimetableテーブル)。ボトムナビ分の余白は`padding-bottom: calc(84px + env(safe-area-inset-bottom))`で統一(固定84pxだとセーフエリア込みの実高さに対して不足し、スクロール最下部のカードがボトムナビに隠れる)
+6. **地図パネル(`.home-map-panel`、`height:28%; min-height:170px;`)**: 現在地(青丸、`--current-location-blue`、20px)+周辺バス停ピン(最大`NEARBY_LIMIT`件、`nearbyStops`をそのまま流用・別APIは叩かない)をLeafletで表示。バス停ピンは20px/border4px(2026-09-20ユーザー指示「バス停はもう少し印を大きくして目立たせて」により13px/border3pxから拡大、JS側`iconSize`もCSSと同じ値に揃える)。タイル・グレースケールCSSフィルター(`grayscale(0.92) brightness(1.4) saturate(0.25) contrast(0.85)` opacity 0.88)は経路モーダルの`.route-modal-map-el`と完全に同一の値を`.home-map-el`に適用し一貫性を保つ。選択中バス停のピンのみ常時ラベル表示、非選択ピンはドットのみ(密集回避)。GPS未確定・`/api/bus-stops/nearby`失敗・Leaflet未読み込み(`window.L === 'undefined'`)のいずれでも`.home-map-fallback`にフォールバックし、下部のビュー切替・カード一覧・テーブルの動作は妨げない(`ensureHomeMap()`/`renderHomeMapPins()`/`showHomeMapFallback()`)
+7. **Arrivals/Timetable切替(`#home-view-flip`)**: 当初は地図直下の専用行(横幅いっぱいの帯)だったが、2026-09-20ユーザー指示「Time<>Arrivalのふりっぷは場所を取りたくない」により、**地図パネル右下隅に浮かせる円形フローティングボタン**(46px、`position:absolute`、`.home-map-panel`内、地図の高さ自体は変えずレイアウトフロー外で完結)に変更した。タップのたびにアイコンが180度回転し現在のビューを示す(テキストラベルはDOM上に残すがsr-only化、`aria-label`で代替)。初期表示はTimetableビュー。選択状態は`sgbusnavi_home_view`(localStorage、値`'timetable'`/`'arrivals'`)に永続化し次回起動時も復元する(`toggleHomeView()`/`initHomeViewFlip()`、DOM位置に依存せずid参照のみのためレイアウト変更の影響を受けない)
 8. **Timetableビュー(`#home-timetable-list`、`.tt-row`)**: `/api/bus-arrival`の生の`Services[]`(フラット化前、`NextBus`/`NextBus2`/`NextBus3`をそのまま3列として使う)を系統番号1行のテーブルとして表示。系統番号の自然順(`compareServiceNumbers()`、`localeCompare`の`numeric:true`)でソートし、到着時刻順にはしない(ポーリングのたびに行の位置が入れ替わるのを防ぐため)。各時刻セルは分数値(0分は「Now」)+混雑度色(`load-green`/`amber`/`red`)+車種コード(SD/DD/BD)+車椅子アイコンを小さく併記。到着予定なしの枠は「–」。上限なし・全件表示(Arrivalsビューの`MAX_DISPLAYED_ARRIVALS`=10件とは別概念)。系統番号バッジ(`.tt-badge`)タップで経路モーダルを開く(Arrivalsビューの専用「Route」ボタンに相当する導線)。Arrivals/Timetableの両ビューは`loadBusArrivals()`/`pollBusArrivals()`が同一の取得結果から常に同期して描画するため、ビュー切替自体は再フェッチを伴わない
 9. **両ビュー共有の目的地一致ハイライト・フィルター**: `applyRouteEnrichment()`/`applyRelatedOnlyFilter()`/`showAllBusCards()`は`#bus-card-list .bus-card`と`#home-timetable-list .tt-row`を合わせた要素集合(`collectEnrichableElements()`)に対して1回だけ判定・適用する(系統単位キャッシュ`serviceRouteInfoCache`も共有、両ビュー分で二重にAPIを叩かない)。`.tt-row`は`.bus-card`と同じ`data-route-number`/`data-origin-code`/`data-destination-code`/`data-current-stop-code`属性を持つため、既存の判定ロジックをそのまま使い回せる
 
-### バスカード(フィード形式、1件=1到着インスタンスをフラットに時刻順で表示)
+### バスカード(Arrivalsビュー、遠近クイーニングカード、フェーズ7で全面刷新)
 
-「実際にバス停でバスを待つ感覚」の再現がコア。到着予測の時刻表ではなく、今まさに到着していくバスの一覧として見せる。
+「バスがキューイングしてバス停に近づいてくる様を視覚的に表現したい」というユーザー要望を受け、2026-09-20に横長フィードカードから正方形に近い「遠近クイーニングカード」へ全面刷新した(`.claude/plan-phase7-arrivals-queue-cards.md`、採用モックアップ`mockups/arrivals-queue-patternA-variants-v1.html`の`variant-s`=A-4「S字カーブ」)。旧デザイン(行き先・メタ行・ミニ経路図・「Next: N min」等を含む横長カード)の詳細はgit履歴を参照。
 
-- **データ構造**: `Services[]`の`NextBus`/`NextBus2`/`NextBus3`を個別の到着インスタンスとして展開し、全系統混在で到着時刻の昇順にフラット表示(同一系統番号のカードが複数回出現してよい)。`EstimatedArrival`が空文字列のインスタンスは含めない
-- 系統番号(バッジ、最大の視覚要素) / 行き先(終点) / メタ行: 車両タイプ+混雑状況を1つのバスイラストSVGで表現(`buildBusIllustrationSvg()`)。形(単一/二階建て)で車種、窓の色(`Load`: SEA=緑/SDA=黄/LSD=赤、`--load-green`/`--load-amber`/`--load-red`)で混雑度。本体色は混雑度に関わらずグレーグラデーション固定(`--bus-icon-gradient-start/end`)。車椅子(WAB)アイコンを併記。配置はETAのすぐ左、時間とまとめて右寄せブロック(`.eta-time-row`内`.eta-icon-cluster`、`buildEtaBlockHtml()`)。「Route」ボタンは`.bus-card-actions`内で右寄せ独立行
-- 目的地一致インジケーター(`renderMatchTag()`): 系統番号バッジ右上角に小さい丸アイコン(`.bus-badge-match-icon`、最大2件まで重ね表示、24px)。バッジ本体(背景・文字色)は常にニュートラル配色で、角アイコンだけが色を持つ唯一のインジケーター。テキストラベルは表示せず`aria-label`/`title`で補足
-- ETA(1本、控えめ) + 同一系統の次到着時刻を小さく併記(「Next: 15 min」)
-- 目的地一致到着には、一致した目的地のカテゴリアイコン+カテゴリ名をアイコン色で表示(カード全体の背景・枠線は変えない、トーンダウンしたデザイン)
-- Home画面フィード表示件数は最大10件(`MAX_DISPLAYED_ARRIVALS`、到着時刻昇順)
+- **表示情報を極限まで絞る**: 系統番号(大きな数字)・ETA(分)・車種(SD/DD)の3点のみ。行き先(終点)・ミニ経路図・「Next: N min」・車椅子(WAB)アイコンは全て廃止した(`buildBusCard()`)
+- **カード形状**: 正方形に近い形(`border-radius:18px`)。背景色は混雑度(`Load`: SEA=緑/SDA=黄/LSD=赤、`.bus-card--load-green/amber/red`、不明時は`--load-neutral`のグレー)で塗りつぶし、系統番号・ETA・車種は白文字(`--on-accent`)
+- **サイズ階層(tier)**: 到着が近い順(1番目=t1)から段階的に縮小するクラス`.t1`(112px)〜`.t6`(56px)、7件目以降は`.t7`(50px)で底打ちし無限に縮小しない(`QUEUE_TIER_COUNT`=7)。車種ラベルは最小tier(`.t7`)ではスペースの都合上非表示にする(CSS `display:none`)
+- **縦の重なり・横のS字カーブ**: 各tierは`margin-top`負値で縦に少し重なり奥行き感を出す。横方向のオフセットはCSSカスタムプロパティ`--queue-offset-x`で正弦波状に揺れる(モックアップ`variant-s`の値をそのまま採用、8件目以降は`.t7`のオフセット値が繰り返される)
+- **tierの再計算(`reapplyQueueTiers()`)**: サイズ・オフセットはリスト内の「順位」に依存するため、`buildBusCard()`自体はtierクラスを付与しない。カード生成直後(`loadBusArrivals()`)・出発演出/新規挿入/ETA差分更新の完了後(`applyArrivalDiff()`末尾)の両方で`reapplyQueueTiers()`を呼び、`#bus-card-list`内の現在の`.bus-card`を上から順に走査してtierクラスを一括で付け直す。出発アニメーション中のカード(`.bus-card--departing`)は順位カウントから除外する(除外しないと消えかけのカードの分だけ後続がずれてガクつく)
+- **目的地一致インジケーターは維持**: カード自体がバッジ相当のため、角に小さい色付きアイコン(`.bus-badge-match-icon`、最大2件まで重ね表示、20px)を直接重ねる(`renderMatchTag()`がArrivalsカードでは`card`自身を「バッジ」として扱う)。カード本体の色(混雑度)とは別レイヤーとして共存する。テキストラベルは表示せず`aria-label`/`title`で補足
+- **カードタップで経路モーダルを開く**: 正方形の小さいカードには専用「Route」ボタンを置くスペースがないため、`.bus-card`自体がbutton要素になりカード全体がタップ対象(2026-09-14に一度「ボタンのみ」に変更した経緯があるが、このデザイン制約により再度カードタップに戻した)
+- Home画面フィード表示件数は最大10件(`MAX_DISPLAYED_ARRIVALS`、到着時刻昇順)。この上限自体はフェーズ7でも変更なし
 - **現在表示中のバス停自体が登録済み目的地の場合、それを目的地一覧の判定対象から除外する**(`applyRouteEnrichment()`/`applyRelatedOnlyFilter()`)。除外しないと自宅最寄りバス停をSaveした場合に全カードが無条件でハイライトされてしまう
-- ミニ経路図(`renderMiniRoute()`): 経由MRT駅を丸ピル型タグで表示(始点・終点・非MRTランドマークは表示しない)。登録済み目的地は`mergeSavedDestinationWaypoints()`で強制的に表示に含め、目的地一致分を優先して先頭に詰める(表示上限3件)。目的地一致タグは色連動(アイコン色で塗りつぶし)を維持、MRT駅タグはカード上では**色連動なし**(ニュートラル)。**経路モーダル側のMRT路線色は維持**(カード限定の措置)。waypoints選定・目的地一致判定とも`fromStopCode`（現在地）以降のみに絞り込み済み(手前の通過済み区間は出さない)。表示順は`stopIndex`昇順(実際の経由順)で`sortWaypointsByStopIndex()`により最終ソートする
-- 経路モーダルの起動は`.bus-card-route-btn`(カード右下の専用ボタン)のみ。カード全体はbutton要素ではなくdiv(カードタップでの起動は廃止済み)
+- 出発演出(`.bus-card--departing`)は正方形カードに合わせてその場でスケールダウン+フェードアウトする形に変更(旧デザインの右スライド演出から変更)。新規挿入(`.bus-card--entering`)も同様にスケール+フェードで統一
+- **ミニ経路図(`renderMiniRoute()`)はArrivalsカードでは非表示**: `buildBusCard()`が`.bus-card-mini-route`要素自体を生成しなくなったため、`applyRouteEnrichment()`から呼ばれても対象要素が見つからず自然に何もしない(関数自体・Timetableビュー向けの経由地情報取得ロジックは削除していない)。**Timetableビュー(`.tt-row`)は今回のスコープ対象外のため、行き先・系統番号バッジ(`.tt-badge`)等は変更なし**
 
 ### 絞り込みフィルター(ヘッダー右上)
 
 星アイコンのトグルボタン、ON/OFFタップ1回で完結。経路モーダルの系統番号バッジ(`#route-modal-badge`)にも、タップ元カードの一致判定DOM状態をそのまま複製して角アイコンを表示する(再フェッチ不要)。
 
-### 経路モーダル(バスカード右下の「Route」ボタンで展開)
+### 経路モーダル(Arrivalsビューはカードタップ、Timetableビューは系統番号バッジタップで展開)
 
 フルスクリーンシート。ヘッダー(系統番号バッジ・区間・閉じるボタン、固定)+地図(flex:2)+バス停リスト(flex:1、画面の約2/3:1/3固定比率)の3段構成。
 

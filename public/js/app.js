@@ -744,11 +744,16 @@
         // 同じロジックでtt-badge--matched/.tt-badge-match-icon--*に描画する、
         // 2-8節・2-12節）の場合にも同じ複製が効くよう、バッジのセレクタを
         // .bus-badge/.tt-badgeどちらにも対応させる。
-        const cardBadge = card.querySelector('.bus-badge, .tt-badge');
+        // フェーズ7: Arrivalsカードは.bus-badge子要素を持たなくなった
+        // （card自身がバッジ相当、renderMatchTag()参照）ため、.bus-badgeが
+        // 見つからない場合はcard自身を「バッジ」として扱う。
+        const cardBadge = card.querySelector('.bus-badge, .tt-badge') || card;
         const iconSuffixes = ['1', '2'];
         const isMatched =
           cardBadge &&
-          (cardBadge.classList.contains('bus-badge--matched') || cardBadge.classList.contains('tt-badge--matched'));
+          (cardBadge.classList.contains('bus-badge--matched') ||
+            cardBadge.classList.contains('tt-badge--matched') ||
+            cardBadge.classList.contains('bus-card--matched'));
         if (cardBadge && isMatched) {
           badgeEl.classList.add('bus-badge--matched');
           const ariaLabel = cardBadge.getAttribute('aria-label');
@@ -901,12 +906,13 @@
     }
 
     if (cardList) {
-      // 2026-09-14ユーザー指示によりカード全体のタップではなく、カード右下の
-      // 専用ボタン（.bus-card-route-btn）のタップでのみ経路モーダルを開く。
+      // フェーズ7（.claude/plan-phase7-arrivals-queue-cards.md 2節2項）:
+      // 正方形の小さいクイーニングカードには専用の「Route」ボタンを置く
+      // スペースがないため、カード全体（.bus-card自体がbutton要素）のタップで
+      // 経路モーダルを開く方式に戻した（2026-09-14に一度「ボタンのみ」に
+      // 変更した経緯があるが、今回のデザイン制約により再度カードタップに戻す）。
       cardList.addEventListener('click', (event) => {
-        const trigger = event.target.closest('.bus-card-route-btn');
-        if (!trigger) return;
-        const card = trigger.closest('.bus-card');
+        const card = event.target.closest('.bus-card');
         if (card) openModal(card);
       });
     }
@@ -1283,8 +1289,15 @@
   // フェーズ6・2-8節: cardはArrivalsビューの.bus-card(.bus-badge)でも
   // Timetableビューの.tt-row(.tt-badge)でもよい。バッジのクラス名だけ
   // 実際の種類に応じて出し分け、アイコン部分の描画ロジックは完全に共通化する。
+  //
+  // フェーズ7（2026-09-20）: Arrivalsカードは正方形の遠近クイーニングカードに
+  // 刷新され、バッジ相当の子要素(.bus-badge)自体が存在しなくなった
+  // （カード全体=バッジのような1枚岩のデザインになったため）。この場合は
+  // card自身(.bus-card)を「バッジ」として扱い、角アイコン
+  // (.bus-badge-match-icon--1/--2)はカード直下の子要素のまま維持する。
   function renderMatchTag(card, dests) {
-    const badge = card.querySelector('.bus-badge, .tt-badge');
+    const isTimetableRow = card.classList.contains('tt-row');
+    const badge = isTimetableRow ? card.querySelector('.tt-badge') : card;
     const iconEls = [
       card.querySelector('.bus-badge-match-icon--1, .tt-badge-match-icon--1'),
       card.querySelector('.bus-badge-match-icon--2, .tt-badge-match-icon--2'),
@@ -1308,12 +1321,13 @@
     // フェーズ6: Timetableビューの行は.tt-badge--matchedに加え、行全体を
     // 薄くハイライトする.tt-row--matchも付与する（mockup .tt-row--match、
     // カードと違い横幅が狭くバッジ単体だと見落としやすいため）。
-    const isTimetableRow = badge.classList.contains('tt-badge');
+    // フェーズ7: Arrivalsカードは.bus-card--matchedをcard自身に付与する
+    // （旧.bus-badge--matchedに相当。カード=バッジのため）。
     if (isTimetableRow) {
       badge.classList.add('tt-badge--matched');
       card.classList.add('tt-row--match');
     } else {
-      badge.classList.add('bus-badge--matched');
+      card.classList.add('bus-card--matched');
     }
     badge.setAttribute('aria-label', `Passes ${labels.join(', ')}`);
     badge.setAttribute('title', labels.join(', '));
@@ -1783,69 +1797,38 @@
   }
 
   /* ══════════════════════════════════════════════
-   * フェーズ4 タスク分解ステップ2・3（.claude/plan.md 第2-2節・第2-4節）:
-   * ETA表示の簡素化（mockups/home-card-redesign-v3.html .eta/.eta-value/
-   * .eta-unit相当）、および混雑状況インジケーター（Load: SEA/SDA/LSD）。
+   * フェーズ7（.claude/plan-phase7-arrivals-queue-cards.md）: クイーニングカードの
+   * ETA表示。行き先・「Next: N min」・車椅子(WAB)アイコンは情報を絞る方針により
+   * 廃止し、系統番号・ETA・車種(SD/DD)のみを表示する（buildBusCard()参照）。
    * ══════════════════════════════════════════════ */
 
-  // ETA1本分のHTMLを組み立てる。0分は「Now / arriving」表示にする
-  // （モックアップv3の`.eta-value.now`パターンを踏襲）。
-  function buildEtaHtml(minutes) {
-    if (minutes === null) {
-      return `
-        <span class="eta-value">—</span>
-        <span class="eta-unit">min</span>
-      `;
-    }
-    if (minutes === 0) {
-      return `
-        <span class="eta-value now">Now</span>
-        <span class="eta-unit">arriving</span>
-      `;
-    }
-    return `
-      <span class="eta-value">${minutes}</span>
-      <span class="eta-unit">min</span>
-    `;
-  }
-
-  // ETA本体+「Next: N min」小表示をまとめた.bus-card-etaの中身を組み立てる。
-  // buildBusCard()の初回描画・updateBusCardEta()の差分更新の両方から
-  // 共用する（フェーズ4 タスク分解ステップ6、.claude/plan.md 第2-6節）。
-  // 2026-09-14ユーザー指示「時間のすぐ左に位置固定で表示、時間とまとめて
-  // 右寄せ」により、車種・車椅子アイコン(buildMetaRowHtml)を大きな分数の
-  // すぐ左に並べ、両方を1つの右寄せブロック(.eta-time-row)にまとめた。
-  function buildEtaBlockHtml(minutes, nextMinutes, typeCode, loadCode, feature) {
-    const nextEtaHtml =
-      nextMinutes === null
-        ? ''
-        : `<div class="bus-card-eta-next">Next: ${nextMinutes} min</div>`;
-    return `
-      <div class="eta-time-row">
-        ${buildMetaRowHtml(typeCode, loadCode, feature)}
-        <div>${buildEtaHtml(minutes)}</div>
-      </div>
-      ${nextEtaHtml}
-    `;
-  }
-
-  // 既存カードDOMを再生成せず、ETA表示（.bus-card-eta の中身）のみを
-  // 最新の到着インスタンス情報で更新する。出発検出の差分更新（変化のない
-  // カードの不要な再描画・アニメーションのちらつきを避ける）用
-  // （.claude/plan.md 第9節タスク分解ステップ6）。車種・車椅子アイコンも
-  // ETAブロックに統合済みのため、ここで一緒に再構築される
-  // （Load/Feature等はポーリングのたびに変わりうるため毎回最新値で再構築）。
+  // 既存カードDOMを再生成せず、ETA表示（.bus-card-eta の中身）・カード背景色
+  // （混雑度）・車種ラベルのみを最新の到着インスタンス情報で更新する。
+  // 出発検出の差分更新（変化のないカードの不要な再描画・アニメーションの
+  // ちらつきを避ける）用（.claude/plan.md 第9節タスク分解ステップ6）。
   function updateBusCardEta(card, instance, allInstances) {
     const etaEl = card.querySelector('.bus-card-eta');
     if (!etaEl) return;
 
     const minutes = estimateMinutesFromNow(instance.EstimatedArrival);
-    const nextArrival = findNextArrivalForSameService(instance, allInstances || []);
-    const nextMinutes = nextArrival ? estimateMinutesFromNow(nextArrival.EstimatedArrival) : null;
     const typeCode = instance.Type || 'SD';
 
-    etaEl.innerHTML = buildEtaBlockHtml(minutes, nextMinutes, typeCode, instance.Load, instance.Feature);
+    const etaHtml =
+      minutes === null
+        ? '<span class="bus-card-eta-value">—</span>'
+        : minutes === 0
+          ? '<span class="bus-card-eta-value bus-card-eta-value--now">Now</span>'
+          : `<span class="bus-card-eta-value">${minutes}</span><span class="bus-card-eta-unit">min</span>`;
+    etaEl.innerHTML = etaHtml;
     card.setAttribute('data-eta-minutes', minutes === null ? '' : String(minutes));
+
+    // 混雑度(Load)は毎ポーリングで変わりうるため背景色クラスも再計算する。
+    const loadInfo = getLoadIndicatorInfo(instance.Load);
+    card.classList.remove('bus-card--load-green', 'bus-card--load-amber', 'bus-card--load-red', 'bus-card--load-neutral');
+    card.classList.add(loadInfo ? `bus-card--load-${loadInfo.colorClass}` : 'bus-card--load-neutral');
+
+    const typeEl = card.querySelector('.bus-card-type');
+    if (typeEl) typeEl.textContent = typeCode;
   }
 
   // LTA Loadコード（SEA/SDA/LSD）から混雑状況インジケーター用の
@@ -1876,6 +1859,12 @@
   // バス感が出るように、一階建て/二階建てがぱっと見で分かるように」との
   // 指摘を受け、タイヤを廃止。一階建ては横長・低いシルエット、二階建ては
   // 窓2段の縦長シルエットにして形そのもので瞬時に見分けられるようにした。
+  //
+  // 現在未使用（2026-09-20フェーズ7でArrivalsカードを「遠近クイーニング」
+  // デザインに全面刷新し、表示情報を系統番号・ETA・車種(SD/DD)のみに絞った
+  // ため、buildBusCard()からはこのSVGイラスト自体を呼ばなくなった。将来また
+  // 車種+混雑度のイラスト表現を使う可能性を踏まえ、関数定義自体はあえて
+  // 残している（renderMiniRouteMapFallback等、既存の残置コードと同じ方針）。
   function buildBusIllustrationSvg(typeCode, loadCode) {
     const isDoubleDeck = typeCode === 'DD';
     const loadInfo = getLoadIndicatorInfo(loadCode);
@@ -1909,6 +1898,7 @@
   // メタ行（バスイラスト + 車椅子対応アイコン）のHTMLを組み立てる。
   // featureはLTA DataMallのFeatureフィールド（車椅子対応車両の場合"WAB"、
   // それ以外は空文字列）。2026-09-14ユーザー指示で追加。
+  // 現在未使用（2026-09-20フェーズ7、上記buildBusIllustrationSvg()と同じ理由）。
   function buildMetaRowHtml(typeCode, loadCode, feature) {
     const vehicleIconHtml = buildBusIllustrationSvg(typeCode, loadCode);
 
@@ -2045,17 +2035,23 @@
   // 1件の到着インスタンス（NextBus/NextBus2/NextBus3のいずれか1本）から
   // バスカードのHTMLを組み立てる。
   //
-  // フェーズ4 タスク分解ステップ2・3（.claude/plan.md 第2-2節〜第2-4節）:
-  // バッジ拡大・メタ行（車種+混雑状況）・ETA簡素化・次到着併記・
-  // 目的地一致タグ/ミニ経路図のプレースホルダーを実装。
-  // 経由地表示バグ修正（plan.md 第1節）で空だった.bus-card-viaは、
-  // 今回のメタ行実装によりgetBusTypeLabel()を再利用する形で解消した。
+  // フェーズ7（.claude/plan-phase7-arrivals-queue-cards.md）: 「遠近クイーニング
+  // カード（S字カーブ、A-4）」への全面刷新。ユーザー指示「余計な情報はいらない
+  // ので、系統番号と本当に必要な情報だけに残して、カードをもっと正方形に近い
+  // 形にして、バスがキューイングしてバス停に近づいてくる様を視覚的に表現
+  // したい」に対応。表示情報を系統番号・ETA・車種(SD/DD)のみに絞り、行き先・
+  // ミニ経路図・「Next: N min」・WABアイコンは廃止した
+  // （参考: mockups/arrivals-queue-patternA-variants-v1.html の variant-s）。
   //
-  // 目的地一致タグ（.bus-card-match-tag）・ミニ経路図（.bus-card-mini-route）は
-  // 系統単位のfetchRouteSummary結果に依存するため、この時点では空の
-  // プレースホルダーとして生成し、applyRouteEnrichment()が非同期に
-  // renderMatchTag()/renderMiniRoute()で内容を差し込む（groupCardsByServiceNo
-  // による系統単位キャッシュ経由、N+1回避は既存踏襲）。
+  // カードのサイズ・横オフセット（tierクラスt1〜t7）はリスト内の順位に
+  // 依存するため、この関数自体はtierクラスを付与しない。生成直後に必ず
+  // reapplyQueueTiers()を呼び、現在のDOM順から一括で付け直す設計とする
+  // （applyArrivalDiff()の出発演出・新規挿入後もこの関数を呼べば整合する）。
+  //
+  // 目的地一致タグ（角の.bus-badge-match-icon）は系統単位のfetchRouteSummary
+  // 結果に依存するため、この時点では空のプレースホルダーとして生成し、
+  // applyRouteEnrichment()が非同期にrenderMatchTag()で内容を差し込む
+  // （groupCardsByServiceNoによる系統単位キャッシュ経由、N+1回避は既存踏襲）。
   //
   // data-origin-code / data-destination-code: instance.OriginCode /
   // instance.DestinationCode（バス停コード）をそのまま保持しておく。
@@ -2064,9 +2060,7 @@
   // を突き合わせてdirection（1 or 2）を特定するために使う。
   //
   // data-current-stop-code: 現在表示中のバス停コード（loadBusArrivals()の
-  // 引数stopCodeをそのまま保持）。フェーズ4 タスク分解ステップ5
-  // （.claude/plan.md 第2-5節）のミニ経路図タップ時、
-  // /api/bus-routes/path?fromStopCode=に渡す「乗車区間の始点」として使う。
+  // 引数stopCodeをそのまま保持）。
   //
   // data-arrival-key: 到着インスタンスを一意に識別するキー
   // （フェーズ4 タスク分解ステップ6、.claude/plan.md 第2-6節・第8節リスク6）。
@@ -2075,19 +2069,18 @@
   function buildBusCard(instance, allInstances, currentStopCode) {
     const serviceNo = instance.ServiceNo || '?';
     const minutes = estimateMinutesFromNow(instance.EstimatedArrival);
-
-    const nextArrival = findNextArrivalForSameService(instance, allInstances || []);
-    const nextMinutes = nextArrival ? estimateMinutesFromNow(nextArrival.EstimatedArrival) : null;
-
     const typeCode = instance.Type || 'SD';
+    const loadInfo = getLoadIndicatorInfo(instance.Load);
+    const loadClass = loadInfo ? ` bus-card--load-${loadInfo.colorClass}` : ' bus-card--load-neutral';
 
-    // 2026-09-14ユーザー指示「カードタップでなく、カード右下のボタンをタップで
-    // 経路モーダルを表示する形にして」対応。カード全体はもうタップ操作を
-    // 持たないため、button要素ではなく非インタラクティブなdivにする
-    // （内部の.bus-card-route-btnがbutton要素のため、button内button＝
-    // 不正なHTMLになるのを避ける意味もある）。
-    const card = document.createElement('div');
-    card.className = 'bus-card';
+    // フェーズ7: カード全体をタップ可能にし、タップで経路モーダルを開く
+    // （2026-09-14に一度「ボタン化」した経緯があるが、正方形の小カードには
+    // 専用ボタンを置くスペースがないため、カードタップに戻す判断。
+    // plan-phase7 2節2項）。button要素にすることでキーボード操作・
+    // アクセシビリティのフォーカスも自然に得られる。
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = `bus-card${loadClass}`;
     card.setAttribute('data-route-from', '');
     card.setAttribute('data-route-to', instance.DestinationName || '');
     card.setAttribute('data-route-number', serviceNo);
@@ -2095,41 +2088,72 @@
     card.setAttribute('data-destination-code', instance.DestinationCode || '');
     card.setAttribute('data-current-stop-code', currentStopCode || '');
     card.setAttribute('data-arrival-key', buildArrivalKey(instance));
+    card.setAttribute('aria-label', `Service ${serviceNo}, ${minutes === null ? 'unknown' : minutes} minutes, view route`);
     // data-eta-minutes: 新規到着カードのソート順維持のための挿入位置計算
     // （findInsertionPointForNewArrival）に使う、ETAの分数（nullは空文字列）。
     card.setAttribute('data-eta-minutes', minutes === null ? '' : String(minutes));
 
-    // 4文字以上の系統番号（118A、961M等、全801系統中160件）は58px角のバッジに
-    // 24pxの数字が収まりきらず文字が縁に張り付いて見えるため、文字数に応じて
-    // フォントサイズを落とす修飾クラスを付与する（2026-09-13実機で発見・修正）。
-    const badgeLengthClass = serviceNo.length >= 4 ? ' bus-badge--long' : '';
+    // 4文字以上の系統番号（118A、961M等、全801系統中160件）は正方形バッジに
+    // 数字が収まりきらず文字が縁に張り付いて見えるため、文字数に応じて
+    // フォントサイズを落とす修飾クラスを付与する（2026-09-13実機で発見・修正、
+    // フェーズ7でも踏襲）。
+    const badgeLengthClass = serviceNo.length >= 4 ? ' bus-card-num--long' : '';
+
+    // 車種ラベル(SD/DD)。最小tier(t7)ではCSS側で非表示にするため、
+    // マークアップ自体は常に出力する(reapplyQueueTiers()がtierクラスを
+    // 付与した後、CSSがtierに応じて表示/非表示を切り替える)。
+    const typeLabelHtml = `<span class="bus-card-type">${escapeHtml(typeCode)}</span>`;
+    const etaHtml =
+      minutes === null
+        ? '<span class="bus-card-eta-value">—</span>'
+        : minutes === 0
+          ? '<span class="bus-card-eta-value bus-card-eta-value--now">Now</span>'
+          : `<span class="bus-card-eta-value">${minutes}</span><span class="bus-card-eta-unit">min</span>`;
 
     card.innerHTML = `
-      <div class="bus-card-row">
-        <div class="bus-badge${badgeLengthClass}">
-          <span class="bus-badge-number">${serviceNo}</span>
-          <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
-          <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
-        </div>
-        <div class="bus-card-info">
-          <div class="bus-card-dest">
-            <span class="bus-card-dest-name">${instance.DestinationName || 'Unknown destination'}</span>
-          </div>
-        </div>
-        <div class="bus-card-eta">
-          ${buildEtaBlockHtml(minutes, nextMinutes, typeCode, instance.Load, instance.Feature)}
-        </div>
-      </div>
-      <div class="bus-card-mini-route" hidden></div>
-      <div class="bus-card-actions">
-        <button type="button" class="bus-card-route-btn" aria-label="View route on map">
-          <i class="ti ti-route" aria-hidden="true"></i>
-          <span>Route</span>
-        </button>
-      </div>
+      <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
+      <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
+      <span class="bus-card-num${badgeLengthClass}">${escapeHtml(serviceNo)}</span>
+      <span class="bus-card-eta">${etaHtml}</span>
+      ${typeLabelHtml}
     `;
 
     return card;
+  }
+
+  /* ══════════════════════════════════════════════
+   * フェーズ7: tier（キューの順位に応じたサイズ・横オフセット段階）の再計算
+   * （.claude/plan-phase7-arrivals-queue-cards.md 2節4項）
+   *
+   * カードのサイズ・margin-top（縦の重なり）・横方向のS字カーブオフセットは
+   * すべて「リスト内で何番目に近いか（tier）」に依存するCSSクラス
+   * （.t1〜.t7、7以降はt7で底打ち）で制御する。ポーリングで1台出発すると
+   * それより後ろの全カードの順位が1つずつ繰り上がるため、出発演出・新規
+   * 挿入・ETA更新が終わった後に必ずこの関数を呼び、現在のDOM順から
+   * t1〜t7を一括で付け直す。
+   *
+   * 出発アニメーション中のカード（.bus-card--departing）はDOM上にまだ
+   * 存在するが表示上は消えていく途中のため、tier再計算の対象（順位カウント）
+   * から除外する（除外しないと、消えかけのカードの分だけ後続カードの
+   * tierが1つずれて一瞬ガクつく）。
+   * ══════════════════════════════════════════════ */
+  const QUEUE_TIER_COUNT = 7; // t1〜t7（t7が最小サイズで底打ち）
+
+  function reapplyQueueTiers() {
+    const container = document.getElementById('bus-card-list');
+    if (!container) return;
+
+    const cards = Array.from(container.querySelectorAll('.bus-card')).filter(
+      (card) => !card.classList.contains('bus-card--departing')
+    );
+
+    cards.forEach((card, index) => {
+      for (let tier = 1; tier <= QUEUE_TIER_COUNT; tier++) {
+        card.classList.remove(`t${tier}`);
+      }
+      const tier = Math.min(index + 1, QUEUE_TIER_COUNT);
+      card.classList.add(`t${tier}`);
+    });
   }
 
   /* ══════════════════════════════════════════════
@@ -2366,12 +2390,15 @@
       arrivalInstances.forEach((instance) => {
         container.appendChild(buildBusCard(instance, arrivalInstances, stopCode));
       });
+      // フェーズ7: カード生成直後に順位に応じたtier（サイズ・S字カーブ
+      // オフセット）を一括付与する（.claude/plan-phase7-arrivals-queue-cards.md）。
+      reapplyQueueTiers();
 
       // フェーズ6: Timetableビューは上限なし・生のServices[]をそのまま行データに
       // する（8節確定「表示系統数は上限なし」、2-7節）。
       renderTimetableView(services);
 
-      // 星アイコンハイライト・目的地一致タグ・ミニ経路図（applyRouteEnrichment）を
+      // 星アイコンハイライト・目的地一致タグ（applyRouteEnrichment）を
       // 先に適用してから、「関連のみ」フィルターがON状態のままバス停が
       // 切り替わった場合の絞り込み再適用を行う。両ビューの行・カードに対して
       // 同じ判定結果を共有する（2-8節）。
@@ -2629,8 +2656,15 @@
 
     lastArrivalSnapshot = arrivalInstances.slice();
 
+    // フェーズ7: 出発・新規挿入によりリスト内の順位が変わったため、
+    // tier（サイズ・S字カーブオフセット）を再計算する。出発演出中のカード
+    // （.bus-card--departing）はreapplyQueueTiers()内で順位カウントから
+    // 除外されるため、消えかけのカードの分だけ後続がずれることはない
+    // （.claude/plan-phase7-arrivals-queue-cards.md 2節4項）。
+    reapplyQueueTiers();
+
     // 新規追加・出発によりDOM構成が変わったため、ハイライト・目的地一致タグ・
-    // ミニ経路図・フィルターを再適用する。既存の系統単位キャッシュ
+    // フィルターを再適用する。既存の系統単位キャッシュ
     // （serviceRouteInfoCache）があるため、新規カード以外への追加API呼び出しは
     // 発生しない想定。
     applyRouteEnrichment();
@@ -2792,10 +2826,16 @@
       bounds.push([stop.Latitude, stop.Longitude]);
 
       const isActive = index === currentStopIndex;
+      // ドット→ティアドロップ型ピン(ti-map-pin)への変更に伴い、マーカーの
+      // 実位置はピンの「先端」に合わせる必要がある(円形ドットと違い
+      // 左右非対称のため、中心アンカーのままだとピン全体が実座標より
+      // 上にずれて見える)。経路モーダル終点マーカー(26px→anchor[13,24])と
+      // 同じ比率で20pxにスケールし、anchor[10,18]を採用する。
       const icon = window.L.divIcon({
         className: '',
-        html: `<div class="home-map-stop-dot${isActive ? ' home-map-stop-dot--active' : ''}"></div>`,
-        iconSize: [13, 13],
+        html: `<i class="ti ti-map-pin home-map-stop-pin${isActive ? ' home-map-stop-pin--active' : ''}" aria-hidden="true"></i>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 18],
       });
       const marker = window.L.marker([stop.Latitude, stop.Longitude], { icon }).addTo(map);
 
@@ -2808,7 +2848,7 @@
           .bindTooltip(`<div class="home-map-stop-label">${escapeHtml(stop.Description || 'Bus stop')}</div>`, {
             permanent: true,
             direction: 'right',
-            offset: [8, 0],
+            offset: [12, 0],
             className: 'home-map-stop-tooltip',
           })
           .openTooltip();
@@ -2840,8 +2880,8 @@
       entry.marker.unbindTooltip();
       const iconEl = entry.marker.getElement();
       if (iconEl) {
-        const dot = iconEl.querySelector('.home-map-stop-dot');
-        if (dot) dot.classList.toggle('home-map-stop-dot--active', isActive);
+        const pin = iconEl.querySelector('.home-map-stop-pin');
+        if (pin) pin.classList.toggle('home-map-stop-pin--active', isActive);
       }
 
       if (isActive) {
@@ -2849,7 +2889,7 @@
           .bindTooltip(`<div class="home-map-stop-label">${escapeHtml(stop.Description || 'Bus stop')}</div>`, {
             permanent: true,
             direction: 'right',
-            offset: [8, 0],
+            offset: [12, 0],
             className: 'home-map-stop-tooltip',
           })
           .openTooltip();
@@ -2990,10 +3030,21 @@
 
   // #bus-card-list に対してタッチ（および開発確認用のマウスドラッグ）による
   // 横スワイプを検出し、currentStopIndex を+1/-1する。
+  // ユーザー指示「Timetableも横スワイプでバス停がかわるようにして」対応
+  // (2026-09-20)。従来はArrivalsビューの#bus-card-listにのみバインドして
+  // いたが、1コンテナ分のバインド処理を切り出し、Timetableビューの
+  // #home-timetable-listにも同じスワイプ判定を適用する。tracking状態は
+  // コンテナごとに独立させる（同時に見えているのは常に片方のビューのみだが、
+  // クロージャで完全に分離しておく方が安全）。
   function initSwipeGesture() {
-    const cardList = document.getElementById('bus-card-list');
-    if (!cardList) return;
+    [document.getElementById('bus-card-list'), document.getElementById('home-timetable-list')].forEach(
+      (container) => {
+        if (container) bindSwipeGestureToContainer(container);
+      }
+    );
+  }
 
+  function bindSwipeGestureToContainer(container) {
     let startX = 0;
     let startY = 0;
     let tracking = false;
@@ -3023,7 +3074,7 @@
     }
 
     // タッチイベント（実機・モバイルブラウザ向け、必須要件）
-    cardList.addEventListener(
+    container.addEventListener(
       'touchstart',
       (event) => {
         const touch = event.touches[0];
@@ -3032,7 +3083,7 @@
       { passive: true }
     );
 
-    cardList.addEventListener(
+    container.addEventListener(
       'touchend',
       (event) => {
         const touch = event.changedTouches[0];
@@ -3042,16 +3093,16 @@
     );
 
     // マウスドラッグ（PCブラウザでの開発確認用。必須ではないが実装容易なため追加）
-    cardList.addEventListener('mousedown', (event) => {
+    container.addEventListener('mousedown', (event) => {
       onSwipeStart(event.clientX, event.clientY);
     });
 
-    cardList.addEventListener('mouseup', (event) => {
+    container.addEventListener('mouseup', (event) => {
       onSwipeEnd(event.clientX, event.clientY);
     });
 
     // ドラッグ中にカードリスト外でボタンを離した場合はスワイプ扱いにしない
-    cardList.addEventListener('mouseleave', () => {
+    container.addEventListener('mouseleave', () => {
       tracking = false;
     });
   }

@@ -397,20 +397,41 @@ button {
 /* 周辺バス停ピン（非選択時はニュートラル色の縁取り丸、通常時はラベル非表示）。
    選択中バス停のみ.home-map-stop-dot--activeでアクセントカラー塗りつぶしにし、
    常時ラベル表示にする（2-3節）。 */
-.home-map-stop-dot {
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: var(--surface-1);
-  border: 3px solid var(--caramel);
+/* ユーザー指示「地図上のバス停はピンの表示を変えて。大きさそのままで」対応
+   (2026-09-20)。単色ドットから、経路モーダル終点マーカーと同じ
+   ti-map-pin(下が尖ったティアドロップ型)に変更。フォントサイズ20pxは
+   直前に拡大したドットの直径(20px)と揃え、「大きさそのまま」を満たす。
+   JS側のdivIcon iconSize/iconAnchorも合わせて変更すること
+   (renderHomeMapPins()/updateHomeMapSelection()参照)。 */
+.home-map-stop-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* iconSize[20,20]と同じ固定ボックスにしておくことで、アクティブ時に
+     border-radius:50%の円形背景を敷いても(下記--active参照)アイコンの
+     アンカー位置(iconAnchor)がズレない。 */
+  width: 20px;
+  height: 20px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--caramel);
+  text-shadow: 0 0 2px var(--surface-1), 0 0 3px var(--surface-1);
   cursor: pointer;
   transition: transform 0.12s ease;
 }
 
-.home-map-stop-dot--active {
+/* ユーザー指示「表示しているバス停は色を反転させてもっと目立つように。
+   パッと見てわかるように」対応(2026-09-20)。単なる色変更(caramel→
+   fill-accentは元々同じ緑相のため差が弱かった)ではなく、背景と前景を
+   反転させる(塗りつぶしの円+白いピン)ことで選択中のバス停が一目で
+   わかるようにした。 */
+.home-map-stop-pin--active {
+  border-radius: 50%;
   background: var(--fill-accent);
-  border-color: var(--fill-accent);
-  box-shadow: 0 0 0 4px rgba(111, 143, 99, 0.22);
+  color: var(--on-accent);
+  font-size: 13px;
+  text-shadow: none;
+  box-shadow: 0 2px 6px rgba(43, 43, 39, 0.3), 0 0 0 3px rgba(111, 143, 99, 0.25);
 }
 
 .home-map-stop-label {
@@ -431,50 +452,44 @@ button {
 }
 
 /* ══════════════════════════════════════════════
- * フェーズ6: Arrivals/Timetable切替フリップボタン（2-6節で確定）
- *
- * 2タブのセグメントコントロールではなく単一のボタン。タップのたびに
- * アイコンが180度回転しながらラベル・ビュー内容が入れ替わる
- * （mockups/home-map-timetable-v3.html .home-view-flip相当）。
- * ヘッダー・スクロール領域のどちらにも属さない、3段構成に挟まる第4の帯として
- * flex-shrink:0で固定配置する（スクロールしても常に押せる位置にあり続ける）。
+ * フェーズ6: Arrivals/Timetable切替フリップボタン
+ * （当初2-6節で「地図直下の専用行」として確定したが、ユーザー指示
+ * 「Time<>Arrivalのふりっぷは場所を取りたくない」を受け、専用行を廃止し
+ * 地図右下隅に浮かせる円形フローティングボタンに変更。地図(.home-map-panel)
+ * の高さはそのまま、レイアウトフローに一切影響しない。タップのたびに
+ * アイコンが180度回転して現在のビューを示す（テキストラベルは
+ * aria-label相当としてDOM上は残すが視覚的にはsr-only化）。
  * ══════════════════════════════════════════════ */
-.home-view-flip-row {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: center;
-  padding: 10px 14px;
-}
-
 .home-view-flip {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 450;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--fill-accent);
+  border: none;
+  box-shadow: 0 4px 14px rgba(43, 43, 39, 0.28);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 14px 6px 6px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  justify-content: center;
   transition: transform 0.1s ease;
 }
 
 .home-view-flip:active {
-  transform: scale(0.97);
+  transform: scale(0.93);
 }
 
 .home-view-flip-icon {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--fill-accent);
-  color: var(--on-accent);
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--on-accent);
 }
 
 .home-view-flip-icon i {
-  font-size: 14px;
+  font-size: 18px;
   transition: transform 0.25s ease;
 }
 
@@ -482,10 +497,19 @@ button {
   transform: rotate(180deg);
 }
 
+/* テキストラベルはボタンのaria-labelで代替するため視覚的に非表示（sr-only）。
+   JS側(applyHomeViewToDom())は引き続きtextContentを更新するが、
+   円形ボタンには表示スペースが無いため画面上には出さない。 */
 .home-view-flip-label {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--text-primary);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ══════════════════════════════════════════════
@@ -750,479 +774,261 @@ button {
 }
 
 /* ══════════════════════════════════════════════
- * バスカードフィード（Home画面）
+ * バスカードフィード（Home画面）— 遠近クイーニングカード（フェーズ7）
  *
- * フェーズ4 タスク分解ステップ2・3（.claude/plan.md 第2-2節〜第2-4節）で
- * mockups/home-card-redesign-v3.html（ユーザー承認済みモックアップ）の
- * マークアップ・寸法・配色をそのまま移植した。密度重視の例外
- * （CLAUDE.md「密度が重要な画面」節）としてカード間gap等は既存踏襲。
+ * .claude/plan-phase7-arrivals-queue-cards.md（ユーザー承認済み、
+ * mockups/arrivals-queue-patternA-variants-v1.html の variant-s = A-4
+ * 「S字カーブ」を採用）に基づき全面刷新。ユーザー指示「余計な情報はいらない
+ * ので、系統番号と本当に必要な情報だけに残して、カードをもっと正方形に近い
+ * 形にして、バスがキューイングしてバス停に近づいてくる様を視覚的に表現
+ * したい」に対応。表示情報は系統番号・ETA・車種(SD/DD)のみに絞り、行き先・
+ * ミニ経路図・「Next: N min」・WABアイコンは廃止した。
+ *
+ * カードは到着が近い順に上から並び、下に行くほど段階的に小さくなる
+ * （tierクラス.t1〜.t7、t7は最小サイズで底打ち・無限に縮小しない）。
+ * margin-top負値で縦に少し重なり、奥行き感を出す。横方向のオフセットは
+ * translateXでS字カーブ状に揺れる（モックアップ.variant-sの値を踏襲）。
+ * tierクラスの付け外しはJS側reapplyQueueTiers()が担う（リスト内の順位に
+ * 依存するため、buildBusCard()自体はtierクラスを付与しない）。
  * ══════════════════════════════════════════════ */
 .bus-card-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 0 14px 14px;
+  align-items: center;
+  /* S字カーブのtranslateXで左右にはみ出す分の余白を確保する（最大約20px）。 */
+  padding: 20px 24px 24px;
 }
 
 .bus-card {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: var(--surface-1);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
-  /* 2026-09-15ユーザー指摘「カードが大きくなりすぎてる」対応。
-     mockups/card-density-v1.html Pattern A(控えめ)を採用し18px→14pxに縮小。 */
-  padding: 14px;
-  /* 角丸コーナーでの子要素クリップ用。 */
-  position: relative;
-  overflow: hidden;
-  /* opacity/transformは新規到着カードのフェードイン（.bus-card--entering、
-     フェーズ4 タスク分解ステップ6）用。出発演出自体は専用の
-     .bus-card--departing側でanimationにより制御する（.claude/plan.md 第2-6節）。 */
-  transition: transform 0.1s ease, box-shadow 0.15s ease, opacity 0.35s ease, transform 0.35s ease;
-}
-
-/* 2026-09-14ユーザー指示によりカード全体のタップ操作を廃止（.bus-card-route-btn
-   参照）。カード自体はもうインタラクティブではないため、旧:active押下フィード
-   バック（scale(0.98)）は削除した。 */
-
-/* .bus-card-actionsの変遷: タイトル下(初期)→Routeボタンの左に並べる→
-   右寄せクラスタ(バス/車椅子+Route)→2026-09-14「タイトルのすぐ下って邪魔」
-   との指摘を受け、車種・車椅子アイコン(.eta-icon-cluster)はETA(時間)の
-   すぐ左に移設(.bus-card-eta内、buildEtaBlockHtml参照)。このため現在
-   .bus-card-actionsにはRouteボタンのみが入り、単独で右寄せ表示される。 */
-.bus-card-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  margin-top: 10px;
-}
-
-.bus-card-route-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  /* 2026-09-15カード密度調整(Pattern A)でpadding 7px 14px→6px 12px、13px→12pxに縮小 */
-  padding: 6px 12px;
-  border-radius: 50px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  transition: transform 0.1s ease;
-}
-
-.bus-card-route-btn:active {
-  transform: scale(0.96);
-}
-
-.bus-card-route-btn i {
-  font-size: 15px;
-}
-
-.bus-card-row {
-  display: flex;
-  align-items: center;
-  gap: 12px; /* 2026-09-15カード密度調整(Pattern A)で14px→12pxに縮小 */
-}
-
-/* 系統番号バッジ（mockup v3 .badge相当: 58×58px、電光掲示板を意識した
-   最大の視覚要素として大幅拡大。旧34×34px/13pxから拡大） */
-.bus-badge {
-  flex-shrink: 0;
-  /* 2026-09-15ユーザー指摘「カードが大きくなりすぎてる」対応。
-     mockups/card-density-v1.html Pattern A(控えめ)を採用し
-     58px/24px→50px/20pxに縮小(.bus-badgeは経路モーダルヘッダーとも
-     共有のため、こちらも合わせて一回り小さくなる)。 */
-  width: 50px;
-  height: 50px;
-  border-radius: 14px;
-  background: var(--surface-2);
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  font-weight: 800;
-  /* 2026-09-14ユーザー指摘「系統の番号もうちょっと見やすく」対応。モックアップ
-     比較(mockups/badge-legibility-v1.html)のうえ、軽いドロップシャドウで
-     バッジを浮かせて輪郭を強調するパターンEを採用した。.bus-badgeは
-     Home画面のカードと経路モーダルのヘッダー(#route-modal-badge)の両方で
-     共通利用しているため、ここに追加するだけで両方に反映される。 */
-  box-shadow: 0 2px 6px rgba(42, 37, 32, 0.15);
-  /* 目的地一致アイコン(.bus-badge-match-icon)の絶対配置の基準用
-     （2026-09-14、リボン廃止に伴い追加）。 */
-  position: relative;
-}
-
-.bus-badge--accent {
-  background: var(--fill-accent);
-  color: var(--on-accent);
-}
-
-/* 目的地一致インジケーターの変遷: リボン→バッジ全体を色でベタ塗り→薄い色付き
-   背景に変更→2026-09-14ユーザー指摘「経路の色連動が残ってます」「系統の
-   色付けをやめる、バッジだけでいい」を踏まえ、バッジ本体の色連動は完全に
-   廃止した。現在バッジはニュートラル(未一致時と同じ配色)のまま、右上の角
-   アイコン(.bus-badge-match-icon)だけが色を持つ唯一の一致インジケーター。
-   .bus-badge--matchedクラス自体にCSSルールはないが、目的地一致状態の目印
-   としてJS側で付与している（renderMatchTag()参照）。 */
-
-/* バッジ右上角に重ねる小さな丸アイコン（2026-09-14ユーザー指示「リボンは
-   カードそのものじゃなくて、経路番号のように色として表示したい。右上の方には
-   小さくアイコンを表示するような形がいい」対応。モック比較
-   mockups/badge-corner-match-v1.html パターンB）。背景・アイコン色はJS側で
-   dest.iconColorに合わせて動的に設定する。
-   2026-09-14「アイコンを2個重ねることできる?」との指示で、複数の登録済み
-   目的地に一致する場合は右上の角に2件まで表示できるようにした。
-   2026-09-14ユーザー指示「バッジは右上から横に並べて」により、当初の
-   縦積み(--1が上、--2がその下)から、右上を起点に横並び(--1が右端、
-   --2がその左に少し重なる)に変更した。 */
-/* 2026-09-14ユーザー指示「バッジをもうちょっと大きくして」対応で20px→24pxに
-   拡大（目的地一致を示す唯一のインジケーターになったため、視認性を優先）。 */
-.bus-badge-match-icon {
-  position: absolute;
-  top: -7px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  border: 2px solid var(--surface-1);
-}
-
-.bus-badge-match-icon--1 {
-  right: -7px;
-  z-index: 2;
-}
-
-.bus-badge-match-icon--2 {
-  right: 9px;
-  z-index: 1;
-}
-
-.bus-badge-match-icon svg {
-  width: 13px;
-  height: 13px;
-}
-
-/* 4文字以上の系統番号（118A、961M等）用。58px角のバッジに24pxだと
-   文字が縁に張り付くため縮小する（2026-09-13実機で発見・修正） */
-.bus-badge--long {
-  font-size: 17px;
-  letter-spacing: -0.5px;
-}
-
-.bus-card-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.bus-card-dest {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.bus-card-dest-name {
-  /* 2026-09-14ユーザー指示: ETAと合わせて少し大きすぎたため20pxから縮小しバランスを取る。
-     2026-09-15さらに「カードが大きくなりすぎてる」対応でPattern A(控えめ)を採用し18px→16pxに縮小。 */
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.25;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 経由地表示バグ修正（.claude/plan.md 第1節）で置き換えられた旧.bus-card-viaは、
-   今回のメタ行実装（.bus-card-meta-row）に統合したため廃止した。 */
-
-/* メタ行: バスイラスト＋車椅子対応アイコン（mockup v3 .meta-row相当、
-   .claude/plan.md 第2-2節「2. メタ行」）。位置の変遷: タイトル下(初期)→
-   ETAの左側/下(試験)→タイトル下(差し戻し)→.bus-card-actions内(Routeボタン
-   の左)→2026-09-14「タイトルのすぐ下って邪魔」との指摘を受け、ETA(時間)の
-   すぐ左に固定表示・時間とまとめて右寄せする最終形に変更(.eta-time-row内、
-   buildEtaBlockHtml参照)。クラス名も.bus-card-meta-rowから.eta-icon-cluster
-   に変更した。 */
-.eta-icon-cluster {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-}
-
-/* バスイラストアイコン（2026-09-14ユーザー指示: 車種+混雑度をテキストではなく
-   1つのイラストで表現。形=単一/二階建て、窓の色=混雑度。本体は塗りつぶしなし、
-   車椅子アイコンと同じvar(--text-muted)の線画のみで控えめに保つ。タイヤは
-   廃止し、一階建て(横長)/二階建て(縦長・窓2段)をシルエットの縦横比で瞬時に
-   見分けられるようにした）。
-   2026-09-14追加: 単一/二階建てでSVGの実サイズが異なる(横長 vs 縦長)ため、
-   固定サイズの箱(.bus-card-vehicle-icon-wrap)で囲んで中央揃えし、
-   カードごとにETA列の位置がずれないようにする（ユーザー指摘対応）。
-   2026-09-14: ETAの数字の隣というコンパクトな位置に移設したことに伴い、
-   一度サイズを縮小したが、車椅子アイコンに対して主張が弱すぎるとの指摘で
-   再度拡大した（比率は維持: 単一2:1、二階建て約1.15:1）。 */
-.bus-card-vehicle-icon-wrap {
-  flex-shrink: 0;
-  width: 32px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.bus-card-vehicle-icon--single {
-  width: 30px;
-  height: 15px;
-}
-
-/* 2026-09-14ユーザー指摘: 二階建てアイコンの横幅が一階建てより狭く見えたため、
-   横幅を一階建てと揃え、高さのみ元のviewBox(0 0 34 30)の縦横比に
-   合わせて調整した（横に間延びせず自然な比率を保つ）。 */
-.bus-card-vehicle-icon--double {
-  width: 27px;
-  height: 23px;
-}
-
-/* 車椅子対応車両アイコン（LTA Featureフィールド"WAB"、2026-09-14ユーザー指示で追加） */
-.bus-card-wab-tag {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.bus-card-wab-tag i {
-  /* 2026-09-14ユーザー指摘「車椅子が小さすぎてよく分からない」対応で
-     14px→18pxに拡大。 */
-  font-size: 18px;
-  color: var(--text-muted);
-}
-
-/* ETA（mockup v3 .eta/.eta-value/.eta-unit相当、.claude/plan.md 第2-2節
-   「3. ETA」: 主役ではなく補助情報として右側に控えめに配置） */
-.bus-card-eta {
-  flex-shrink: 0;
-  text-align: right;
-}
-
-/* 車種・車椅子アイコン(.eta-icon-cluster)を大きな分数のすぐ左に並べ、
-   ひとつの右寄せブロックにする（2026-09-14ユーザー指示「時間のすぐ左に
-   位置固定で表示できる? 時間とかバス情報とかをまとめて右寄せ表示する形」）。 */
-.eta-time-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.eta-value {
-  /* 2026-09-13ユーザー指示で18px→28pxに拡大したが、2026-09-14に
-     「大きくなりすぎた」との指摘で22pxに調整しなおした（濃色化は維持）。
-     2026-09-15さらにカード密度調整(Pattern A)で22px→19pxに縮小。 */
-  font-size: 19px;
-  font-weight: 800;
-  color: var(--text-primary);
-  line-height: 1.1;
-}
-
-/* 「Nowだけ目立ちすぎてしつこい」との指摘で一度緑の強調を外し他の分数と
-   同じ色に統一したが、2026-09-14「文字を少し小さくして、前のようにグリーンで
-   色付けしていいよ」との指示で緑を復活。文字サイズを22px→18pxに縮小して
-   "Now"/"arriving"（通常の分数より長い文字列）が目立ちすぎない程度に調整した。 */
-.eta-value.now {
-  font-size: 16px; /* 2026-09-15カード密度調整(Pattern A)で18px→16pxに縮小 */
-  color: var(--caramel);
-}
-
-.eta-unit {
-  font-size: 12px; /* 2026-09-15カード密度調整(Pattern A)で13px→12pxに縮小 */
-  font-weight: 600;
-  color: var(--text-secondary);
-  display: block;
-}
-
-/*
- * フェーズ4 タスク分解ステップ1・2（.claude/plan.md 第2-1節・第2-2節）:
- * 1カード=1到着インスタンス化に伴い、同一系統の次の到着時刻をETAの
- * 下に小さく併記する要素（mockup v3 .eta-next相当）。次の到着データが
- * 無い場合はマークアップ自体を生成しない（buildBusCard参照）ため、
- * 非表示制御は不要。
- */
-.bus-card-eta-next {
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  margin-top: 2px;
-}
-
-/* ミニ経路図（ピルタグ版、2026-09-13カードデザイン刷新）。JS側（renderMiniRoute）が
-   系統単位のfetchRouteSummary結果（origin/waypoints/destination）を使って
-   経由地名を横並びの丸ピル型タグとして差し込む（折り返しあり）。
-   縦並びドットリスト版は情報が縦に散らばり過ぎるとの指摘を受け、
-   SG在住Naviのカテゴリタグを参考にしたこの形式に置き換えた
-   （mockups/card-redesign-v5.html Option Aをユーザーが選択）。
-   .bus-card-mini-route-hint / .bus-card-map-panel / .bus-card-map-fallback の
-   スタイルは、地図表示機能を将来また使う可能性を踏まえてあえて残してある
-   （JS側のensureMiniRouteMap等と同様、未使用のまま保持する判断）。 */
-.bus-card-mini-route {
-  margin-top: 10px; /* 2026-09-15カード密度調整(Pattern A)で12px→10pxに縮小 */
-  padding-top: 10px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-/* MRT駅タグの一言キャプション（2026-09-14追加: タグだけでは何を示しているか
-   分かりにくいとの指摘のため、「Passes these MRT stations」を一行添える） */
-.bus-card-mini-route-caption {
-  font-size: 11px; /* 2026-09-15カード密度調整(Pattern A)で12px→11pxに縮小 */
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
-
-.bus-card-mini-route-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.bus-card-mini-route-tag {
-  font-size: 11px; /* 2026-09-15カード密度調整(Pattern A)で12px→11pxに縮小 */
-  font-weight: 600;
-  color: var(--text-secondary);
-  background: var(--surface-2);
-  padding: 4px 9px;
-  border-radius: 999px;
-}
-
-/* 登録済み目的地に一致する経由地タグ（2026-09-14ユーザー指示「セーブしている
-   バス停がある場合は経由地にも必ず表示したい」対応）。経路モーダルの
-   .route-modal-waypoint-tag--destと同じ「アイコン色で塗りつぶし+カテゴリ
-   アイコン」の実心バッジにして、文字色のみのMRT駅タグと視覚的に区別する。 */
-/* 2026-09-14ユーザー指摘「目立ちすぎなので薄めのラベルにして」対応。
-   文字色はJS側(buildMiniRouteTagHtml)で元の色をそのまま指定するため、
-   ここでは白固定にしない。 */
-.bus-card-mini-route-tag--dest {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-weight: 800;
-}
-
-.bus-card-mini-route-tag--dest svg {
-  width: 12px;
-  height: 12px;
-}
-
-/* タップ開閉ヒント（mockup v4 .mini-route-hint相当）。開いている間は
-   矢印アイコンを180度回転させ、視覚的に開閉状態を示す。 */
-.bus-card-mini-route-hint {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  white-space: nowrap;
-  padding-top: 2px;
-}
-
-.bus-card-mini-route-hint i {
-  font-size: 12px;
-  transition: transform 0.25s ease;
-}
-
-.bus-card-mini-route.open .bus-card-mini-route-hint i {
-  transform: rotate(180deg);
-}
-
-/* 実地図パネル（Leaflet、mockup v4 .map-panel相当）。閉じている間は
-   高さ0で非表示にし、タップで開いたときのみ表示・地図を遅延初期化する
-   （JS側 ensureMiniRouteMap 参照）。 */
-.bus-card-map-panel {
-  display: none;
-  margin-top: 10px;
-  height: 220px;
-  border-radius: 14px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-
-.bus-card-mini-route.open .bus-card-map-panel {
-  display: block;
-}
-
-.bus-card-map-panel .leaflet-container {
-  background: var(--surface-2);
-  font-family: var(--font-heading);
-}
-
-/* 地図読み込み失敗時のフォールバック表示（.claude/plan.md 第4節失敗系:
-   地図パネルは「地図を読み込めませんでした」の表示に留め、カード全体の
-   表示は妨げない）。 */
-.bus-card-map-fallback {
-  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  color: var(--text-muted);
-  font-size: 13px;
-  background: var(--surface-2);
+  border: none;
+  border-radius: 18px;
+  color: var(--on-accent);
+  font-weight: 800;
+  box-shadow: 0 5px 14px rgba(43, 43, 39, 0.16);
+  position: relative;
+  cursor: pointer;
+  /* サイズ・位置(margin-top/translateX)はtierクラス(.t1〜.t7)側で指定する。
+     ここではトランジションと、新規挿入(.bus-card--entering)・出発演出
+     (.bus-card--departing)に共通する基本のtransitionのみ定義する。 */
+  transition: transform 0.25s ease, opacity 0.3s ease, width 0.25s ease, height 0.25s ease,
+    margin-top 0.25s ease, font-size 0.25s ease;
 }
 
-.bus-card-map-fallback i {
-  font-size: 20px;
+.bus-card:active {
+  transform: scale(0.96) translateX(var(--queue-offset-x, 0));
 }
+
+/* 混雑度(Load)による背景色。SEA=緑/SDA=黄/LSD=赤。未知・欠落時は
+   ニュートラルなグレーにフォールバックする（偽の色を出さない、CLAUDE.md
+   「登録済み目的地」節と同じ「安全側に倒す」方針を踏襲）。 */
+.bus-card--load-green {
+  background: var(--load-green);
+}
+
+.bus-card--load-amber {
+  background: var(--load-amber);
+}
+
+.bus-card--load-red {
+  background: var(--load-red);
+}
+
+.bus-card--load-neutral {
+  background: var(--warm-gray);
+}
+
+/* 系統番号（大きな数字、電光掲示板を意識した最大の視覚要素） */
+.bus-card-num {
+  line-height: 1;
+}
+
+/* 4文字以上の系統番号（118A、961M等）用。正方形カードの狭い横幅に
+   収まりきらず文字が縁に張り付くため縮小する（2026-09-13実機で発見・修正の
+   踏襲、フェーズ7でクラス名を.bus-badge--longから.bus-card-num--longに変更）。 */
+.bus-card-num--long {
+  letter-spacing: -0.5px;
+}
+
+.bus-card-eta {
+  font-weight: 700;
+  opacity: 0.92;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.bus-card-eta-value--now {
+  color: var(--caramel-light);
+}
+
+.bus-card-eta-unit {
+  margin-left: 2px;
+}
+
+/* 車種(SD/DD)。最小tier(t7)ではスペースの都合上非表示にする
+   （plan-phase7 1節「小さいカードでは省略してよい」）。 */
+.bus-card-type {
+  font-weight: 700;
+  opacity: 0.8;
+  letter-spacing: 0.03em;
+  margin-top: 1px;
+}
+
+/* 目的地一致インジケーター: 角に重ねる小さな丸アイコン（旧.bus-badge-match-icon
+   と同じ考え方、CLAUDE.md「バスカード」節参照）。フェーズ7ではカード自体が
+   バッジ相当のため、カードの角に直接重ねる。カード背景色(混雑度)とは別
+   レイヤーとして共存させる（plan-phase7 2節1項）。 */
+.bus-badge-match-icon {
+  position: absolute;
+  top: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  border: 2px solid var(--surface-1);
+  z-index: 3;
+}
+
+.bus-badge-match-icon--1 {
+  right: -6px;
+  z-index: 2;
+}
+
+.bus-badge-match-icon--2 {
+  right: 8px;
+  z-index: 1;
+}
+
+.bus-badge-match-icon svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* ── サイズ階層(tier)。到着が近い順(t1)から遠い順(t7)へ段階的に縮小する。
+   t7以降(8件目以降)は同じ最小サイズで底打ちし、無限に縮小し続けない
+   （mockups/arrivals-queue-patternA-variants-v1.html .t7〜.t10相当）。
+   横方向のオフセット(translateX)はS字カーブ(variant-s)の値をそのまま採用。
+   カスタムプロパティ--queue-offset-xに保持し、:active時のscale変換と
+   合成できるようにする。 ── */
+.bus-card.t1 {
+  width: 112px;
+  height: 112px;
+  font-size: 26px;
+  margin-top: 0;
+  z-index: 8;
+  --queue-offset-x: 0px;
+  transform: translateX(var(--queue-offset-x));
+}
+.bus-card.t1 .bus-card-eta { font-size: 14px; }
+.bus-card.t1 .bus-card-type { font-size: 9.5px; }
+
+.bus-card.t2 {
+  width: 98px;
+  height: 98px;
+  font-size: 22px;
+  margin-top: -12px;
+  z-index: 7;
+  opacity: 0.97;
+  --queue-offset-x: 8px;
+  transform: translateX(var(--queue-offset-x));
+}
+.bus-card.t2 .bus-card-eta { font-size: 12px; }
+.bus-card.t2 .bus-card-type { font-size: 9px; }
+
+.bus-card.t3 {
+  width: 86px;
+  height: 86px;
+  font-size: 19px;
+  margin-top: -10px;
+  z-index: 6;
+  opacity: 0.94;
+  --queue-offset-x: 16px;
+  transform: translateX(var(--queue-offset-x));
+}
+.bus-card.t3 .bus-card-eta { font-size: 11px; }
+.bus-card.t3 .bus-card-type { font-size: 8px; }
+
+.bus-card.t4 {
+  width: 74px;
+  height: 74px;
+  font-size: 16px;
+  margin-top: -9px;
+  z-index: 5;
+  opacity: 0.9;
+  --queue-offset-x: 10px;
+  transform: translateX(var(--queue-offset-x));
+}
+.bus-card.t4 .bus-card-eta { font-size: 10px; }
+
+.bus-card.t5 {
+  width: 64px;
+  height: 64px;
+  font-size: 14px;
+  margin-top: -8px;
+  z-index: 4;
+  opacity: 0.87;
+  --queue-offset-x: -6px;
+  transform: translateX(var(--queue-offset-x));
+}
+.bus-card.t5 .bus-card-eta { font-size: 9px; }
+
+.bus-card.t6 {
+  width: 56px;
+  height: 56px;
+  font-size: 12px;
+  margin-top: -7px;
+  z-index: 3;
+  opacity: 0.83;
+  --queue-offset-x: -16px;
+  transform: translateX(var(--queue-offset-x));
+}
+.bus-card.t6 .bus-card-eta { font-size: 8px; }
+
+/* t7 = 底打ちサイズ。8件目以降も全て同じ大きさ・同じ最小サイズのまま
+   単純に積み上がる（無限に縮小し続けない、plan-phase7 1節）。横オフセットは
+   モックアップのS字周期(.t7〜.t10)をそのまま踏襲し、11件目以降は
+   JS側reapplyQueueTiers()がt7を再度付与するため同じ値が繰り返される。 */
+.bus-card.t7 {
+  width: 50px;
+  height: 50px;
+  font-size: 11px;
+  margin-top: -6px;
+  z-index: 2;
+  opacity: 0.8;
+  --queue-offset-x: -14px;
+  transform: translateX(var(--queue-offset-x));
+}
+.bus-card.t7 .bus-card-eta { font-size: 7px; }
+.bus-card.t7 .bus-card-type { display: none; }
 
 /* ══════════════════════════════════════════════
- * 出発演出（フェーズ4 タスク分解ステップ6、.claude/plan.md 第2-6節・
- * 第8節リスク6）。
+ * 出発演出（フェーズ4由来、フェーズ7で正方形カード向けに調整）。
  *
- * mockups/home-card-redesign-v2.html の .departing / @keyframes depart を
- * そのまま移植し、右にスライドしながらフェードアウト＋高さが縮んで消える
- * アニメーションにする。JS側（playDepartAnimation）が到着インスタンスの
- * 消失を検出したカードに.bus-card--departingを付与し、animationend後に
- * DOMから除去する。
- *
- * .bus-card は button 要素かつ .bus-card-list の flex gap（14px）で
- * カード間隔を作っているため、mockup v2の margin-bottom 制御版とは異なり
- * gap自体は縮まない。そのため overflow: hidden を付与した上で
- * max-height / padding / opacity / transform を併用し、視覚的に高さが
- * 縮んで消えるように調整している。
+ * 旧デザインは横長カードを右にスライドさせながら消していたが、正方形の
+ * クイーニングカードでは不自然なため、その場でスケールダウンしながら
+ * フェードアウトする形に変更した（「バスが発車して見えなくなる」演出）。
+ * JS側（playDepartAnimation）が到着インスタンスの消失を検出したカードに
+ * .bus-card--departingを付与し、animationend後にDOMから除去する。
  * ══════════════════════════════════════════════ */
 .bus-card--departing {
-  animation: bus-card-depart 0.6s ease-in forwards;
-  overflow: hidden;
+  animation: bus-card-depart 0.5s ease-in forwards;
   pointer-events: none;
 }
 
 @keyframes bus-card-depart {
   0% {
     opacity: 1;
-    transform: translateX(0);
-    max-height: 260px;
-  }
-  60% {
-    opacity: 0;
-    transform: translateX(40px);
-    max-height: 260px;
+    transform: translateX(var(--queue-offset-x, 0)) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translateX(40px);
-    max-height: 0;
-    padding-top: 0;
-    padding-bottom: 0;
-    margin-top: 0;
-    margin-bottom: 0;
-    border-width: 0;
+    transform: translateX(var(--queue-offset-x, 0)) scale(0.4);
   }
 }
 
@@ -1232,7 +1038,7 @@ button {
    .bus-card--enteringを付与し、次フレームで除去することでtransitionを発火させる。 */
 .bus-card--entering {
   opacity: 0;
-  transform: translateY(-6px);
+  transform: translateX(var(--queue-offset-x, 0)) scale(0.7);
 }
 
 /*
