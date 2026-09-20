@@ -10,6 +10,7 @@ data/
 !.claude/plan-phase2-gps-search.md
 !.claude/plan-phase3-routes-destinations.md
 !.claude/plan-phase4-home-card-redesign.md
+!.claude/plan-phase6-map-timetable-toggle.md
 
 # iOS署名関連（絶対にコミットしない）
 *.p12

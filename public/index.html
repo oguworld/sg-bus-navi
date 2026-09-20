@@ -30,7 +30,7 @@
            （initPullToReflesh参照、window.scrollY方式から変更済み）。 -->
       <header class="app-header">
         <div class="app-header-title-row">
-          <div class="app-header-title">Arrivals</div>
+          <div class="app-header-title">Home</div>
           <div class="app-header-actions">
             <button type="button" class="filter-toggle" id="filter-toggle" aria-pressed="false">
               <i class="ti ti-star" aria-hidden="true"></i>
@@ -45,6 +45,26 @@
           <button type="button" class="stop-pill stop-pill--active" role="tab" aria-selected="true">Opp The Nexus</button>
         </div>
       </header>
+
+      <!-- フェーズ6: 地図パネル（現在地+周辺バス停ピン）。initHomeMap()/renderHomeMapPins()が
+           GPS取得・nearbyStops確定後に描画する。Leaflet未読み込み・GPS未確定時は
+           #home-map-fallbackのメッセージにフォールバックする（.claude/plan-phase6参照）。 -->
+      <div class="home-map-panel" id="home-map-panel">
+        <div class="home-map-fallback" id="home-map-fallback">
+          <i class="ti ti-loader-2" aria-hidden="true"></i>
+          <span>Loading map…</span>
+        </div>
+        <div class="home-map-el" id="home-map-el" hidden></div>
+      </div>
+
+      <!-- フェーズ6: Arrivals/Timetable切替の単一フリップボタン。地図直下・
+           スクロール領域の外側に固定配置する（2-6節）。初期表示はTimetable。 -->
+      <div class="home-view-flip-row">
+        <button type="button" class="home-view-flip" id="home-view-flip" aria-label="Switch between Timetable and Arrivals view">
+          <span class="home-view-flip-icon"><i class="ti ti-arrows-left-right" aria-hidden="true"></i></span>
+          <span class="home-view-flip-label" id="home-view-flip-label">Timetable</span>
+        </button>
+      </div>
 
       <div class="home-scroll-content" id="home-scroll-content">
 
@@ -62,12 +82,18 @@
           <button type="button" class="gps-fallback-retry-btn" id="gps-fallback-retry-btn">Try Again</button>
         </div>
 
+        <!-- フェーズ6: Timetableビュー（系統ごとに1行、renderTimetableView()が動的生成）。
+             初期表示状態はTimetable（2-6節）。#bus-card-listと排他的に表示切替する。 -->
+        <div class="timetable-list" id="home-timetable-list"></div>
+
         <!-- バスカードはapp.js（buildBusCard）が/api/bus-arrivalの実データから動的生成する。
              以下は#bus-card-listがJavaScript実行前後の一瞬に表示されうる静的プレースホルダー
              （GPS取得完了後、loadBusArrivals()がcontainer.innerHTMLを上書きする）。
              マークアップ・クラス名はbuildBusCard()が生成する実カードと同一にしてある
-             （フェーズ4 タスク分解ステップ2、.claude/plan.md 第2-2節〜第2-4節）。 -->
-        <div class="bus-card-list" id="bus-card-list">
+             （フェーズ4 タスク分解ステップ2、.claude/plan.md 第2-2節〜第2-4節）。
+             フェーズ6: 初期表示はTimetableビューのためhiddenを付与、toggleHomeView()が
+             表示状態を切り替える。 -->
+        <div class="bus-card-list" id="bus-card-list" hidden>
 
           <!-- バスカード1: 目的地一致 -->
           <div class="bus-card" data-route-from="Eunos Int" data-route-to="Bukit Merah Int" data-route-number="67">
@@ -327,7 +353,7 @@
     <nav class="bottom-nav">
       <button type="button" class="bottom-nav-item active" data-screen="home">
         <span class="nav-icon"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4 16c0 .7.3 1.3.8 1.7V19a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h8v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1.3c.5-.4.8-1 .8-1.7V7c0-2.5-2.4-3-8.6-3S4 4.5 4 7Zm3 1.5A1.5 1.5 0 1 1 7 15a1.5 1.5 0 0 1 0 3Zm10 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3ZM6 12V7h12v5Z"/></svg></span>
-        <span>Arrivals</span>
+        <span>Home</span>
       </button>
       <button type="button" class="bottom-nav-item" data-screen="saved">
         <span class="nav-icon"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5 L14.9 8.6 L21.6 9.5 L16.8 14.1 L18 20.8 L12 17.6 L6 20.8 L7.2 14.1 L2.4 9.5 L9.1 8.6 Z"/></svg></span>

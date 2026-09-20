@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGBusNavi — Home: Map + Arrival/Timetable toggle (mockup, not wired to app)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAFAF8; --warm-white: #FFFFFF; --sand: #EAEAE6; --sand-dark: #DCDCD6;
+    --caramel: #6F8F63; --caramel-pale: #EEF3EA;
+    --midnight: #2B2B27; --warm-gray: #767268; --light-gray: #A8A49A;
+    --radius-card: 24px; --radius-btn: 14px; --shadow-card: 0 4px 18px rgba(43,43,39,0.08);
+    --font-heading: 'Inter', sans-serif;
+    --surface-2: var(--cream); --surface-1: var(--warm-white);
+    --text-primary: var(--midnight); --text-secondary: var(--warm-gray); --text-muted: var(--light-gray);
+    --text-accent: var(--caramel); --bg-accent-muted: var(--caramel-pale); --fill-accent: var(--caramel);
+    --border: var(--sand); --border-accent: var(--caramel); --on-accent: var(--warm-white);
+    --load-green: #4C9A5B; --load-amber: #C79A2E; --load-red: #C0392B;
+    --current-location-blue: #3D7BC9;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; font-family: var(--font-heading); }
+  body { background: #ECECE8; color: var(--text-primary); padding: 24px 0 80px; }
+
+  .note { max-width: 480px; margin: 0 auto 20px; padding: 0 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+  .note b { color: var(--text-primary); }
+  .note ol, .note ul { padding-left: 18px; margin-top: 6px; }
+
+  /* ── phone frame ── */
+  .phone {
+    max-width: 420px; margin: 0 auto;
+    background: var(--surface-2);
+    border-radius: 32px;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+    height: 820px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── header (existing, unchanged) ── */
+  .app-header { flex-shrink:0; padding: 14px 0 4px; }
+  .app-header-title-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding: 0 14px; }
+  .app-header-title { font-size: 20px; font-weight: 700; }
+  .app-header-actions { display:flex; align-items:center; gap:8px; }
+  .filter-toggle { display:flex; align-items:center; gap:5px; background: var(--surface-2); border:1px solid var(--border); border-radius:999px; padding:6px 12px; font-size:13px; color:var(--text-secondary); }
+  .filter-toggle i { font-size:13px; }
+
+  .stop-pill-row { display:flex; gap:8px; overflow-x:auto; padding: 8px 14px 10px; }
+  .stop-pill { flex-shrink:0; padding:6px 12px; border:1px solid var(--border); border-radius:999px; background:var(--surface-2); color:var(--text-secondary); font-size:13px; font-weight:500; white-space:nowrap; }
+  .stop-pill--active { background: var(--fill-accent); color: var(--on-accent); border-color: var(--fill-accent); font-weight:700; }
+
+  /* ── NEW: map panel (top ~1/3) ── */
+  .map-panel {
+    flex-shrink: 0;
+    height: 28%;
+    min-height: 170px;
+    position: relative;
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border);
+  }
+  .map-panel .leaflet-container { background: var(--surface-2); font-family: var(--font-heading); }
+  .map-panel .leaflet-tile-pane {
+    /* route-modal-map-el と同じグレースケール処理を踏襲（デザイン一貫性） */
+    filter: grayscale(0.92) brightness(1.4) saturate(0.25) contrast(0.85);
+    opacity: 0.88;
+  }
+  .map-panel .leaflet-control-zoom, .map-panel .leaflet-control-attribution { display:none; }
+
+  .map-current-dot {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--current-location-blue);
+    border: 3px solid var(--surface-1);
+    box-shadow: 0 0 0 4px rgba(61,123,201,0.22);
+  }
+  .map-stop-dot {
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--surface-1);
+    border: 3px solid var(--caramel);
+    cursor: pointer;
+    transition: transform 0.12s ease;
+  }
+  .map-stop-dot:hover { transform: scale(1.15); }
+  .map-stop-dot--active {
+    background: var(--fill-accent);
+    border-color: var(--fill-accent);
+    box-shadow: 0 0 0 4px rgba(111,143,99,0.22);
+  }
+  .map-stop-label {
+    font-size: 11px; font-weight: 600; color: var(--text-primary);
+    background: rgba(250,250,248,0.92);
+    padding: 2px 6px; border-radius: 6px;
+    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  }
+  .leaflet-tooltip.map-stop-tooltip { background:none; border:none; box-shadow:none; }
+
+  /* ── NEW: view toggle (Arrivals / Timetable) ── */
+  .view-toggle-row { flex-shrink:0; padding: 10px 14px; }
+  .view-toggle {
+    display:flex;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px;
+  }
+  .view-toggle-btn {
+    flex: 1;
+    text-align: center;
+    padding: 8px 0;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .view-toggle-btn i { font-size: 14px; }
+  .view-toggle-btn[aria-pressed="true"] {
+    background: var(--fill-accent);
+    color: var(--on-accent);
+    box-shadow: 0 2px 6px rgba(43,43,39,0.15);
+  }
+
+  /* ── content area (scrolls, ~2/3 remaining) ── */
+  .content-scroll { flex:1; min-height:0; overflow-y:auto; padding: 0 14px 20px; }
+  .view-pane { display:none; flex-direction:column; gap:12px; }
+  .view-pane.active { display:flex; }
+
+  /* ── Arrival feed cards (existing pattern, reused) ── */
+  .arrival-card { background: var(--surface-1); border-radius: 18px; box-shadow: var(--shadow-card); padding: 14px; }
+  .card-row { display:flex; align-items:center; gap:12px; }
+  .badge { flex-shrink:0; width:44px; height:44px; border-radius:12px; background: var(--surface-2); display:flex; align-items:center; justify-content:center; font-size:17px; font-weight:800; color: var(--text-primary); position:relative; box-shadow: 0 2px 6px rgba(42,37,32,0.12); }
+  .badge-match-icon { position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:50%; background:var(--caramel); display:flex; align-items:center; justify-content:center; border:2px solid var(--surface-1); }
+  .badge-match-icon i { font-size:10px; color:#fff; }
+  .card-info { flex:1; min-width:0; }
+  .card-dest { font-size:15px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .card-eta { flex-shrink:0; text-align:right; display:flex; align-items:center; gap:8px; }
+  .card-eta i { font-size:16px; color: var(--text-muted); }
+  .eta-value { font-size:18px; font-weight:800; color:var(--text-primary); line-height:1.1; }
+  .eta-value.now { color: var(--caramel); font-size:15px; }
+  .eta-unit { font-size:11px; font-weight:600; color:var(--text-secondary); display:block; }
+  .eta-next { font-size:11px; color: var(--text-muted); margin-top:2px; }
+  .mini-route { display:flex; gap:6px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); flex-wrap:wrap; }
+  .mini-tag { font-size:10px; padding:3px 8px; border-radius:999px; border:1px solid var(--border); color:var(--text-secondary); }
+  .mini-tag--dest { background: var(--caramel); color:#fff; border-color:var(--caramel); font-weight:700; }
+
+  /* ── Timetable view (grouped by service number) ── */
+  .timetable-list { background: var(--surface-1); border-radius: 18px; box-shadow: var(--shadow-card); overflow:hidden; }
+  .tt-row { display:flex; align-items:center; gap:12px; padding: 12px 14px; border-bottom:1px solid var(--border); }
+  .tt-row:last-child { border-bottom:none; }
+  .tt-row--match { background: var(--bg-accent-muted); }
+  .tt-badge { flex-shrink:0; width:38px; height:38px; border-radius:10px; background:var(--surface-2); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; position:relative; }
+  .tt-badge-match-icon { position:absolute; top:-5px; right:-5px; width:15px; height:15px; border-radius:50%; background:var(--caramel); border:2px solid var(--surface-1); }
+  .tt-times { flex:1; display:flex; justify-content: flex-end; gap: 18px; }
+  .tt-time-cell { text-align:center; min-width:30px; }
+  .tt-time-value { font-size:16px; font-weight:800; line-height:1.1; }
+  .tt-time-value.load-green { color: var(--load-green); }
+  .tt-time-value.load-amber { color: var(--load-amber); }
+  .tt-time-value.load-red { color: var(--load-red); }
+  .tt-time-value.dash { color: var(--text-muted); font-weight:600; }
+  .tt-time-icons { display:flex; align-items:center; justify-content:center; gap:2px; margin-top:2px; }
+  .tt-time-icons i { font-size:10px; color: var(--text-muted); }
+  .tt-time-icons svg { width:14px; height:8px; opacity:0.55; }
+
+  .section-caption { font-size:11px; color:var(--text-muted); padding: 2px 4px 2px; }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>SGBusNavi — Home画面 マップ+Arrival/Timetable切替（モックアップ v1）</b><br>
+  実データには接続していない静的デモ。地図は実際のLeaflet+OSMタイル（経路モーダルと同じグレースケール処理）を使用。
+  <ol>
+    <li>地図（上部・実データ想定で約28〜30%の高さ）: 現在地=青丸、周辺バス停=柳グリーンの縁取りの白丸。<b>マーカーはSingABus画像のような2文字略称バッジではなく、既存の経路モーダルのMRT駅マーカーと同じ「小さいドット+常時ラベル」方式</b>を採用（SGBusNaviのバス停コードは5桁の数字で短縮表現に向かないため）。マーカーをタップすると選択状態が切り替わる想定（このモックでは見た目の切替のみ動作、実際のスワイプ/カード連動は未接続）。</li>
+    <li>上部のバス停ピル行は<b>既存のまま維持</b>（地図タップ・ピルタップ・カード横スワイプの3手段が併存する設計）。</li>
+    <li>地図の下に新設の<b>「Arrivals / Timetable」セグメントトグル</b>（既存の「By Route/By Bus Stop」タブと同じaria-pressedパターン）。タップで下の一覧を切替。</li>
+    <li><b>Arrivals</b>タブ = 既存のフラットフィード（1到着=1カード、そのまま）。</li>
+    <li><b>Timetable</b>タブ = 系統番号ごとに1行、次の最大3便を分単位の数字で横並び表示（フェーズ4以前の「系統ごとグループ化」形式を復活）。数字の色は<b>混雑度（Load）</b>で色分け（既存の--load-green/amber/red、時間の緊急度ではない点に注意）。数字の下に車種シルエット+車椅子アイコンを小さく併記（テキストラベルなし、既存カードと同じ方針）。登録済み目的地に一致する系統は行全体を薄い背景+バッジ角アイコンでハイライト（既存の一致インジケーターと同じ考え方）。</li>
+  </ol>
+  <b>この下、実際の画面イメージ:</b>
+</div>
+
+<div class="phone">
+  <div class="app-header">
+    <div class="app-header-title-row">
+      <div class="app-header-title">Arrivals</div>
+      <div class="app-header-actions">
+        <button class="filter-toggle" aria-pressed="false"><i class="ti ti-star"></i></button>
+      </div>
+    </div>
+    <div class="stop-pill-row">
+      <div class="stop-pill stop-pill--active">84341 Opp Fengshan Pr Sch</div>
+      <div class="stop-pill">84349 Fengshan Pr Sch</div>
+      <div class="stop-pill">84321 Blk 516</div>
+      <div class="stop-pill">84329 Blk 414</div>
+    </div>
+  </div>
+
+  <div class="map-panel">
+    <div id="mockMap" style="width:100%; height:100%;"></div>
+  </div>
+
+  <div class="view-toggle-row">
+    <div class="view-toggle">
+      <div class="view-toggle-btn" aria-pressed="true" onclick="setView('arrivals', this)"><i class="ti ti-bus"></i> Arrivals</div>
+      <div class="view-toggle-btn" aria-pressed="false" onclick="setView('timetable', this)"><i class="ti ti-table"></i> Timetable</div>
+    </div>
+  </div>
+
+  <div class="content-scroll">
+
+    <!-- Arrivals view (existing flat feed, reused) -->
+    <div class="view-pane active" id="pane-arrivals">
+      <div class="arrival-card">
+        <div class="card-row">
+          <div class="badge">17<span class="badge-match-icon"><i class="ti ti-home"></i></span></div>
+          <div class="card-info"><div class="card-dest">Tampines Int</div></div>
+          <div class="card-eta">
+            <i class="ti ti-accessible"></i>
+            <div><span class="eta-value">5</span><span class="eta-unit">min</span></div>
+          </div>
+        </div>
+        <div class="eta-next" style="padding-left:56px;">Next: 17 min</div>
+        <div class="mini-route">
+          <span class="mini-tag--dest mini-tag"><i class="ti ti-home"></i> Home</span>
+          <span class="mini-tag">Bedok Mrt Stn</span>
+        </div>
+      </div>
+      <div class="arrival-card">
+        <div class="card-row">
+          <div class="badge">45</div>
+          <div class="card-info"><div class="card-dest">Loop via Bedok Int</div></div>
+          <div class="card-eta">
+            <div><span class="eta-value now">Now</span></div>
+          </div>
+        </div>
+        <div class="eta-next" style="padding-left:56px;">Next: 14 min</div>
+      </div>
+      <div class="arrival-card">
+        <div class="card-row">
+          <div class="badge">18</div>
+          <div class="card-info"><div class="card-dest">Bishan Int</div></div>
+          <div class="card-eta">
+            <div><span class="eta-value">20</span><span class="eta-unit">min</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timetable view (grouped by service number, per user request) -->
+    <div class="view-pane" id="pane-timetable">
+      <div class="section-caption">Opp Fengshan Pr Sch · 84341</div>
+      <div class="timetable-list">
+
+        <div class="tt-row">
+          <div class="tt-badge">4N</div>
+          <div class="tt-times">
+            <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+          </div>
+        </div>
+
+        <div class="tt-row tt-row--match">
+          <div class="tt-badge">17<span class="tt-badge-match-icon"></span></div>
+          <div class="tt-times">
+            <div class="tt-time-cell">
+              <div class="tt-time-value load-green">5</div>
+              <div class="tt-time-icons"><i class="ti ti-accessible"></i></div>
+            </div>
+            <div class="tt-time-cell">
+              <div class="tt-time-value load-green">17</div>
+              <div class="tt-time-icons"></div>
+            </div>
+            <div class="tt-time-cell">
+              <div class="tt-time-value load-amber">29</div>
+              <div class="tt-time-icons"><i class="ti ti-accessible"></i></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tt-row">
+          <div class="tt-badge">17A</div>
+          <div class="tt-times">
+            <div class="tt-time-cell">
+              <div class="tt-time-value load-green">4</div>
+            </div>
+            <div class="tt-time-cell">
+              <div class="tt-time-value load-amber">23</div>
+            </div>
+            <div class="tt-time-cell">
+              <div class="tt-time-value dash">–</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tt-row">
+          <div class="tt-badge">18</div>
+          <div class="tt-times">
+            <div class="tt-time-cell">
+              <div class="tt-time-value load-green">3</div>
+            </div>
+            <div class="tt-time-cell">
+              <div class="tt-time-value load-amber">20</div>
+            </div>
+            <div class="tt-time-cell">
+              <div class="tt-time-value load-red">35</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tt-row">
+          <div class="tt-badge">45</div>
+          <div class="tt-times">
+            <div class="tt-time-cell">
+              <div class="tt-time-value load-green">2</div>
+            </div>
+            <div class="tt-time-cell">
+              <div class="tt-time-value load-green">14</div>
+            </div>
+            <div class="tt-time-cell">
+              <div class="tt-time-value load-amber">21</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  function setView(name, btn) {
+    document.querySelectorAll('.view-toggle-btn').forEach(b => b.setAttribute('aria-pressed', 'false'));
+    btn.setAttribute('aria-pressed', 'true');
+    document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('active'));
+    document.getElementById('pane-' + name).classList.add('active');
+  }
+
+  const center = [1.3236, 103.9336]; // Bedok North Rd 付近（参考画像と同じエリア）
+  const map = L.map('mockMap', { zoomControl:false, attributionControl:false, dragging:false, scrollWheelZoom:false, doubleClickZoom:false, touchZoom:false }).setView(center, 16);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+  L.marker(center, { icon: L.divIcon({ className:'', html:'<div class="map-current-dot"></div>', iconSize:[16,16] }) }).addTo(map);
+
+  const stops = [
+    { pos:[1.3244, 103.9328], label:'84341 Opp Fengshan Pr Sch', active:true },
+    { pos:[1.3249, 103.9321], label:'84349 Fengshan Pr Sch' },
+    { pos:[1.3228, 103.9318], label:'84321 Blk 516' },
+    { pos:[1.3226, 103.9330], label:'84329 Blk 414' },
+    { pos:[1.3241, 103.9350], label:'84360 Opp Bedok Nth Stn' },
+  ];
+  stops.forEach(s => {
+    const el = document.createElement('div');
+    el.className = 'map-stop-dot' + (s.active ? ' map-stop-dot--active' : '');
+    const marker = L.marker(s.pos, { icon: L.divIcon({ className:'', html: el.outerHTML, iconSize:[13,13] }) }).addTo(map);
+    marker.bindTooltip('<div class="map-stop-label">' + s.label.split(' ').slice(1).join(' ') + '</div>', { permanent:true, direction:'right', offset:[8,0], className:'map-stop-tooltip' });
+    marker.on('click', () => alert('デモ: 「' + s.label + '」に切替 → 下部のArrivals/Timetableが再取得される想定'));
+  });
+</script>
+
+</body>
+</html>

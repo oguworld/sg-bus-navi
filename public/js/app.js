@@ -157,6 +157,43 @@
   let currentDisplayedStop = null;
 
   /* ══════════════════════════════════════════════
+   * フェーズ6: Home画面 地図パネル + Arrivals/Timetable切替
+   * （.claude/plan-phase6-map-timetable-toggle.md 2-1節〜2-12節、8節、10節）
+   * ══════════════════════════════════════════════ */
+
+  // ビュー選択状態の永続化キー（8節ユーザー確定「ビュー選択状態は永続化する」）。
+  const HOME_VIEW_STORAGE_KEY = 'sgbusnavi_home_view';
+
+  // 現在のホーム画面ビュー（'timetable' | 'arrivals'）。初期表示はTimetable
+  // （2-6節「Timetableが一般的なので左かな」を単一フリップボタンでは
+  // 「どちらを先に見せるか」と解釈）。
+  let currentHomeView = 'timetable';
+
+  function loadHomeViewPreference() {
+    try {
+      const stored = window.localStorage.getItem(HOME_VIEW_STORAGE_KEY);
+      return stored === 'arrivals' || stored === 'timetable' ? stored : 'timetable';
+    } catch (err) {
+      return 'timetable';
+    }
+  }
+
+  function persistHomeViewPreference(view) {
+    try {
+      window.localStorage.setItem(HOME_VIEW_STORAGE_KEY, view);
+    } catch (err) {
+      // ビュー選択の永続化は補助的な利便性機能のため、保存失敗は無視してよい
+      // （保存できなくても今回のセッション内では正しく切り替わり続ける）。
+    }
+  }
+
+  // Leafletの地図インスタンス（モジュールスコープで使い回す、経路モーダルの
+  // routeModalMapInstanceと同じパターン）。
+  let homeMapInstance = null;
+  let homeMapCurrentMarker = null;
+  let homeMapStopMarkers = []; // { marker, index }[]
+
+  /* ══════════════════════════════════════════════
    * ボトムナビによる画面切替
    * ══════════════════════════════════════════════ */
 
@@ -702,16 +739,26 @@
         // applyRouteEnrichment()で既に一致判定・アイコン描画済みのため、
         // 再判定・再フェッチはせずカード側バッジの状態をそのまま複製する
         // （同一系統は常に同じ一致結果になるため、複製で視覚的に一致する）。
-        const cardBadge = card.querySelector('.bus-badge');
+        //
+        // フェーズ6: タップ元がTimetableビューの行（.tt-badge、renderMatchTag()が
+        // 同じロジックでtt-badge--matched/.tt-badge-match-icon--*に描画する、
+        // 2-8節・2-12節）の場合にも同じ複製が効くよう、バッジのセレクタを
+        // .bus-badge/.tt-badgeどちらにも対応させる。
+        const cardBadge = card.querySelector('.bus-badge, .tt-badge');
         const iconSuffixes = ['1', '2'];
-        if (cardBadge && cardBadge.classList.contains('bus-badge--matched')) {
+        const isMatched =
+          cardBadge &&
+          (cardBadge.classList.contains('bus-badge--matched') || cardBadge.classList.contains('tt-badge--matched'));
+        if (cardBadge && isMatched) {
           badgeEl.classList.add('bus-badge--matched');
           const ariaLabel = cardBadge.getAttribute('aria-label');
           const title = cardBadge.getAttribute('title');
           if (ariaLabel) badgeEl.setAttribute('aria-label', ariaLabel);
           if (title) badgeEl.setAttribute('title', title);
           iconSuffixes.forEach((suffix) => {
-            const srcIcon = cardBadge.querySelector(`.bus-badge-match-icon--${suffix}`);
+            const srcIcon = cardBadge.querySelector(
+              `.bus-badge-match-icon--${suffix}, .tt-badge-match-icon--${suffix}`
+            );
             const destIcon = badgeEl.querySelector(`.bus-badge-match-icon--${suffix}`);
             if (!srcIcon || !destIcon || srcIcon.hidden) return;
             destIcon.hidden = false;
@@ -864,6 +911,27 @@
       });
     }
 
+    // フェーズ6・2-12節: Timetableビューの各行は横幅が狭くカードのような
+    // 専用ボタンを置く余地がないため、系統番号バッジ自体（.tt-badge）を
+    // タップすると同じ経路モーダルを開く。
+    const timetableList = document.getElementById('home-timetable-list');
+    if (timetableList) {
+      timetableList.addEventListener('click', (event) => {
+        const trigger = event.target.closest('.tt-badge');
+        if (!trigger) return;
+        const row = trigger.closest('.tt-row');
+        if (row) openModal(row);
+      });
+      timetableList.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const trigger = event.target.closest('.tt-badge');
+        if (!trigger) return;
+        event.preventDefault();
+        const row = trigger.closest('.tt-row');
+        if (row) openModal(row);
+      });
+    }
+
     if (closeBtn) {
       closeBtn.addEventListener('click', closeModal);
     }
@@ -893,15 +961,42 @@
    * 全件表示にフォールバックする（plan.md第5-C節の失敗系の方針）。
    * ══════════════════════════════════════════════ */
 
-  // 直前にフィルターが表示・非表示にしたカードを記録しておき、
-  // OFFに戻す際に確実に全カードを復元できるようにする
+  /* ══════════════════════════════════════════════
+   * フェーズ6・2-8節: 「関連のみ」フィルター・目的地一致ハイライトを
+   * Arrivals/Timetable両ビューで共有する。
+   *
+   * Timetableビューの行（.tt-row、data-route-number等はbuildTimetableRow()が
+   * .bus-cardと同じ属性を付与済み）にも同じhidden切替・判定ロジックを
+   * 適用できるよう、対象要素を「#bus-card-list .bus-cardと#home-timetable-list
+   * .tt-rowを合わせた配列」として扱う（2-8節「テーブル行にも.bus-cardと同様の
+   * クラス・data-route-number属性を持たせて既存関数をほぼそのまま使い回せる
+   * ようにする」方針を採用）。
+   * ══════════════════════════════════════════════ */
+  function collectEnrichableElements() {
+    const cardList = document.getElementById('bus-card-list');
+    const timetableList = document.getElementById('home-timetable-list');
+    const cards = cardList ? Array.from(cardList.querySelectorAll('.bus-card')) : [];
+    const rows = timetableList ? Array.from(timetableList.querySelectorAll('.tt-row')) : [];
+    return cards.concat(rows);
+  }
+
+  // フィルターの空状態・ローディング表示は、現在ユーザーに見えている側の
+  // コンテナの直後にのみ挿入する（両方に同時挿入すると非表示側のメッセージが
+  // 別のビューに切り替えた際に取り残されるため、toggleHomeView()側で
+  // 都度clearFilterAuxiliaryStates()してから再適用する運用とセットで機能する）。
+  function getActiveListContainer() {
+    return currentHomeView === 'arrivals'
+      ? document.getElementById('bus-card-list')
+      : document.getElementById('home-timetable-list');
+  }
+
+  // 直前にフィルターが表示・非表示にしたカード/行を記録しておき、
+  // OFFに戻す際に確実に全カード/行を復元できるようにする
   // （フィルター処理中にloadBusArrivals等で描画し直された場合の考慮は
   // 「カードリストが再描画されたらフィルターは自動解除しない」仕様のため、
-  // ここでは現在DOM上にある.bus-cardをそのまま復元対象とする）。
+  // ここでは現在DOM上にある.bus-card/.tt-rowをそのまま復元対象とする）。
   function showAllBusCards() {
-    const cardList = document.getElementById('bus-card-list');
-    if (!cardList) return;
-    cardList.querySelectorAll('.bus-card').forEach((card) => {
+    collectEnrichableElements().forEach((card) => {
       card.hidden = false;
     });
     const emptyState = document.getElementById('filter-empty-state');
@@ -1018,14 +1113,13 @@
     return groups;
   }
 
-  // 現在表示中の全バスカードに対してフィルタリングを適用する。
+  // 現在表示中の全バスカード・Timetable行に対してフィルタリングを適用する
+  // （2-8節「両ビューで結果を共有」）。
   async function applyRelatedOnlyFilter() {
-    const cardList = document.getElementById('bus-card-list');
-    if (!cardList) return;
-
-    const cards = Array.from(cardList.querySelectorAll('.bus-card'));
+    const cards = collectEnrichableElements();
     if (cards.length === 0) return;
 
+    const activeContainer = getActiveListContainer();
     const destinations = loadDestinations();
 
     // 目的地0件: 全件非表示にして空状態メッセージを表示する
@@ -1034,10 +1128,12 @@
       cards.forEach((card) => {
         card.hidden = true;
       });
-      renderFilterEmptyState(
-        cardList,
-        'No bus stops saved yet. Add one from the Bus Stops tab.'
-      );
+      if (activeContainer) {
+        renderFilterEmptyState(
+          activeContainer,
+          'No bus stops saved yet. Add one from the Bus Stops tab.'
+        );
+      }
       return;
     }
 
@@ -1052,14 +1148,16 @@
       cards.forEach((card) => {
         card.hidden = true;
       });
-      renderFilterEmptyState(
-        cardList,
-        'No bus stops saved yet. Add one from the Bus Stops tab.'
-      );
+      if (activeContainer) {
+        renderFilterEmptyState(
+          activeContainer,
+          'No bus stops saved yet. Add one from the Bus Stops tab.'
+        );
+      }
       return;
     }
 
-    renderFilterLoadingState(cardList);
+    if (activeContainer) renderFilterLoadingState(activeContainer);
 
     // 系統番号ごとにグルーピングし、グループの代表カード1枚のみ判定する
     // （同一系統の複数到着インスタンスに対して重複してAPIを叩かないため）。
@@ -1182,11 +1280,14 @@
   // バスが複数の登録済み目的地を経由する場合、右上の角に最大2件まで
   // 縦に少し重ねて表示できるようにした（3件以上一致してもUIが煩雑になる
   // ため先頭2件のみ表示、バッジ自体の色は代表として1件目の色を使う）。
+  // フェーズ6・2-8節: cardはArrivalsビューの.bus-card(.bus-badge)でも
+  // Timetableビューの.tt-row(.tt-badge)でもよい。バッジのクラス名だけ
+  // 実際の種類に応じて出し分け、アイコン部分の描画ロジックは完全に共通化する。
   function renderMatchTag(card, dests) {
-    const badge = card.querySelector('.bus-badge');
+    const badge = card.querySelector('.bus-badge, .tt-badge');
     const iconEls = [
-      card.querySelector('.bus-badge-match-icon--1'),
-      card.querySelector('.bus-badge-match-icon--2'),
+      card.querySelector('.bus-badge-match-icon--1, .tt-badge-match-icon--1'),
+      card.querySelector('.bus-badge-match-icon--2, .tt-badge-match-icon--2'),
     ];
     if (!badge || !iconEls[0]) return;
 
@@ -1204,7 +1305,16 @@
     // 指摘を踏まえ、バッジ本体の色連動は完全に廃止した。バッジはニュートラル
     // (未一致時と同じクリーム背景+黒文字)のまま、右上の角アイコンだけが
     // 一致した目的地の色を示す唯一の視覚要素になる。
-    badge.classList.add('bus-badge--matched');
+    // フェーズ6: Timetableビューの行は.tt-badge--matchedに加え、行全体を
+    // 薄くハイライトする.tt-row--matchも付与する（mockup .tt-row--match、
+    // カードと違い横幅が狭くバッジ単体だと見落としやすいため）。
+    const isTimetableRow = badge.classList.contains('tt-badge');
+    if (isTimetableRow) {
+      badge.classList.add('tt-badge--matched');
+      card.classList.add('tt-row--match');
+    } else {
+      badge.classList.add('bus-badge--matched');
+    }
     badge.setAttribute('aria-label', `Passes ${labels.join(', ')}`);
     badge.setAttribute('title', labels.join(', '));
 
@@ -1510,10 +1620,10 @@
    * 判定した上で、その結果を同一系統に属する全カードへ一貫して適用する。
    * ══════════════════════════════════════════════ */
   async function applyRouteEnrichment() {
-    const cardList = document.getElementById('bus-card-list');
-    if (!cardList) return;
-
-    const cards = Array.from(cardList.querySelectorAll('.bus-card'));
+    // フェーズ6・2-8節: Timetableビューの行（.tt-row）にも同じハイライト・
+    // 目的地一致判定を適用する（ミニ経路図renderMiniRoute()は.bus-card-mini-route
+    // を持たない.tt-rowに対しては自然に何もしないため、そのまま使い回せる）。
+    const cards = collectEnrichableElements();
     if (cards.length === 0) return;
 
     // 2026-09-14ユーザー指示で発見・修正: 現在表示中のバス停自体が登録済み
@@ -2022,6 +2132,148 @@
     return card;
   }
 
+  /* ══════════════════════════════════════════════
+   * フェーズ6: Timetableビュー（.claude/plan-phase6-map-timetable-toggle.md
+   * 2-7節・4節・5節）
+   *
+   * flattenServicesToArrivalInstances()を経由するフラットフィードとは別に、
+   * 生のServices[]（NextBus/NextBus2/NextBus3を内包したまま）を系統番号1行の
+   * テーブルとして描画する。系統番号の自然順（数値部分＋アルファベット部分を
+   * 考慮したlocaleCompare、flattenServicesToArrivalInstances内の同着時ソートと
+   * 同じ比較関数）でソートする（到着時刻順だと行の位置が毎ポーリングで入れ替わり
+   * 一覧性が損なわれるため）。
+   * ══════════════════════════════════════════════ */
+  function compareServiceNumbers(a, b) {
+    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  // 1系統分のセル（N分の数値+混雑度色+車種/車椅子ミニアイコン）を組み立てる。
+  // 到着予定なし（EstimatedArrival空文字列）の枠は「-」プレースホルダーにする
+  // （4節エッジケース、参考画像の4N系統と同じ表現）。
+  function buildTimetableTimeCellHtml(nextBus) {
+    if (!nextBus || !nextBus.EstimatedArrival) {
+      return `
+        <div class="tt-time-cell">
+          <div class="tt-time-value dash">–</div>
+        </div>
+      `;
+    }
+
+    const minutes = estimateMinutesFromNow(nextBus.EstimatedArrival);
+    const loadInfo = getLoadIndicatorInfo(nextBus.Load);
+    const colorClass = loadInfo ? ` load-${loadInfo.colorClass}` : '';
+    const displayValue = minutes === null ? '–' : minutes === 0 ? 'Now' : String(minutes);
+
+    // 4節正常系「各時刻の下に混雑状況の色・車種ラベルが小さく併記される」対応。
+    // セル幅が狭い（min-width:28px）ため、getBusTypeLabel()のフルテキスト
+    // （"Single Deck"等）ではなくLTAの車種コード（SD/DD/BD）をそのまま
+    // 小さく表示する（車椅子アイコンと横並び）。
+    const wabIconHtml =
+      nextBus.Feature === 'WAB'
+        ? '<i class="ti ti-wheelchair" aria-hidden="true" title="Wheelchair accessible"></i>'
+        : '';
+    const typeCode = nextBus.Type || 'SD';
+    const typeLabelHtml = `<span class="tt-time-type" title="${escapeHtml(getBusTypeLabel(typeCode))}">${escapeHtml(typeCode)}</span>`;
+
+    return `
+      <div class="tt-time-cell">
+        <div class="tt-time-value${colorClass}">${displayValue}</div>
+        <div class="tt-time-icons">${wabIconHtml}${typeLabelHtml}</div>
+      </div>
+    `;
+  }
+
+  // 1系統分の行（.tt-row）を組み立てる。系統番号バッジ（.tt-badge）は
+  // .bus-badgeと同様のdata属性（data-route-number/data-origin-code/
+  // data-destination-code/data-current-stop-code）を持ち、applyRouteEnrichment()・
+  // applyRelatedOnlyFilter()が.bus-cardと同じロジックで扱えるようにする
+  // （2-8節「両ビューで結果を共有」）。バッジタップで経路モーダルを開く
+  // （2-12節）。
+  function buildTimetableRow(service, currentStopCode) {
+    const serviceNo = service.ServiceNo || '?';
+    const nextBuses = [service.NextBus, service.NextBus2, service.NextBus3];
+    // Direction特定・経路モーダル起動にはOriginCode/DestinationCodeが必要
+    // （.bus-cardと同じ仕組み）。NextBusが空の系統でもorigin/destinationCode
+    // だけは残っていることがあるため、最初に見つかった非空のNextBus*から取る。
+    const representative = nextBuses.find((nb) => nb && nb.EstimatedArrival) || nextBuses[0] || {};
+
+    const row = document.createElement('div');
+    row.className = 'tt-row';
+    row.setAttribute('data-route-number', serviceNo);
+    row.setAttribute('data-route-from', '');
+    row.setAttribute('data-route-to', representative.DestinationName || '');
+    row.setAttribute('data-origin-code', representative.OriginCode || '');
+    row.setAttribute('data-destination-code', representative.DestinationCode || '');
+    row.setAttribute('data-current-stop-code', currentStopCode || '');
+
+    const badgeLengthClass = serviceNo.length >= 4 ? ' tt-badge--long' : '';
+    const timesHtml = nextBuses.map((nb) => buildTimetableTimeCellHtml(nb)).join('');
+    // 4節エッジケース「循環路線の場合、行き先表示は...統一する」対応の前提として、
+    // まず行き先自体を表示する（当初の実装漏れ、buildBusCard/mockupのバッジ+時刻
+    // のみのレイアウトに合わせていたため欠落していた）。Loop表現（"Loop via X"）は
+    // /api/bus-routes/summaryの非同期解決が必要なためbuildBusCard()側も現状は
+    // 行っておらず、ここでも同じ制約でDestinationNameをそのまま表示する
+    // （Arrivals/Timetable両ビューで挙動を揃える）。
+    // 常にtt-destを描画する（行き先が取れない場合でも要素自体は残し、
+    // badge/times間のflexレイアウトが崩れないようにする）。
+    const destText = representative.DestinationName || '';
+
+    row.innerHTML = `
+      <div class="tt-badge${badgeLengthClass}" role="button" tabindex="0" aria-label="View route for service ${escapeHtml(serviceNo)}">
+        <span class="tt-badge-number">${escapeHtml(serviceNo)}</span>
+        <span class="tt-badge-match-icon tt-badge-match-icon--1" hidden></span>
+        <span class="tt-badge-match-icon tt-badge-match-icon--2" hidden></span>
+      </div>
+      <div class="tt-dest">${escapeHtml(destText)}</div>
+      <div class="tt-times">${timesHtml}</div>
+    `;
+
+    return row;
+  }
+
+  // Timetableビュー全体を再描画する。上限なし・全件表示（8節確定事項、
+  // MAX_DISPLAYED_ARRIVALSとは別概念）。系統番号の自然順でソートする。
+  function renderTimetableView(services) {
+    const container = document.getElementById('home-timetable-list');
+    if (!container) return;
+
+    const list = Array.isArray(services) ? services : [];
+    if (list.length === 0) {
+      renderTimetableErrorState('No buses are currently running from this stop');
+      return;
+    }
+
+    const sorted = list.slice().sort((a, b) => compareServiceNumbers(a.ServiceNo || '', b.ServiceNo || ''));
+    const currentStopCode = currentDisplayedStop ? currentDisplayedStop.BusStopCode : '';
+
+    container.innerHTML = '';
+    sorted.forEach((service) => {
+      container.appendChild(buildTimetableRow(service, currentStopCode));
+    });
+  }
+
+  function renderTimetableLoadingState() {
+    const container = document.getElementById('home-timetable-list');
+    if (!container) return;
+    container.innerHTML = `
+      <div class="placeholder-screen">
+        <i class="ti ti-loader-2" aria-hidden="true"></i>
+        <p>Loading…</p>
+      </div>
+    `;
+  }
+
+  function renderTimetableErrorState(message) {
+    const container = document.getElementById('home-timetable-list');
+    if (!container) return;
+    container.innerHTML = `
+      <div class="placeholder-screen">
+        <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+        <p>${message || 'Unable to load bus arrival information'}</p>
+      </div>
+    `;
+  }
+
   // エラー時のフォールバックUI（「Unable to load bus arrival information」）
   function renderErrorState(container, message) {
     container.innerHTML = `
@@ -2059,6 +2311,10 @@
 
     clearFilterAuxiliaryStates();
     renderLoadingState(container);
+    // フェーズ6: Timetableビューも同じ取得結果を使い回す（2-7節・3-2節、
+    // 別APIを叩かない）。両ビューを常に同期して描画しておくことで、
+    // toggleHomeView()での切替は再フェッチ不要な表示切替のみで済む。
+    renderTimetableLoadingState();
 
     // バス停切替のたびに系統単位のルート情報キャッシュを破棄する。
     // 同じ系統番号でもバス停が変わればdirection/経由判定が変わりうるため、
@@ -2078,6 +2334,7 @@
           // JSONパース失敗時はデフォルトメッセージのまま
         }
         renderErrorState(container, message);
+        renderTimetableErrorState(message);
         return;
       }
 
@@ -2086,6 +2343,7 @@
 
       if (services.length === 0) {
         renderErrorState(container, 'No buses are currently running from this stop');
+        renderTimetableErrorState('No buses are currently running from this stop');
         return;
       }
 
@@ -2098,17 +2356,25 @@
 
       if (arrivalInstances.length === 0) {
         renderErrorState(container, 'No buses are currently running from this stop');
+        renderTimetableErrorState('No buses are currently running from this stop');
         return;
       }
+
+      lastRawServices = services;
 
       container.innerHTML = '';
       arrivalInstances.forEach((instance) => {
         container.appendChild(buildBusCard(instance, arrivalInstances, stopCode));
       });
 
+      // フェーズ6: Timetableビューは上限なし・生のServices[]をそのまま行データに
+      // する（8節確定「表示系統数は上限なし」、2-7節）。
+      renderTimetableView(services);
+
       // 星アイコンハイライト・目的地一致タグ・ミニ経路図（applyRouteEnrichment）を
       // 先に適用してから、「関連のみ」フィルターがON状態のままバス停が
-      // 切り替わった場合の絞り込み再適用を行う。
+      // 切り替わった場合の絞り込み再適用を行う。両ビューの行・カードに対して
+      // 同じ判定結果を共有する（2-8節）。
       applyRouteEnrichment();
       reapplyFilterIfActive();
 
@@ -2119,6 +2385,7 @@
     } catch (err) {
       // ネットワークエラー等（サーバー自体に到達できない場合を含む）
       renderErrorState(container, 'Unable to load bus arrival information');
+      renderTimetableErrorState('Unable to load bus arrival information');
     }
   }
 
@@ -2148,6 +2415,13 @@
   // 「出発したバス（対応する新インスタンスが見つからない）」
   // 「新規出現したバス」を検出するために使う。
   let lastArrivalSnapshot = [];
+
+  // フェーズ6: 直近に取得した生のServices[]（NextBus/NextBus2/NextBus3を
+  // 内包したまま、flattenServicesToArrivalInstances()を経由する前のデータ）。
+  // Timetableビュー（renderTimetableView）は「系統ごとに1行、複数時刻を
+  // 横並び」という表示要求のため、あえてフラット化前のこの構造をそのまま
+  // 行データとして使う（2-7節、3-2節「時刻表ビューも既存APIで賄える」）。
+  let lastRawServices = [];
 
   // Home画面が実際にユーザーに見えているかどうか。Search/Saved/Settings画面に
   // 切り替わっている間はポーリングを止め、無駄なAPI呼び出しを避ける
@@ -2268,6 +2542,12 @@
 
     const services = Array.isArray(data.Services) ? data.Services : [];
     const arrivalInstances = flattenServicesToArrivalInstances(services);
+
+    // フェーズ6: Timetableビューは出発演出・diffの対象外（5節スコープ外
+    // 「Timetableビューは数値の更新のみで良く、アニメーションは今回追加しない」）
+    // のため、ポーリングのたびに単純に全体を再描画する。
+    lastRawServices = services;
+    renderTimetableView(services);
 
     applyArrivalDiff(stopCode, arrivalInstances);
   }
@@ -2412,6 +2692,215 @@
   }
 
   /* ══════════════════════════════════════════════
+   * フェーズ6: Home画面 地図パネル（.claude/plan-phase6-map-timetable-toggle.md
+   * 2-1節〜2-5節、9節）
+   *
+   * 経路モーダルのensureRouteModalMap()と同じ「一度だけ生成し、以後は既存
+   * インスタンスをクリアして再利用する」パターンを踏襲する。バス停切替の
+   * たびにピンを再描画するが、地図インスタンス自体は使い回す。
+   * ══════════════════════════════════════════════ */
+
+  function ensureHomeMap() {
+    if (homeMapInstance) return homeMapInstance;
+    if (typeof window.L === 'undefined') return null; // Leaflet未読み込み（CDN障害等）
+
+    const mapEl = document.getElementById('home-map-el');
+    if (!mapEl) return null;
+
+    const map = window.L.map(mapEl, {
+      zoomControl: false,
+      attributionControl: true,
+      scrollWheelZoom: false,
+      dragging: true,
+      doubleClickZoom: false,
+      touchZoom: true,
+    }).setView(MAP_INITIAL_CENTER, MAP_INITIAL_ZOOM);
+
+    // 経路モーダルと同じ標準OSMタイル（CartoDB Positronは要APIキー化のため
+    // 使用不可、2026-09-14実機で発見済み）。グレースケール処理は
+    // .home-map-el .leaflet-tile-paneへのCSSフィルターで行う（2-2節）。
+    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map);
+
+    homeMapInstance = map;
+    return map;
+  }
+
+  // 地図パネルをフォールバック表示に切り替える（4節失敗系: GPS未確定・
+  // /api/bus-stops/nearby失敗・Leaflet未読み込みのいずれでも、下部のビュー
+  // 切替・カード一覧・テーブルの動作は妨げない）。
+  function showHomeMapFallback(message) {
+    const fallbackEl = document.getElementById('home-map-fallback');
+    const mapEl = document.getElementById('home-map-el');
+    if (fallbackEl) {
+      fallbackEl.hidden = false;
+      const span = fallbackEl.querySelector('span');
+      if (span && message) span.textContent = message;
+      // 初期HTMLは「読み込み中」（ti-loader-2、回転アイコン）だが、実際の
+      // 取得失敗時はローディングではなく明確なエラーとして伝わるよう
+      // ti-map-offアイコンに切り替える。
+      const icon = fallbackEl.querySelector('i');
+      if (icon) {
+        icon.classList.remove('ti-loader-2');
+        icon.classList.add('ti-map-off');
+      }
+    }
+    if (mapEl) mapEl.hidden = true;
+  }
+
+  function hideHomeMapFallback() {
+    const fallbackEl = document.getElementById('home-map-fallback');
+    const mapEl = document.getElementById('home-map-el');
+    if (fallbackEl) fallbackEl.hidden = true;
+    if (mapEl) mapEl.hidden = false;
+  }
+
+  // 現在地マーカー・周辺バス停ピンを最新のnearbyStops/currentStopIndexに
+  // 合わせて再描画する。GPS取得・バス停切替（loadNearbyStopsAndArrivals）の
+  // たびに呼ぶ（4節正常系「バス停切替のたびに地図の中心・ピンが再取得した
+  // nearbyStopsに合わせて更新される」）。
+  function renderHomeMapPins(lat, lng) {
+    const map = ensureHomeMap();
+    if (!map) {
+      showHomeMapFallback('Map unavailable');
+      return;
+    }
+
+    hideHomeMapFallback();
+    map.invalidateSize();
+
+    if (homeMapCurrentMarker) {
+      map.removeLayer(homeMapCurrentMarker);
+      homeMapCurrentMarker = null;
+    }
+    homeMapStopMarkers.forEach((entry) => map.removeLayer(entry.marker));
+    homeMapStopMarkers = [];
+
+    const currentIcon = window.L.divIcon({
+      className: '',
+      html: '<div class="home-map-current-dot"></div>',
+      iconSize: [16, 16],
+    });
+    homeMapCurrentMarker = window.L.marker([lat, lng], { icon: currentIcon }).addTo(map);
+
+    const bounds = [[lat, lng]];
+
+    nearbyStops.forEach((stop, index) => {
+      if (stop.Latitude == null || stop.Longitude == null) return;
+      bounds.push([stop.Latitude, stop.Longitude]);
+
+      const isActive = index === currentStopIndex;
+      const icon = window.L.divIcon({
+        className: '',
+        html: `<div class="home-map-stop-dot${isActive ? ' home-map-stop-dot--active' : ''}"></div>`,
+        iconSize: [13, 13],
+      });
+      const marker = window.L.marker([stop.Latitude, stop.Longitude], { icon }).addTo(map);
+
+      // 2-4節: 地図タップでのバス停切替。ピル行・カード一覧の横スワイプと同じ
+      // switchToStopIndex()を呼ぶことで、3手段が同じ同期ロジックを共有する。
+      marker.on('click', () => switchToStopIndex(index));
+
+      if (isActive) {
+        marker
+          .bindTooltip(`<div class="home-map-stop-label">${escapeHtml(stop.Description || 'Bus stop')}</div>`, {
+            permanent: true,
+            direction: 'right',
+            offset: [8, 0],
+            className: 'home-map-stop-tooltip',
+          })
+          .openTooltip();
+      }
+
+      homeMapStopMarkers.push({ marker, index });
+    });
+
+    if (bounds.length > 1) {
+      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
+    } else {
+      map.setView([lat, lng], 16);
+    }
+  }
+
+  // switchToStopIndex()経由でのバス停切替時、地図の中心・ズームは変えずに
+  // 選択ピンの見た目（アクティブ状態・ラベル）だけを同期する
+  // （4節正常系「地図の選択状態が正しく追従する」）。地図タップ自体は
+  // renderHomeMapPins()の呼び出し元(loadNearbyStopsAndArrivals)を経由しない
+  // 軽量な切替のため、ピンの再生成はせずスタイルの付け替えのみ行う。
+  function updateHomeMapSelection() {
+    if (!homeMapInstance) return;
+
+    homeMapStopMarkers.forEach((entry) => {
+      const stop = nearbyStops[entry.index];
+      if (!stop) return;
+      const isActive = entry.index === currentStopIndex;
+
+      entry.marker.unbindTooltip();
+      const iconEl = entry.marker.getElement();
+      if (iconEl) {
+        const dot = iconEl.querySelector('.home-map-stop-dot');
+        if (dot) dot.classList.toggle('home-map-stop-dot--active', isActive);
+      }
+
+      if (isActive) {
+        entry.marker
+          .bindTooltip(`<div class="home-map-stop-label">${escapeHtml(stop.Description || 'Bus stop')}</div>`, {
+            permanent: true,
+            direction: 'right',
+            offset: [8, 0],
+            className: 'home-map-stop-tooltip',
+          })
+          .openTooltip();
+      }
+    });
+  }
+
+  /* ══════════════════════════════════════════════
+   * フェーズ6: Arrivals/Timetable切替フリップボタン
+   * （.claude/plan-phase6-map-timetable-toggle.md 2-6節、2-12節）
+   * ══════════════════════════════════════════════ */
+
+  // 現在のcurrentHomeViewに応じてDOM表示を切り替える（ボタン自体は反転しない、
+  // 初期化・データ再描画後の同期用）。
+  function applyHomeViewToDom() {
+    const flipBtn = document.getElementById('home-view-flip');
+    const flipLabel = document.getElementById('home-view-flip-label');
+    const cardList = document.getElementById('bus-card-list');
+    const timetableList = document.getElementById('home-timetable-list');
+
+    const isArrivals = currentHomeView === 'arrivals';
+
+    if (flipBtn) flipBtn.classList.toggle('flipped', isArrivals);
+    if (flipLabel) flipLabel.textContent = isArrivals ? 'Arrivals' : 'Timetable';
+    if (cardList) cardList.hidden = !isArrivals;
+    if (timetableList) timetableList.hidden = isArrivals;
+  }
+
+  // フリップボタンタップ時: ビューを反転し、永続化する（8節「ビュー選択状態は
+  // 永続化する」）。loadBusArrivals()/pollBusArrivals()が両ビューのDOMを
+  // 常に同期して描画済みのため（2-7節・2-8節）、ここでは表示の切替のみで
+  // 再フェッチ・再描画は不要。フィルターの空状態メッセージ（活性コンテナの
+  // 直後に挿入される、getActiveListContainer参照）だけは切替のたびに
+  // 正しい側へ再配置する必要があるため、いったん除去してから再適用する。
+  function toggleHomeView() {
+    currentHomeView = currentHomeView === 'timetable' ? 'arrivals' : 'timetable';
+    persistHomeViewPreference(currentHomeView);
+    clearFilterAuxiliaryStates();
+    applyHomeViewToDom();
+    reapplyFilterIfActive();
+  }
+
+  function initHomeViewFlip() {
+    const flipBtn = document.getElementById('home-view-flip');
+    if (!flipBtn) return;
+    currentHomeView = loadHomeViewPreference();
+    applyHomeViewToDom();
+    flipBtn.addEventListener('click', toggleHomeView);
+  }
+
+  /* ══════════════════════════════════════════════
    * フェーズ2 タスク5: 横スワイプ・ドットインジケーター連携
    * ══════════════════════════════════════════════ */
 
@@ -2440,6 +2929,9 @@
     updateHeaderStopName(stop.Description || 'Near your location');
     loadBusArrivals(stop.BusStopCode);
     updateStopPillActiveState();
+    // 2-4節: 地図・ピル行・カード一覧の横スワイプの3手段が共通してこの関数を
+    // 呼ぶため、ここで地図の選択ピン表示（アクティブ状態・ラベル）も同期する。
+    updateHomeMapSelection();
   }
 
   // #stop-pill-row を nearbyStops に応じて動的に再構築する（2026-09-13、姉妹アプリ
@@ -2583,39 +3075,57 @@
   // GPS取得中〜nearby API呼び出し中のローディング表示。
   // loadBusArrivals() 内の renderLoadingState() と同じ見た目パターンを流用する。
   function renderGpsLoadingState() {
-    const container = document.getElementById('bus-card-list');
-    if (!container) return;
-    container.innerHTML = `
+    const loadingHtml = `
       <div class="placeholder-screen">
         <i class="ti ti-loader-2" aria-hidden="true"></i>
         <p>Getting your location…</p>
       </div>
     `;
+    const container = document.getElementById('bus-card-list');
+    if (container) container.innerHTML = loadingHtml;
+    // フェーズ6: currentHomeViewがtimetableの場合に空白のままにならないよう、
+    // Timetableコンテナにも同じローディング表示を出す（Arrivals/どちらの
+    // ビューが表示中でも一貫した挙動にする）。
+    const timetableContainer = document.getElementById('home-timetable-list');
+    if (timetableContainer) timetableContainer.innerHTML = loadingHtml;
   }
 
   // GPS失敗時・マスタ未準備時のフォールバックUI表示切替。
   // 表示中はバスカードリスト・バス停ピル行を隠し、フォールバックUIのみを見せる。
+  // フェーズ6: 地図パネルは4節失敗系「GPS取得前・取得失敗時は、地図パネルは
+  // 空またはフォールバック表示にとどめ、下部のGPSフォールバックUIの表示を
+  // 妨げない」方針のとおり、独立してフォールバック表示に切り替える
+  // （カード一覧・ピル行を隠すのとは別軸の処理）。
   function showGpsFallback(message) {
     const fallback = document.getElementById('gps-fallback');
     const messageEl = document.getElementById('gps-fallback-message');
     const cardList = document.getElementById('bus-card-list');
+    const timetableList = document.getElementById('home-timetable-list');
     const pillRow = document.getElementById('stop-pill-row');
 
     if (messageEl && message) messageEl.textContent = message;
     if (fallback) fallback.hidden = false;
     if (cardList) cardList.hidden = true;
+    // フェーズ6: currentHomeViewがtimetableの場合に空白のTimetableコンテナが
+    // GPSフォールバックメッセージと二重表示にならないよう、こちらも隠す。
+    if (timetableList) timetableList.hidden = true;
     if (pillRow) pillRow.hidden = true;
+    showHomeMapFallback('Map unavailable');
   }
 
   // 通常コンテンツ（バスカードリスト・バス停ピル行）を再表示し、
   // フォールバックUIを隠す。GPS取得に成功した場合に呼ぶ。
+  // 地図自体の表示切替はrenderHomeMapPins()呼び出し側で行うため、ここでは
+  // ビュー状態（Timetable/Arrivals）に応じた表示のみ復元する。
   function hideGpsFallback() {
     const fallback = document.getElementById('gps-fallback');
     const cardList = document.getElementById('bus-card-list');
+    const timetableList = document.getElementById('home-timetable-list');
     const pillRow = document.getElementById('stop-pill-row');
 
     if (fallback) fallback.hidden = true;
-    if (cardList) cardList.hidden = false;
+    if (cardList) cardList.hidden = currentHomeView !== 'arrivals';
+    if (timetableList) timetableList.hidden = currentHomeView !== 'timetable';
     if (pillRow) pillRow.hidden = false;
   }
 
@@ -2666,6 +3176,10 @@
 
     hideGpsFallback();
     buildStopPillRow();
+    // フェーズ6 4節正常系「バス停切替のたびに地図の中心・ピンが再取得した
+    // nearbyStopsに合わせて更新される」。GPS更新・段階的取得の上書きの
+    // いずれの経路でも、最新の現在地座標でピンを描画し直す。
+    renderHomeMapPins(lat, lng);
 
     const nearestStop = nearbyStops[0];
     currentDisplayedStop = nearestStop;
@@ -2826,6 +3340,7 @@
     initBottomNav();
     initRouteModal();
     initFilterToggle();
+    initHomeViewFlip();
     initSwipeGesture();
     initGpsLocation();
 
