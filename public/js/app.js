@@ -3255,13 +3255,21 @@
 
   // カテゴリピッカー（4つの丸ボタン横並び）のマークアップを生成する。
   // By Route/By Bus Stopのインライン展開・By Mapの確認ダイアログの両方から共用する。
-  function buildCategoryPickerHtml(selectedCategory) {
+  // 2026-09-21ユーザー指摘「カラーパレットで色を変えた時、上のアイコンの色も
+  // 変わるべき」対応。従来は選択中カテゴリボタンの背景色をCSS側
+  // (.destination-category-btn--active { background: var(--fill-accent); })
+  // で固定していたため、実際に選択中のiconColorと無関係に常にテーマの
+  // アクセント緑で表示されていた（色パレット側の選択リングは正しくdest.iconColor
+  // を反映していたため、両者が食い違って見えていた）。選択中ボタンにのみ
+  // インラインstyleで実際の色を上書きする。
+  function buildCategoryPickerHtml(selectedCategory, colorHex) {
     const buttons = DESTINATION_CATEGORIES.map((category) => {
       const isActive = category === selectedCategory;
       const activeClass = isActive ? ' destination-category-btn--active' : '';
       const label = DESTINATION_CATEGORY_LABELS[category];
+      const styleAttr = isActive && colorHex ? ` style="background:${colorHex}; border-color:${colorHex};"` : '';
       return `
-        <button type="button" class="destination-category-btn${activeClass}" data-category="${category}" aria-label="${label}" aria-pressed="${isActive}">
+        <button type="button" class="destination-category-btn${activeClass}" data-category="${category}" aria-label="${label}" aria-pressed="${isActive}"${styleAttr}>
           ${DESTINATION_CATEGORY_ICON_SVG[category]}
         </button>
       `;
@@ -3622,7 +3630,7 @@
               placeholder="e.g. Japanese Association" aria-label="Custom title"
               value="${dest.title ? escapeHtml(dest.title) : ''}">
           </div>
-          ${buildCategoryPickerHtml(category)}
+          ${buildCategoryPickerHtml(category, getCategoryColorHex(iconColor))}
           ${buildIconColorPickerHtml(iconColor)}
           <div class="destination-item-editor-footer">
             <button type="button" class="destination-item-editor-done">Done</button>

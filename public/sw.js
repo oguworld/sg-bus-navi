@@ -14,7 +14,7 @@
  *   静的アセットを更新した際はこの値をインクリメントすること。
  */
 
-const CACHE_VERSION = 'v134';
+const CACHE_VERSION = 'v135';
 const CACHE_NAME = `sgbusnavi-static-${CACHE_VERSION}`;
 
 // プリキャッシュする静的アセット（アプリシェル）
