@@ -220,8 +220,7 @@
       // Homeタブに戻ると、切り替わった内容が画面外になってしまうため）。
       const homeScrollContent = document.getElementById('home-scroll-content');
       if (homeScrollContent) homeScrollContent.scrollTo({ top: 0, behavior: 'smooth' });
-      const approachingScroll = document.querySelector('.home-approaching-scroll');
-      if (approachingScroll) approachingScroll.scrollTo({ left: 0, behavior: 'smooth' });
+      resetApproachingBarScroll();
 
       // Saved画面で目的地を追加・削除した後にHomeへ戻った場合に備え、
       // ハイライトピッカーボタンの表示/非表示・ラベルを最新の状態に同期する。
@@ -1802,6 +1801,16 @@
     scrollEl.addEventListener('scroll', updateApproachingFadeVisibility, { passive: true });
   }
 
+  // 2026-09-21ユーザー指示「バス停を切り替えたときはApproachingバーの横
+  // スクロールを常に最初に戻す」対応。表示中のバス停が変わると中身は
+  // 総入れ替えになるため、古いバス停で見ていたスクロール位置を引き継ぐ
+  // 意味がない（switchToStopIndex()・switchToScreen()のHomeタブ復帰の
+  // 両方から呼ぶ）。
+  function resetApproachingBarScroll() {
+    const approachingScroll = document.getElementById('home-approaching-scroll');
+    if (approachingScroll) approachingScroll.scrollTo({ left: 0, behavior: 'smooth' });
+  }
+
   // 選択中の目的地のアイコン色（16進）を返す。未選択・削除済みならnull。
   function getCurrentHighlightColorHex() {
     if (!highlightDestinationId) return null;
@@ -2345,6 +2354,10 @@
     // 2-4節: 地図・ピル行・カード一覧の横スワイプの3手段が共通してこの関数を
     // 呼ぶため、ここで地図の選択ピン表示（アクティブ状態・ラベル）も同期する。
     updateHomeMapSelection();
+    // バス停切り替え時はApproachingバーの中身が総入れ替えになるため、
+    // 横スクロール位置も必ず最初に戻す（ピル/スワイプ/地図タップいずれも
+    // ここを通る）。
+    resetApproachingBarScroll();
   }
 
   // #stop-pill-row を nearbyStops に応じて動的に再構築する（2026-09-13、姉妹アプリ
