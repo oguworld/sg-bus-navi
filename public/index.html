@@ -95,6 +95,12 @@
           <div class="home-approaching-scroll" id="home-approaching-scroll">
             <div class="home-approaching-track" id="home-approaching-track">
               <div class="home-approaching-stop-flag"><i class="ti ti-map-pin" aria-hidden="true"></i></div>
+              <!-- 2026-09-22ユーザー指示「Now〜5分、5〜10分、10〜15分で区切り線を
+                   引いて分かりやすく」対応（mockups/approaching-bar-zone-dividers-v1.html
+                   案Bユーザー承認済み）。位置はrenderApproachingBar()が目盛り
+                   (Now/5/10/15min+)と同じtrackWidth基準の計算で毎回更新する。 -->
+              <div class="home-approaching-divider" id="home-approaching-divider-1" hidden></div>
+              <div class="home-approaching-divider" id="home-approaching-divider-2" hidden></div>
             </div>
             <div class="home-approaching-ticks" id="home-approaching-ticks">
               <span>Now</span><span>5</span><span>10</span><span>15 min+</span>

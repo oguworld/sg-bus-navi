@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGBusNavi — Approaching bar: Now/5/10/15min zone dividers (mockup, not wired to app)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAFAF8; --warm-white: #FFFFFF; --sand: #EAEAE6; --sand-dark: #DCDCD6;
+    --caramel: #6F8F63;
+    --midnight: #2B2B27; --warm-gray: #767268; --light-gray: #A8A49A;
+    --font-heading: 'Inter', sans-serif;
+    --surface-2: var(--cream); --surface-1: var(--warm-white);
+    --text-primary: var(--midnight); --text-secondary: var(--warm-gray); --text-muted: var(--light-gray);
+    --fill-accent: var(--caramel); --border: var(--sand); --border-strong: var(--sand-dark); --on-accent: var(--warm-white);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; font-family: var(--font-heading); }
+  body { background: #ECECE8; color: var(--text-primary); padding: 24px 0 80px; }
+
+  .note { max-width: 480px; margin: 0 auto 20px; padding: 0 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+  .note b { color: var(--text-primary); }
+
+  .col { width: 320px; margin: 0 auto 30px; }
+  .col-title { text-align:center; font-size:13px; font-weight:800; color:var(--text-primary); margin-bottom:4px; }
+  .col-sub { text-align:center; font-size:11px; color:var(--text-secondary); margin-bottom:10px; line-height:1.5; padding: 0 10px; }
+
+  .home-approaching-panel { position:relative; background: var(--surface-1); border:1px solid var(--border); border-radius:16px; box-shadow:0 3px 10px rgba(43,43,39,0.06); padding:10px 12px 8px; }
+  .home-approaching-label { font-size:11px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted); margin-bottom:8px; }
+  .home-approaching-track { position:relative; height:56px; width:296px; border-radius:9px; background:var(--surface-1); border:1px solid var(--border); overflow:visible; }
+  .home-approaching-track::before { content:''; position:absolute; left:10px; right:10px; top:50%; height:2px; transform:translateY(-50%); background-image: repeating-linear-gradient(90deg, var(--border-strong) 0 10px, transparent 10px 20px); }
+  .home-approaching-stop-flag { position:absolute; left:4px; top:50%; transform:translateY(-50%); width:26px; height:26px; border-radius:50%; background:var(--fill-accent); display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px rgba(43,43,39,0.3), 0 0 0 3px var(--surface-1); z-index:3; }
+  .home-approaching-stop-flag i { color:var(--on-accent); font-size:14px; }
+  .home-approaching-bus { position:absolute; top:50%; transform:translate(-50%,-50%); z-index:2; }
+  .home-approaching-bus-dot { min-width:30px; height:30px; padding:0 4px; border-radius:8px; background:var(--surface-1); border:2px solid var(--text-muted); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; color:var(--text-secondary); box-shadow:0 2px 6px rgba(0,0,0,0.2); }
+  .home-approaching-bus--saved { z-index:3; }
+  .home-approaching-bus--saved .home-approaching-bus-dot { min-width:40px; height:40px; padding:0 5px; border-radius:10px; background:var(--fill-accent); border-color:var(--fill-accent); color:var(--on-accent); font-size:13px; box-shadow:0 0 0 3px var(--surface-1), 0 2px 8px rgba(0,0,0,0.3); }
+  .home-approaching-ticks { display:flex; justify-content:space-between; margin-top:6px; padding:0 2px; width:296px; }
+  .home-approaching-ticks span { font-size:11px; font-weight:600; color:var(--text-muted); }
+
+  /* ── divider variants ── */
+  .divider-dashed { position:absolute; top:6px; bottom:6px; width:0; border-left:1.5px dashed var(--border-strong); z-index:1; }
+  .divider-solid { position:absolute; top:4px; bottom:4px; width:1.5px; background:var(--border-strong); z-index:1; }
+  .divider-solid-strong { position:absolute; top:0; bottom:0; width:2px; background:var(--text-muted); z-index:1; }
+  .zone-band { position:absolute; top:1px; bottom:1px; z-index:0; border-radius:8px; }
+  .zone-band--tint { background: var(--surface-2); }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>SGBusNavi — Approachingバー「Now/5/10/15min区切り線」案（モックアップ）</b><br>
+  ユーザー指示「Now〜5分、5〜10分、10〜15分で区切り線を引いて分かりやすく」を受けての4案比較。同じサンプル(67=Now, 74=2分[Save], 151=4分, 190=7分, 45=9分, 10=13分)で並べています。区切り位置は目盛り(Now/5/10/15min+)と揃えています。
+</div>
+
+<div class="col">
+  <div class="col-title">案A: 薄い点線</div>
+  <div class="col-sub">中央の破線ロード表現と競合しないよう、控えめな縦点線のみ</div>
+  <div class="home-approaching-panel">
+    <div class="home-approaching-label">Approaching</div>
+    <div class="home-approaching-track">
+      <div class="divider-dashed" style="left:117px;"></div>
+      <div class="divider-dashed" style="left:180px;"></div>
+      <div class="home-approaching-stop-flag"><i class="ti ti-map-pin"></i></div>
+      <div class="home-approaching-bus" style="left:54px;"><div class="home-approaching-bus-dot">67</div></div>
+      <div class="home-approaching-bus home-approaching-bus--saved" style="left:80px;"><div class="home-approaching-bus-dot">74</div></div>
+      <div class="home-approaching-bus" style="left:112px;"><div class="home-approaching-bus-dot">151</div></div>
+      <div class="home-approaching-bus" style="left:170px;"><div class="home-approaching-bus-dot">190</div></div>
+      <div class="home-approaching-bus" style="left:212px;"><div class="home-approaching-bus-dot">45</div></div>
+      <div class="home-approaching-bus" style="left:262px;"><div class="home-approaching-bus-dot">10</div></div>
+    </div>
+    <div class="home-approaching-ticks"><span>Now</span><span>5</span><span>10</span><span>15 min+</span></div>
+  </div>
+</div>
+
+<div class="col">
+  <div class="col-title">案B: 実線(細め)</div>
+  <div class="col-sub">点線ロードより主張しすぎない程度の細い実線で区切る</div>
+  <div class="home-approaching-panel">
+    <div class="home-approaching-label">Approaching</div>
+    <div class="home-approaching-track">
+      <div class="divider-solid" style="left:117px;"></div>
+      <div class="divider-solid" style="left:180px;"></div>
+      <div class="home-approaching-stop-flag"><i class="ti ti-map-pin"></i></div>
+      <div class="home-approaching-bus" style="left:54px;"><div class="home-approaching-bus-dot">67</div></div>
+      <div class="home-approaching-bus home-approaching-bus--saved" style="left:80px;"><div class="home-approaching-bus-dot">74</div></div>
+      <div class="home-approaching-bus" style="left:112px;"><div class="home-approaching-bus-dot">151</div></div>
+      <div class="home-approaching-bus" style="left:170px;"><div class="home-approaching-bus-dot">190</div></div>
+      <div class="home-approaching-bus" style="left:212px;"><div class="home-approaching-bus-dot">45</div></div>
+      <div class="home-approaching-bus" style="left:262px;"><div class="home-approaching-bus-dot">10</div></div>
+    </div>
+    <div class="home-approaching-ticks"><span>Now</span><span>5</span><span>10</span><span>15 min+</span></div>
+  </div>
+</div>
+
+<div class="col">
+  <div class="col-title">案C: 帯の色分け(線なし)</div>
+  <div class="col-sub">線を引かず、1つおきのゾーンにごく薄い背景を敷いて区切りを表現</div>
+  <div class="home-approaching-panel">
+    <div class="home-approaching-label">Approaching</div>
+    <div class="home-approaching-track">
+      <div class="zone-band zone-band--tint" style="left:117px; width:63px;"></div>
+      <div class="home-approaching-stop-flag"><i class="ti ti-map-pin"></i></div>
+      <div class="home-approaching-bus" style="left:54px;"><div class="home-approaching-bus-dot">67</div></div>
+      <div class="home-approaching-bus home-approaching-bus--saved" style="left:80px;"><div class="home-approaching-bus-dot">74</div></div>
+      <div class="home-approaching-bus" style="left:112px;"><div class="home-approaching-bus-dot">151</div></div>
+      <div class="home-approaching-bus" style="left:170px;"><div class="home-approaching-bus-dot">190</div></div>
+      <div class="home-approaching-bus" style="left:212px;"><div class="home-approaching-bus-dot">45</div></div>
+      <div class="home-approaching-bus" style="left:262px;"><div class="home-approaching-bus-dot">10</div></div>
+    </div>
+    <div class="home-approaching-ticks"><span>Now</span><span>5</span><span>10</span><span>15 min+</span></div>
+  </div>
+</div>
+
+<div class="col">
+  <div class="col-title">案D: 実線(はっきり)+帯</div>
+  <div class="col-sub">濃いめの実線+薄い帯の組み合わせで、3ゾーンを最もはっきり区切る</div>
+  <div class="home-approaching-panel">
+    <div class="home-approaching-label">Approaching</div>
+    <div class="home-approaching-track">
+      <div class="zone-band zone-band--tint" style="left:117px; width:63px;"></div>
+      <div class="divider-solid-strong" style="left:117px;"></div>
+      <div class="divider-solid-strong" style="left:180px;"></div>
+      <div class="home-approaching-stop-flag"><i class="ti ti-map-pin"></i></div>
+      <div class="home-approaching-bus" style="left:54px;"><div class="home-approaching-bus-dot">67</div></div>
+      <div class="home-approaching-bus home-approaching-bus--saved" style="left:80px;"><div class="home-approaching-bus-dot">74</div></div>
+      <div class="home-approaching-bus" style="left:112px;"><div class="home-approaching-bus-dot">151</div></div>
+      <div class="home-approaching-bus" style="left:170px;"><div class="home-approaching-bus-dot">190</div></div>
+      <div class="home-approaching-bus" style="left:212px;"><div class="home-approaching-bus-dot">45</div></div>
+      <div class="home-approaching-bus" style="left:262px;"><div class="home-approaching-bus-dot">10</div></div>
+    </div>
+    <div class="home-approaching-ticks"><span>Now</span><span>5</span><span>10</span><span>15 min+</span></div>
+  </div>
+</div>
+
+</body>
+</html>

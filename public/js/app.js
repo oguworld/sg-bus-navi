@@ -1853,6 +1853,23 @@
     track.style.width = `${trackWidth}px`;
     if (ticks) ticks.style.width = `${trackWidth}px`;
 
+    // 2026-09-22ユーザー指示「Now〜5分、5〜10分、10〜15分で区切り線」対応。
+    // .home-approaching-ticksの目盛り(Now/5/10/15min+)はjustify-content:
+    // space-betweenでtrackWidthの0/1/3/2/3/1の位置に並ぶため、区切り線も
+    // 同じtrackWidth基準の1/3・2/3位置に置くことで常に目盛りと一致させる
+    // （衝突回避でトラックが伸びた場合、実際の分数とはズレうるが、
+    // 目盛りとの整合性を優先する）。
+    const divider1 = document.getElementById('home-approaching-divider-1');
+    const divider2 = document.getElementById('home-approaching-divider-2');
+    if (divider1) {
+      divider1.style.left = `${trackWidth / 3}px`;
+      divider1.hidden = false;
+    }
+    if (divider2) {
+      divider2.style.left = `${(trackWidth * 2) / 3}px`;
+      divider2.hidden = false;
+    }
+
     positions.forEach(({ instance, x }) => {
       const dot = document.createElement('div');
       dot.className = 'home-approaching-bus';
@@ -1960,6 +1977,10 @@
     track.querySelectorAll('.home-approaching-bus').forEach((el) => el.remove());
     track.style.width = '';
     if (ticks) ticks.style.width = '';
+    const divider1 = document.getElementById('home-approaching-divider-1');
+    const divider2 = document.getElementById('home-approaching-divider-2');
+    if (divider1) divider1.hidden = true;
+    if (divider2) divider2.hidden = true;
   }
 
   /* ══════════════════════════════════════════════

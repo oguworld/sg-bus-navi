@@ -688,6 +688,20 @@ button {
   font-size: 14px;
 }
 
+/* 2026-09-22ユーザー指示「Now〜5分、5〜10分、10〜15分で区切り線」対応
+   （mockups/approaching-bar-zone-dividers-v1.html 案Bユーザー承認済み）。
+   位置(left)はJS側でtrackWidthの1/3・2/3に設定する
+   （.home-approaching-ticksの目盛りラベルもjustify-content:space-betweenで
+   同じ1/3・2/3位置に来るため、区切り線と目盛りが常に一致する）。 */
+.home-approaching-divider {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 1.5px;
+  background: var(--border-strong);
+  z-index: 1;
+}
+
 .home-approaching-bus {
   position: absolute;
   top: 50%;
