@@ -885,8 +885,9 @@ button {
 
 /* 2026-09-21ユーザー指示「車椅子・SD/DD文字が小さくて見えない、大きくする
    以外のスマートな別の表示方法」対応。mockups/
-   timetable-vehicle-type-display-v1.html 案1を採用。
-   高さ(height)は中身の有無に関わらず常に固定で確保する
+   timetable-vehicle-type-display-v1.html 案1を採用。車椅子アイコンは
+   同日「車椅子マークはいらない」指示によりさらに廃止し、車種タグのみに
+   なった。高さ(height)は中身の有無に関わらず常に固定で確保する
    （buildTimetableTimeCellHtml()が.tt-time-type自体をSD時は出力しないが、
    この.tt-time-icons要素自体は常に出力するため、分数値の縦位置が
    セルによってズレない。ユーザー指摘「タグの位置によって分の表示が
@@ -895,14 +896,8 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
   margin-top: 3px;
-  height: 13px;
-}
-
-.tt-time-icons i {
-  font-size: 13px;
-  color: var(--text-muted);
+  height: 12px;
 }
 
 /* 車種ラベル。単一階建て(SD)はシンガポールのバスの大半を占めるため表示せず

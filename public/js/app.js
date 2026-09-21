@@ -1977,7 +1977,7 @@
     return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
   }
 
-  // 1系統分のセル（N分の数値+混雑度色+車種/車椅子ミニアイコン）を組み立てる。
+  // 1系統分のセル（N分の数値+混雑度色+車種ミニタグ）を組み立てる。
   // 到着予定なし（EstimatedArrival空文字列）の枠は「-」プレースホルダーにする
   // （4節エッジケース、参考画像の4N系統と同じ表現）。
   function buildTimetableTimeCellHtml(nextBus) {
@@ -1998,13 +1998,10 @@
     // 以外のスマートな別の表示方法」対応（mockups/
     // timetable-vehicle-type-display-v1.html 案1採用）。単一階建て(SD)は
     // シンガポールのバスの大半を占めるため常時表示せず、二階建て・連接
-    // (DD/BD)の時だけ小さいピルタグで表示する。車椅子アイコンは拡大
-    // （CSS側.tt-time-icons i参照）。.tt-time-icons要素自体はSD・車椅子非対応
-    // でも常に出力し、分数値の縦位置がセルによってズレないようにする。
-    const wabIconHtml =
-      nextBus.Feature === 'WAB'
-        ? '<i class="ti ti-wheelchair" aria-hidden="true" title="Wheelchair accessible"></i>'
-        : '';
+    // (DD/BD)の時だけ小さいピルタグで表示する。
+    // 2026-09-21ユーザー指示「車椅子マークはいらない」により車椅子アイコン
+    // 自体を廃止した。.tt-time-icons要素自体はSDでも常に出力し、分数値の
+    // 縦位置がセルによってズレないようにする。
     const typeCode = nextBus.Type || 'SD';
     const typeLabelHtml =
       typeCode !== 'SD'
@@ -2014,7 +2011,7 @@
     return `
       <div class="tt-time-cell">
         <div class="tt-time-value${colorClass}">${displayValue}</div>
-        <div class="tt-time-icons">${wabIconHtml}${typeLabelHtml}</div>
+        <div class="tt-time-icons">${typeLabelHtml}</div>
       </div>
     `;
   }
