@@ -1706,9 +1706,24 @@
   // ようにしておく。
   const APPROACHING_MIN_GAP_PX = 56;
   // 左端の停留所ピン（.home-approaching-stop-flag、4px〜30px幅26pxで表示）と
-  // 最初のドットが重ならないだけの余白を確保する。
+  // 最初のドットが重ならないだけの余白を確保する（右端の余白にも同じ値を使う）。
   const APPROACHING_START_PAD_PX = 54;
-  const APPROACHING_PX_PER_MIN = 40;
+  // 分あたりのpx幅の下限。画面が極端に狭い場合でもドットが潰れて見えない
+  // ようにするためのフォールバック（通常は画面幅から動的計算した値を使う）。
+  const APPROACHING_MIN_PX_PER_MIN = 16;
+
+  // 2026-09-21ユーザー指示「バスの本数が少ない時は一画面(15分まで)に収まる
+  // ようにして、収まらない時だけ横スクロールしたい」対応。分あたりのpx幅を
+  // 画面幅から逆算し、0〜15分の全域がちょうど収まるスケールを基準にする。
+  // 衝突回避で押し出しが発生した時だけ、結果的にこのスケールを超えて
+  // トラックが伸び、横スクロールが必要になる（＝バスが密集している時のみ）。
+  function computeApproachingPxPerMin() {
+    const scrollEl = document.getElementById('home-approaching-scroll');
+    const visibleWidth = scrollEl ? scrollEl.clientWidth : 0;
+    if (!visibleWidth) return APPROACHING_MIN_PX_PER_MIN;
+    const usablePx = visibleWidth - APPROACHING_START_PAD_PX * 2;
+    return Math.max(APPROACHING_MIN_PX_PER_MIN, usablePx / 15);
+  }
 
   function renderApproachingBar(arrivalInstances) {
     const track = document.getElementById('home-approaching-track');
@@ -1716,6 +1731,8 @@
     if (!track) return;
 
     track.querySelectorAll('.home-approaching-bus').forEach((el) => el.remove());
+
+    const pxPerMin = computeApproachingPxPerMin();
 
     // ETA（0〜15分でクランプ）に比例した位置を仮に割り当てた後、左から順に
     // 最小間隔（APPROACHING_MIN_GAP_PX）を確保するよう押し出す（2026-09-20
@@ -1725,17 +1742,16 @@
     const positions = arrivalInstances.map((instance) => {
       const minutes = estimateMinutesFromNow(instance.EstimatedArrival);
       const clampedMinutes = Math.min(minutes === null ? 15 : minutes, 15);
-      let x = APPROACHING_START_PAD_PX + clampedMinutes * APPROACHING_PX_PER_MIN;
+      let x = APPROACHING_START_PAD_PX + clampedMinutes * pxPerMin;
       if (x < prevX + APPROACHING_MIN_GAP_PX) x = prevX + APPROACHING_MIN_GAP_PX;
       prevX = x;
       return { instance, x };
     });
 
-    // 2026-09-20ユーザー指示「文字が細かい、横スクロールしてもよい」対応。
-    // ドット・文字サイズを拡大した分、台数が多いバス停では画面幅に収まらなく
-    // なるため、トラック自体を実際に必要な幅まで広げ横スクロール可能にする
-    // （.home-approaching-scroll、CSS側）。台数が少ない時はmin-width:100%
-    // （CSS既定）のままで済むよう、それを下回る幅は明示的に設定しない。
+    // バスが少ない・密集していない時はpxPerMinが画面ぴったりに収まるスケール
+    // のため、トラック幅も自然に画面幅と一致し横スクロールは発生しない。
+    // 密集で衝突回避の押し出しが発生した時だけ、必要な分だけ幅が伸びて
+    // 横スクロールが有効になる（.home-approaching-scroll、CSS側）。
     const trackWidth = Math.max(0, prevX + APPROACHING_START_PAD_PX);
     track.style.width = `${trackWidth}px`;
     if (ticks) ticks.style.width = `${trackWidth}px`;
