@@ -693,6 +693,14 @@ button {
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 2;
+  cursor: pointer;
+}
+
+/* 2026-09-21ユーザー指示「ドットタップでも経路マップを表示」対応。親要素
+   (.home-approaching-bus)は位置決めのtranslateを使っているため、押下時の
+   縮小フィードバックは子要素(.home-approaching-bus-dot)側に適用する。 */
+.home-approaching-bus:active .home-approaching-bus-dot {
+  transform: scale(0.9);
 }
 
 .home-approaching-bus-dot {
@@ -709,6 +717,7 @@ button {
   font-weight: 800;
   color: var(--text-secondary);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: transform 0.1s ease;
 }
 
 /* Save済み目的地行きの系統のみ、サイズ+アクセント色で強調する

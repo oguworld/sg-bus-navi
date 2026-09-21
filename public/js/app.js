@@ -738,7 +738,10 @@
         // 選択中の目的地は常に1件のみのため（2026-09-21目的地ハイライト
         // ピッカー刷新）、getCurrentHighlightColorHex()で全体共通の色を
         // 取得するだけでよく、旧仕様のようなカード側状態の複製は不要。
-        const isHighlighted = card.classList.contains('tt-row--highlight');
+        // Timetable行(.tt-row--highlight)・Approachingバーのドット
+        // (.home-approaching-bus--saved)のどちらからタップしても同じ判定にする。
+        const isHighlighted =
+          card.classList.contains('tt-row--highlight') || card.classList.contains('home-approaching-bus--saved');
         const highlightHex = isHighlighted ? getCurrentHighlightColorHex() : null;
         if (highlightHex) {
           const selectedDestination = loadDestinations().find((dest) => dest.id === highlightDestinationId);
@@ -897,6 +900,25 @@
         if (!row) return;
         event.preventDefault();
         openModal(row);
+      });
+    }
+
+    // 2026-09-21ユーザー指示「Approachingバーの経路番号カードをタップした
+    // 時も経路マップが表示されるように」対応。ドットはrenderApproachingBar()が
+    // ポーリングのたびに再生成するため、個別リスナーではなくトラック
+    // (#home-approaching-track)への委譲にする（.tt-rowと同じパターン）。
+    const approachingTrack = document.getElementById('home-approaching-track');
+    if (approachingTrack) {
+      approachingTrack.addEventListener('click', (event) => {
+        const dot = event.target.closest('.home-approaching-bus');
+        if (dot) openModal(dot);
+      });
+      approachingTrack.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const dot = event.target.closest('.home-approaching-bus');
+        if (!dot) return;
+        event.preventDefault();
+        openModal(dot);
       });
     }
 
@@ -1724,7 +1746,7 @@
     return Math.max(APPROACHING_MIN_PX_PER_MIN, usablePx / 15);
   }
 
-  function renderApproachingBar(arrivalInstances) {
+  function renderApproachingBar(arrivalInstances, stopCode) {
     const track = document.getElementById('home-approaching-track');
     const ticks = document.getElementById('home-approaching-ticks');
     if (!track) return;
@@ -1759,7 +1781,18 @@
       const dot = document.createElement('div');
       dot.className = 'home-approaching-bus';
       dot.style.left = `${x}px`;
+      // 2026-09-21ユーザー指示「Approachingバーの経路番号カードをタップした
+      // 時も経路マップが表示されるように」対応。.tt-rowと同じdata属性一式を
+      // 持たせ、initRouteModal()のopenModal()をそのまま使い回せるようにする。
       dot.setAttribute('data-route-number', instance.ServiceNo || '?');
+      dot.setAttribute('data-route-from', '');
+      dot.setAttribute('data-route-to', instance.DestinationName || '');
+      dot.setAttribute('data-origin-code', instance.OriginCode || '');
+      dot.setAttribute('data-destination-code', instance.DestinationCode || '');
+      dot.setAttribute('data-current-stop-code', stopCode || '');
+      dot.setAttribute('role', 'button');
+      dot.setAttribute('tabindex', '0');
+      dot.setAttribute('aria-label', `View route for service ${instance.ServiceNo || '?'}`);
 
       const inner = document.createElement('div');
       inner.className = 'home-approaching-bus-dot';
@@ -2046,7 +2079,7 @@
 
       lastRawServices = services;
 
-      renderApproachingBar(arrivalInstances);
+      renderApproachingBar(arrivalInstances, stopCode);
 
       // フェーズ6: Timetableビューは上限なし・生のServices[]をそのまま行データに
       // する（8節確定「表示系統数は上限なし」、2-7節）。
@@ -2145,7 +2178,7 @@
     const arrivalInstances = flattenServicesToArrivalInstances(services);
 
     lastRawServices = services;
-    renderApproachingBar(arrivalInstances);
+    renderApproachingBar(arrivalInstances, stopCode);
     renderTimetableView(services);
     applyRouteEnrichment();
   }
