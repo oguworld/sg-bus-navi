@@ -134,6 +134,82 @@
     }
   }
 
+  /* ══════════════════════════════════════════════
+   * 位置情報の自動再チェック（2026-09-21ユーザー指示）
+   *
+   * initGpsLocation()はアプリ起動時と「Try Again」タップ時にしか走らず、
+   * 一度成功する（キャッシュ座標での暫定表示を含む）とその後は何をしても
+   * 自動更新されない不具合があった。地下鉄で圏外の間にアプリを開いて
+   * 古いキャッシュ座標で「成功扱い」になった場合、地上に出ても
+   * 「Try Again」ボタン自体が出ない（GPS失敗画面専用のため）ため、
+   * アプリを完全に閉じて開き直すまで更新手段がなかった。
+   *
+   * 対策: ①アプリがフォアグラウンドに戻った瞬間、②Home画面を開いたまま
+   * 一定時間経過した時、の2トリガーで軽量な位置再チェックを行い、前回
+   * 成功時の座標から一定距離以上動いていた場合のみ静かに（ローディング
+   * 表示を目立たせず）最寄りバス停を再検出する。動いていなければ何も
+   * しない（無駄なAPI呼び出し・ちらつきを避ける）。
+   * ══════════════════════════════════════════════ */
+  const GPS_DRIFT_CHECK_INTERVAL_MS = 3 * 60 * 1000; // 3分
+  const GPS_DRIFT_THRESHOLD_METERS = 150;
+
+  // 直近にloadNearbyStopsAndArrivals()へ実際に渡した座標。ドリフト判定の
+  // 基準点として使う（loadNearbyStopsAndArrivals()内で更新）。
+  let lastKnownGpsCoords = null;
+
+  // 2点間の距離をメートルで返す（Haversine公式）。徒歩移動の判定に十分な精度。
+  function haversineDistanceMeters(lat1, lng1, lat2, lng2) {
+    const R = 6371000; // 地球半径(m)
+    const toRad = (deg) => (deg * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+
+  // 位置情報の軽量な再チェック。Home画面表示中・最寄り(0番目)のバス停を
+  // 見ている場合のみ行う（他のバス停に手動で切り替えている場合は驚かせない
+  // よう上書きしない、initGpsLocation()の高精度GPS結果と同じ既存方針を踏襲）。
+  async function checkForLocationDrift() {
+    if (!isHomeScreenActive) return;
+    if (currentStopIndex !== 0) return;
+    if (!lastKnownGpsCoords) return;
+
+    try {
+      // maximumAge:0でOS側のキャッシュを使わず、今の位置を強制的に取得する
+      // （ドリフト検出が目的のため、古い値を再利用しては意味がない）。
+      const coords = await getCurrentCoords({
+        enableHighAccuracy: false,
+        timeout: GPS_FAST_TIMEOUT_MS,
+        maximumAge: 0,
+      });
+
+      const distance = haversineDistanceMeters(
+        lastKnownGpsCoords.lat,
+        lastKnownGpsCoords.lng,
+        coords.latitude,
+        coords.longitude
+      );
+      if (distance < GPS_DRIFT_THRESHOLD_METERS) return;
+
+      // Home画面・最寄りバス停表示のままかどうかは非同期処理の間に変わりうるため、
+      // 実際に反映する直前にもう一度確認する。
+      if (!isHomeScreenActive || currentStopIndex !== 0) return;
+      loadNearbyStopsAndArrivals(coords.latitude, coords.longitude);
+    } catch (err) {
+      // まだ圏外・タイムアウト等は無視して次回のチェックに委ねる。
+    }
+  }
+
+  function initGpsDriftCheck() {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkForLocationDrift();
+    });
+    setInterval(checkForLocationDrift, GPS_DRIFT_CHECK_INTERVAL_MS);
+  }
+
   // 近傍バス停の取得件数（横スワイプで2番目以降まで使う）。当初3件固定
   // だったが、ユーザー指摘「反対側もあるし3つだとちょっと少ないかも」を受け
   // 5件に増やした(2026-09-14)。道路の反対側(逆方向)のバス停も別エントリとして
@@ -1918,16 +1994,22 @@
     const colorClass = loadInfo ? ` load-${loadInfo.colorClass}` : '';
     const displayValue = minutes === null ? '–' : minutes === 0 ? 'Now' : String(minutes);
 
-    // 4節正常系「各時刻の下に混雑状況の色・車種ラベルが小さく併記される」対応。
-    // セル幅が狭い（min-width:28px）ため、getBusTypeLabel()のフルテキスト
-    // （"Single Deck"等）ではなくLTAの車種コード（SD/DD/BD）をそのまま
-    // 小さく表示する（車椅子アイコンと横並び）。
+    // 2026-09-21ユーザー指示「車椅子・SD/DD文字が小さくて見えない、大きくする
+    // 以外のスマートな別の表示方法」対応（mockups/
+    // timetable-vehicle-type-display-v1.html 案1採用）。単一階建て(SD)は
+    // シンガポールのバスの大半を占めるため常時表示せず、二階建て・連接
+    // (DD/BD)の時だけ小さいピルタグで表示する。車椅子アイコンは拡大
+    // （CSS側.tt-time-icons i参照）。.tt-time-icons要素自体はSD・車椅子非対応
+    // でも常に出力し、分数値の縦位置がセルによってズレないようにする。
     const wabIconHtml =
       nextBus.Feature === 'WAB'
         ? '<i class="ti ti-wheelchair" aria-hidden="true" title="Wheelchair accessible"></i>'
         : '';
     const typeCode = nextBus.Type || 'SD';
-    const typeLabelHtml = `<span class="tt-time-type" title="${escapeHtml(getBusTypeLabel(typeCode))}">${escapeHtml(typeCode)}</span>`;
+    const typeLabelHtml =
+      typeCode !== 'SD'
+        ? `<span class="tt-time-type" title="${escapeHtml(getBusTypeLabel(typeCode))}">${escapeHtml(typeCode)}</span>`
+        : '';
 
     return `
       <div class="tt-time-cell">
@@ -2587,6 +2669,8 @@
   async function loadNearbyStopsAndArrivals(lat, lng) {
     renderGpsLoadingState();
     saveLastLocation(lat, lng);
+    // checkForLocationDrift()が次回の判定基準にする直近座標を更新する。
+    lastKnownGpsCoords = { lat, lng };
 
     let response;
     try {
@@ -2797,6 +2881,7 @@
     initApproachingScrollHint();
     initSwipeGesture();
     initGpsLocation();
+    initGpsDriftCheck();
 
     const gpsRetryBtn = document.getElementById('gps-fallback-retry-btn');
     if (gpsRetryBtn) {

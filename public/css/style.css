@@ -883,27 +883,38 @@ button {
   font-weight: 600;
 }
 
+/* 2026-09-21ユーザー指示「車椅子・SD/DD文字が小さくて見えない、大きくする
+   以外のスマートな別の表示方法」対応。mockups/
+   timetable-vehicle-type-display-v1.html 案1を採用。
+   高さ(height)は中身の有無に関わらず常に固定で確保する
+   （buildTimetableTimeCellHtml()が.tt-time-type自体をSD時は出力しないが、
+   この.tt-time-icons要素自体は常に出力するため、分数値の縦位置が
+   セルによってズレない。ユーザー指摘「タグの位置によって分の表示が
+   ずれないよう注意」対応）。 */
 .tt-time-icons {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  margin-top: 2px;
-  height: 10px;
+  gap: 3px;
+  margin-top: 3px;
+  height: 13px;
 }
 
 .tt-time-icons i {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--text-muted);
 }
 
-/* 車種ラベル（SD/DD/BD、4節「各時刻の下に混雑状況の色・車種ラベルが小さく
-   併記される」対応）。セル幅が狭いためフルテキストではなくLTAの車種コードを
-   そのまま小さく表示する。 */
+/* 車種ラベル。単一階建て(SD)はシンガポールのバスの大半を占めるため表示せず
+   （buildTimetableTimeCellHtml()側で分岐）、二階建て・連接(DD/BD)の時だけ
+   小さい塗りつぶしピルで目立たせる。 */
 .tt-time-type {
-  font-size: 8px;
-  font-weight: 700;
-  color: var(--text-muted);
+  font-size: 8.5px;
+  font-weight: 800;
+  color: var(--on-accent);
+  background: var(--text-muted);
+  border-radius: 4px;
+  padding: 1px 4px;
   letter-spacing: 0.02em;
 }
 

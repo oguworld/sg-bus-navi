@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGBusNavi — Timetable: vehicle type / wheelchair display options (mockup, not wired to app)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAFAF8; --warm-white: #FFFFFF; --sand: #EAEAE6; --sand-dark: #DCDCD6;
+    --caramel: #6F8F63;
+    --midnight: #2B2B27; --warm-gray: #767268; --light-gray: #A8A49A;
+    --font-heading: 'Inter', sans-serif;
+    --surface-2: var(--cream); --surface-1: var(--warm-white);
+    --text-primary: var(--midnight); --text-secondary: var(--warm-gray); --text-muted: var(--light-gray);
+    --fill-accent: var(--caramel); --border: var(--sand); --on-accent: var(--warm-white);
+    --load-green: #4C9A5B; --load-amber: #C79A2E; --load-red: #C0392B;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; font-family: var(--font-heading); }
+  body { background: #ECECE8; padding: 24px 0 80px; }
+
+  .note { max-width: 480px; margin: 0 auto 20px; padding: 0 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+  .note b { color: var(--text-primary); }
+
+  .col { width: 320px; margin: 0 auto 36px; }
+  .col-title { text-align:center; font-size:13px; font-weight:800; color:var(--text-primary); margin-bottom:4px; }
+  .col-sub { text-align:center; font-size:11px; color:var(--text-secondary); margin-bottom:10px; line-height:1.5; padding: 0 10px; }
+
+  .timetable-list { background: var(--surface-1); border-radius: 18px; box-shadow: 0 4px 18px rgba(43,43,39,0.08); overflow:hidden; }
+  .tt-row { position:relative; display:flex; align-items:center; gap:12px; padding: 12px 14px; border-bottom:1px solid var(--border); }
+  .tt-row:last-child { border-bottom:none; }
+  .tt-badge { flex-shrink:0; width:38px; height:38px; border-radius:10px; background:var(--surface-2); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; color:var(--text-primary); }
+  .tt-dest { flex:1; min-width:0; font-size:15px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tt-times { flex-shrink:0; display:flex; justify-content:flex-end; gap:16px; }
+  .tt-time-cell { text-align:center; min-width:28px; }
+  .tt-time-value { font-size:16px; font-weight:800; line-height:1.1; color:var(--text-primary); }
+  .tt-time-value.load-green { color: var(--load-green); }
+  .tt-time-value.load-amber { color: var(--load-amber); }
+  .tt-time-value.dash { color: var(--text-muted); font-weight:600; }
+
+  /* baseline (current) */
+  .tt-time-icons { display:flex; align-items:center; justify-content:center; gap:2px; margin-top:2px; height:10px; }
+  .tt-time-icons i { font-size:10px; color:var(--text-muted); }
+  .tt-time-type { font-size:8px; font-weight:700; color:var(--text-muted); letter-spacing:0.02em; }
+
+  /* option 1: SD omitted, DD/BD as small pill, bigger wheelchair */
+  .opt1-icons { display:flex; align-items:center; justify-content:center; gap:3px; margin-top:3px; height:13px; }
+  .opt1-icons i { font-size:13px; color:var(--text-muted); }
+  .opt1-type { font-size:8.5px; font-weight:800; color:var(--on-accent); background:var(--text-muted); border-radius:4px; padding:1px 4px; letter-spacing:0.02em; }
+
+  /* option 2: pictogram instead of text */
+  .opt2-icons { display:flex; align-items:center; justify-content:center; gap:3px; margin-top:3px; height:12px; }
+  .opt2-icons i { font-size:11px; color:var(--text-muted); }
+  .opt2-icons svg { display:block; }
+
+  /* option 3: wheelchair only, bigger, no vehicle type at all */
+  .opt3-icons { display:flex; align-items:center; justify-content:center; margin-top:4px; height:14px; }
+  .opt3-icons i { font-size:14px; color:var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>SGBusNavi — Timetableの車種(SD/DD/BD)+車椅子アイコン表示案（モックアップ v2、静的HTML版）</b><br>
+  ユーザー指摘「到着分数の下の車椅子・SD/DD文字が小さくて見えない、大きくする以外のスマートな案は？」を受けての3案比較。同じサンプルデータ(57/131/167/186/400、車椅子はランダムに一部のみ)で並べています。
+</div>
+
+<div class="col">
+  <div class="col-title">現状(baseline)</div>
+  <div class="col-sub">車椅子アイコン+SD/DD/BD文字を毎回表示(8〜10px)</div>
+  <div class="timetable-list">
+    <div class="tt-row">
+      <div class="tt-badge">57</div>
+      <div class="tt-dest">Bishan Int</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">1</div><div class="tt-time-icons"><i class="ti ti-wheelchair"></i><span class="tt-time-type">SD</span></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-amber">12</div><div class="tt-time-icons"><span class="tt-time-type">SD</span></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">22</div><div class="tt-time-icons"><i class="ti ti-wheelchair"></i><span class="tt-time-type">SD</span></div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">131</div>
+      <div class="tt-dest">St. Michael's Ter</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">1</div><div class="tt-time-icons"><span class="tt-time-type">SD</span></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">8</div><div class="tt-time-icons"><i class="ti ti-wheelchair"></i><span class="tt-time-type">SD</span></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">11</div><div class="tt-time-icons"><span class="tt-time-type">SD</span></div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">167</div>
+      <div class="tt-dest">Sembawang Int</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">17</div><div class="tt-time-icons"><span class="tt-time-type">SD</span></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">42</div><div class="tt-time-icons"><span class="tt-time-type">SD</span></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">186</div>
+      <div class="tt-dest">St. Michael's Ter</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">12</div><div class="tt-time-icons"><i class="ti ti-wheelchair"></i><span class="tt-time-type">SD</span></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">31</div><div class="tt-time-icons"><span class="tt-time-type">DD</span></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">400</div>
+      <div class="tt-dest">Shenton Way Ter</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">25</div><div class="tt-time-icons"><span class="tt-time-type">SD</span></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="col">
+  <div class="col-title">案1: SD省略+DD/BDのみタグ表示</div>
+  <div class="col-sub">単一階建て(SD)は無表示。二階建て・連接だけ小さいピルで強調。車椅子アイコンは13pxに拡大</div>
+  <div class="timetable-list">
+    <div class="tt-row">
+      <div class="tt-badge">57</div>
+      <div class="tt-dest">Bishan Int</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">1</div><div class="opt1-icons"><i class="ti ti-wheelchair"></i></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-amber">12</div><div class="opt1-icons"></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">22</div><div class="opt1-icons"><i class="ti ti-wheelchair"></i></div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">131</div>
+      <div class="tt-dest">St. Michael's Ter</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">1</div><div class="opt1-icons"></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">8</div><div class="opt1-icons"><i class="ti ti-wheelchair"></i></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">11</div><div class="opt1-icons"></div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">167</div>
+      <div class="tt-dest">Sembawang Int</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">17</div><div class="opt1-icons"></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">42</div><div class="opt1-icons"></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">186</div>
+      <div class="tt-dest">St. Michael's Ter</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">12</div><div class="opt1-icons"><i class="ti ti-wheelchair"></i></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">31</div><div class="opt1-icons"><span class="opt1-type">DD</span></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">400</div>
+      <div class="tt-dest">Shenton Way Ter</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">25</div><div class="opt1-icons"></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="col">
+  <div class="col-title">案2: 文字→バスのピクトグラム</div>
+  <div class="col-sub">形(横長=一階建て/窓2段=二階建て)で車種を表現。文字を読まなくても判別できる</div>
+  <div class="timetable-list">
+    <div class="tt-row">
+      <div class="tt-badge">57</div>
+      <div class="tt-dest">Bishan Int</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">1</div><div class="opt2-icons"><i class="ti ti-wheelchair"></i><svg width="19" viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.6"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/></svg></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-amber">12</div><div class="opt2-icons"><svg width="19" viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.6"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/></svg></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">22</div><div class="opt2-icons"><i class="ti ti-wheelchair"></i><svg width="19" viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.6"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/></svg></div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">186</div>
+      <div class="tt-dest">St. Michael's Ter</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">12</div><div class="opt2-icons"><i class="ti ti-wheelchair"></i><svg width="19" viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.6"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/></svg></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">31</div><div class="opt2-icons"><svg width="15" viewBox="0 0 34 30"><rect x="1.5" y="1.5" width="31" height="27" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.6"/><rect x="4" y="4" width="7" height="6" rx="1.4" fill="var(--text-muted)"/><rect x="13.5" y="4" width="7" height="6" rx="1.4" fill="var(--text-muted)"/><rect x="23" y="4" width="7" height="6" rx="1.4" fill="var(--text-muted)"/><rect x="4" y="18" width="7" height="6" rx="1.4" fill="var(--text-muted)"/><rect x="13.5" y="18" width="7" height="6" rx="1.4" fill="var(--text-muted)"/><rect x="23" y="18" width="7" height="6" rx="1.4" fill="var(--text-muted)"/></svg></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">400</div>
+      <div class="tt-dest">Shenton Way Ter</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">25</div><div class="opt2-icons"><svg width="19" viewBox="0 0 40 20"><rect x="1.5" y="1.5" width="37" height="17" rx="5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.6"/><rect x="4" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/><rect x="15" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/><rect x="26" y="4" width="9" height="8" rx="1.6" fill="var(--text-muted)"/></svg></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="col">
+  <div class="col-title">案3: 車椅子アイコンのみ、車種は非表示</div>
+  <div class="col-sub">車種情報自体を一覧から省き、経路モーダル側に委ねる想定</div>
+  <div class="timetable-list">
+    <div class="tt-row">
+      <div class="tt-badge">57</div>
+      <div class="tt-dest">Bishan Int</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">1</div><div class="opt3-icons"><i class="ti ti-wheelchair"></i></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-amber">12</div><div class="opt3-icons"></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">22</div><div class="opt3-icons"><i class="ti ti-wheelchair"></i></div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">131</div>
+      <div class="tt-dest">St. Michael's Ter</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">1</div><div class="opt3-icons"></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">8</div><div class="opt3-icons"><i class="ti ti-wheelchair"></i></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">11</div><div class="opt3-icons"></div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">186</div>
+      <div class="tt-dest">St. Michael's Ter</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">12</div><div class="opt3-icons"><i class="ti ti-wheelchair"></i></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value load-green">31</div><div class="opt3-icons"></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+      </div>
+    </div>
+    <div class="tt-row">
+      <div class="tt-badge">400</div>
+      <div class="tt-dest">Shenton Way Ter</div>
+      <div class="tt-times">
+        <div class="tt-time-cell"><div class="tt-time-value load-green">25</div><div class="opt3-icons"></div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+        <div class="tt-time-cell"><div class="tt-time-value dash">–</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
