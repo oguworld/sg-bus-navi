@@ -225,8 +225,10 @@ button {
      組み合わさると、ヘッダーがステータスバー・ノッチの下に潜り込んで
      時計・バッテリー表示と重なって見えていた(ユーザー指摘「上に上がりすぎてる」)。
      経路モーダルヘッダー(.route-modal-header)で先に採用済みの
-     calc(既存値 + env(safe-area-inset-top))パターンをHome画面ヘッダーにも適用。 */
-  padding: calc(14px + env(safe-area-inset-top)) 0 4px;
+     calc(既存値 + env(safe-area-inset-top))パターンをHome画面ヘッダーにも適用。
+     2026-09-21ユーザー指摘「Homeヘッダーと下の地図が詰まりすぎている」対応で
+     下部paddingを4px→16pxに拡大。 */
+  padding: calc(14px + env(safe-area-inset-top)) 0 16px;
 }
 
 /* Saved/Settings画面の.saved-header-titleと統一するための画面タイトル
@@ -595,12 +597,26 @@ button {
  *   台数に応じて動的に設定する）。
  * ══════════════════════════════════════════════ */
 .home-approaching-panel {
+  position: relative;
   margin: 14px 14px 14px;
   padding: 10px 12px 8px;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: 0 3px 10px rgba(43, 43, 39, 0.06);
+}
+
+/* 横スクロール可能な時だけJS側(updateApproachingFadeVisibility())が
+   hidden属性を外す。track領域(ラベル分を除いた高さ)にだけ重ねる。 */
+.home-approaching-fade {
+  position: absolute;
+  top: 29px;
+  right: 12px;
+  bottom: 8px;
+  width: 28px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--surface-1));
+  border-radius: 0 9px 9px 0;
 }
 
 .home-approaching-label {
@@ -949,9 +965,11 @@ button {
  * （.home-approaching-panel、後述）+ Timetable単独ビューに置き換えた。
  * 過去のヒーローセル+グリッド・出発演出等の詳細はgit履歴を参照。
  *
- * .bus-badge / .bus-badge--long / .bus-badge-match-icon(--1/--2)は
- * 経路モーダルヘッダー(#route-modal-badge)が引き続き依存しているため
- * 残している（Arrivalsカード自体は削除済み、renderMatchTag()参照）。
+ * .bus-badge / .bus-badge--long は経路モーダルヘッダー(#route-modal-badge)が
+ * 引き続き依存しているため残している。角の一致インジケーター
+ * (.bus-badge-match-icon)は2026-09-21の目的地ハイライトピッカー刷新で
+ * インライン色スタイル直接適用に置き換わり不要になったため削除した
+ * （initRouteModal()のopenModal()参照）。
  * ══════════════════════════════════════════════ */
 .bus-badge {
   flex-shrink: 0;
@@ -973,36 +991,6 @@ button {
 .bus-badge--long {
   font-size: 17px;
   letter-spacing: -0.5px;
-}
-
-/* 目的地一致インジケーター: 角に重ねる小さな丸アイコン。 */
-.bus-badge-match-icon {
-  position: absolute;
-  top: -8px;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  border: 2px solid var(--surface-1);
-  z-index: 3;
-}
-
-.bus-badge-match-icon--1 {
-  right: -6px;
-  z-index: 2;
-}
-
-.bus-badge-match-icon--2 {
-  right: 8px;
-  z-index: 1;
-}
-
-.bus-badge-match-icon svg {
-  width: 11px;
-  height: 11px;
 }
 
 /*
@@ -1862,6 +1850,12 @@ button {
 .nav-icon-svg {
   width: 26px;
   height: 26px;
+}
+
+/* ti-map-pin(アイコンフォント)をnav-icon-svg(26px)と近い視覚サイズに揃える。 */
+.nav-icon-font {
+  font-size: 23px;
+  line-height: 1;
 }
 
 .bottom-nav-item span {

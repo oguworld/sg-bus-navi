@@ -214,6 +214,15 @@
       const stopPillRow = document.getElementById('stop-pill-row');
       if (stopPillRow) stopPillRow.scrollTo({ left: 0, behavior: 'smooth' });
 
+      // 2026-09-21ユーザー指摘「Homeを押した時、Approachingバーの横スクロール
+      // が元に戻っていない」対応。同じ理由でカード一覧の縦スクロール位置も
+      // 併せてリセットする（他のバス停まで下にスクロールした状態のまま
+      // Homeタブに戻ると、切り替わった内容が画面外になってしまうため）。
+      const homeScrollContent = document.getElementById('home-scroll-content');
+      if (homeScrollContent) homeScrollContent.scrollTo({ top: 0, behavior: 'smooth' });
+      const approachingScroll = document.querySelector('.home-approaching-scroll');
+      if (approachingScroll) approachingScroll.scrollTo({ left: 0, behavior: 'smooth' });
+
       // Saved画面で目的地を追加・削除した後にHomeへ戻った場合に備え、
       // ハイライトピッカーボタンの表示/非表示・ラベルを最新の状態に同期する。
       updateHighlightButtonUI();
@@ -724,51 +733,32 @@
         // アクセント緑ではない)・4文字以上の系統番号での縮小ルールに揃える。
         badgeEl.className = number.length >= 4 ? 'bus-badge bus-badge--long' : 'bus-badge';
 
-        // 旧仕様（フェーズ6〜7）ではTimetable行・Arrivalsカードの目的地一致時に
-        // 系統番号バッジへ角アイコンを重ねており、このモーダルバッジにもその
-        // 状態を複製していた。2026-09-21の目的地ハイライトピッカー刷新で
-        // 一致表現がバッジから行全体の色ハイライト(.tt-row--highlight)に
-        // 変わったため、このブロックは現在常にelse分岐（未一致扱い）になる。
-        // モーダル側の対応表示自体は今回のスコープ外のため、コード自体は
-        // 残しつつ挙動は変更しない。
-        const cardBadge = card.querySelector('.bus-badge, .tt-badge') || card;
-        const iconSuffixes = ['1', '2'];
-        const isMatched =
-          cardBadge &&
-          (cardBadge.classList.contains('bus-badge--matched') ||
-            cardBadge.classList.contains('tt-badge--matched') ||
-            cardBadge.classList.contains('bus-card--matched'));
-        if (cardBadge && isMatched) {
-          badgeEl.classList.add('bus-badge--matched');
-          const ariaLabel = cardBadge.getAttribute('aria-label');
-          const title = cardBadge.getAttribute('title');
-          if (ariaLabel) badgeEl.setAttribute('aria-label', ariaLabel);
-          if (title) badgeEl.setAttribute('title', title);
-          iconSuffixes.forEach((suffix) => {
-            // 2026-09-20改修: .tt-badge-match-iconは.tt-badgeの子要素から
-            // .tt-row直下に移動した（見やすさのため行全体基準の大きい
-            // アイコンに変更）ため、検索元をcardBadge(.tt-badge)ではなく
-            // card(.tt-row/.bus-card全体)にする。
-            const srcIcon = card.querySelector(
-              `.bus-badge-match-icon--${suffix}, .tt-badge-match-icon--${suffix}`
-            );
-            const destIcon = badgeEl.querySelector(`.bus-badge-match-icon--${suffix}`);
-            if (!srcIcon || !destIcon || srcIcon.hidden) return;
-            destIcon.hidden = false;
-            destIcon.style.background = srcIcon.style.background;
-            destIcon.style.color = srcIcon.style.color;
-            destIcon.innerHTML = srcIcon.innerHTML;
-          });
+        // 2026-09-21ユーザー指摘「経路モーダルのバッジがHomeのハイライトと
+        // 連動していない」対応。タップ元の行が選択中目的地でハイライトされて
+        // いる(.tt-row--highlight)場合、モーダルのバッジにも同じ色を反映する。
+        // 選択中の目的地は常に1件のみのため（2026-09-21目的地ハイライト
+        // ピッカー刷新）、getCurrentHighlightColorHex()で全体共通の色を
+        // 取得するだけでよく、旧仕様のようなカード側状態の複製は不要。
+        const isHighlighted = card.classList.contains('tt-row--highlight');
+        const highlightHex = isHighlighted ? getCurrentHighlightColorHex() : null;
+        if (highlightHex) {
+          const selectedDestination = loadDestinations().find((dest) => dest.id === highlightDestinationId);
+          const label = selectedDestination
+            ? (selectedDestination.title && selectedDestination.title.trim()
+                ? selectedDestination.title.trim()
+                : selectedDestination.description)
+            : '';
+          badgeEl.style.background = highlightHex;
+          badgeEl.style.color = 'var(--on-accent)';
+          if (label) {
+            badgeEl.setAttribute('aria-label', `Passes ${label}`);
+            badgeEl.setAttribute('title', label);
+          }
         } else {
+          badgeEl.style.background = '';
+          badgeEl.style.color = '';
           badgeEl.removeAttribute('aria-label');
           badgeEl.removeAttribute('title');
-          iconSuffixes.forEach((suffix) => {
-            const destIcon = badgeEl.querySelector(`.bus-badge-match-icon--${suffix}`);
-            if (destIcon) {
-              destIcon.hidden = true;
-              destIcon.innerHTML = '';
-            }
-          });
         }
       }
       showStatus(buildRouteStatusLoadingHtml());
@@ -1769,6 +1759,31 @@
     // renderTimetableView()→applyRouteEnrichment()の順で走り、そこで
     // 改めてsyncApproachingBarMatches()が呼ばれる。
     syncApproachingBarMatches(getCurrentHighlightColorHex());
+
+    // トラック幅が変わるたびに、横スクロールできるかどうかのヒント表示も
+    // 再評価する（2026-09-21ユーザー指摘「横スクロールできることが
+    // 分かりにくい」対応）。
+    updateApproachingFadeVisibility();
+  }
+
+  // トラックが画面幅を超えている、かつ末尾までスクロールしきっていない時だけ
+  // 右端のフェードグラデーション(.home-approaching-fade)を表示する。
+  function updateApproachingFadeVisibility() {
+    const scrollEl = document.getElementById('home-approaching-scroll');
+    const fadeEl = document.getElementById('home-approaching-fade');
+    if (!scrollEl || !fadeEl) return;
+
+    const isScrollable = scrollEl.scrollWidth > scrollEl.clientWidth + 1;
+    const isAtEnd = scrollEl.scrollLeft + scrollEl.clientWidth >= scrollEl.scrollWidth - 4;
+    fadeEl.hidden = !isScrollable || isAtEnd;
+  }
+
+  // #home-approaching-scrollのscrollイベントで末尾到達を検知し、フェードを
+  // 隠す（一度だけバインドすればよいのでDOMContentLoadedから呼ぶ）。
+  function initApproachingScrollHint() {
+    const scrollEl = document.getElementById('home-approaching-scroll');
+    if (!scrollEl) return;
+    scrollEl.addEventListener('scroll', updateApproachingFadeVisibility, { passive: true });
   }
 
   // 選択中の目的地のアイコン色（16進）を返す。未選択・削除済みならnull。
@@ -2717,6 +2732,7 @@
     initBottomNav();
     initRouteModal();
     initHighlightPicker();
+    initApproachingScrollHint();
     initSwipeGesture();
     initGpsLocation();
 

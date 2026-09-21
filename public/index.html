@@ -92,7 +92,7 @@
              間隔を確保する（.home-approaching-scroll参照）。 -->
         <div class="home-approaching-panel" id="home-approaching-panel">
           <div class="home-approaching-label">Approaching</div>
-          <div class="home-approaching-scroll">
+          <div class="home-approaching-scroll" id="home-approaching-scroll">
             <div class="home-approaching-track" id="home-approaching-track">
               <div class="home-approaching-stop-flag"><i class="ti ti-map-pin" aria-hidden="true"></i></div>
             </div>
@@ -100,6 +100,10 @@
               <span>Now</span><span>5</span><span>10</span><span>15 min+</span>
             </div>
           </div>
+          <!-- 2026-09-21ユーザー指摘「横スクロールできることが分かりにくい」対応。
+               トラックが画面幅を超えている時だけ右端にフェードグラデーションを
+               表示し、最後までスクロールしたら隠す（initApproachingScrollHint()）。 -->
+          <div class="home-approaching-fade" id="home-approaching-fade" hidden></div>
         </div>
 
         <!-- フェーズ6: Timetableビュー（系統ごとに1行、renderTimetableView()が動的生成）。
@@ -241,8 +245,14 @@
         <span class="nav-icon"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4 16c0 .7.3 1.3.8 1.7V19a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h8v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1.3c.5-.4.8-1 .8-1.7V7c0-2.5-2.4-3-8.6-3S4 4.5 4 7Zm3 1.5A1.5 1.5 0 1 1 7 15a1.5 1.5 0 0 1 0 3Zm10 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3ZM6 12V7h12v5Z"/></svg></span>
         <span>Home</span>
       </button>
+      <!-- 2026-09-21ユーザー指示「Bus Stopsのアイコンを他の画面でも使われてる
+           ピン型のアイコンに変えて、一貫性を持たせたい」対応。従来は星型の
+           インラインSVGだったが、地図のバス停ピン(.home-map-stop-pin)・
+           Approachingバーの停留所ピン(.home-approaching-stop-flag)・
+           目的地ハイライトピッカー(.home-highlight-btn)と同じti-map-pin
+           アイコンフォントに統一した。 -->
       <button type="button" class="bottom-nav-item" data-screen="saved">
-        <span class="nav-icon"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5 L14.9 8.6 L21.6 9.5 L16.8 14.1 L18 20.8 L12 17.6 L6 20.8 L7.2 14.1 L2.4 9.5 L9.1 8.6 Z"/></svg></span>
+        <span class="nav-icon"><i class="ti ti-map-pin nav-icon-font" aria-hidden="true"></i></span>
         <span>Bus Stops</span>
       </button>
       <button type="button" class="bottom-nav-item" data-screen="settings">
@@ -260,8 +270,6 @@
       <div class="route-modal-header">
         <div class="bus-badge" id="route-modal-badge">
           <span class="bus-badge-number" id="route-modal-badge-number">67</span>
-          <span class="bus-badge-match-icon bus-badge-match-icon--1" hidden></span>
-          <span class="bus-badge-match-icon bus-badge-match-icon--2" hidden></span>
         </div>
         <div class="route-modal-title" id="route-modal-title">Eunos Int → Bukit Merah Int</div>
         <button type="button" class="route-modal-close" id="route-modal-close" aria-label="Close">
