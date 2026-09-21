@@ -3533,6 +3533,14 @@
     destinationDragState = null;
   }
 
+  // 現在インライン編集パネルを開いている目的地のid（未オープン時はnull）。
+  // 2026-09-21ユーザー指摘「Doneを押すまで閉じないように」対応。カテゴリ・色を
+  // 変更するとupdateDestination()の反映のためrenderDestinationList()で一覧
+  // 全体を再構築するが、従来はその際に開いていた編集パネルごと消えてしまい
+  // 「タップするたびにパネルが閉じる」ように見えていた。この変数で開いている
+  // 対象を記憶しておき、再構築後に同じ目的地の行だけ自動的に開き直す。
+  let openDestinationEditorId = null;
+
   function renderDestinationList() {
     const listEl = document.getElementById('destination-list');
     if (!listEl) return;
@@ -3565,17 +3573,6 @@
         ? `<div class="destination-item-meta">${escapeHtml(dest.description)} · ${dest.busStopCode}</div>`
         : `<div class="destination-item-meta">${dest.busStopCode}</div>`;
 
-      // タイトル未設定の場合、常時表示のプロンプトを出す（2026-09-14ユーザー
-      // 指示「タイトルをつけられるようにして。どこか分かるようにです。
-      // タイトルが重要です」対応）。従来はカテゴリバッジをタップしないと
-      // タイトル入力欄の存在に気づけなかったため、目立つ入口を追加した。
-      const addTitlePromptHtml = hasCustomTitle
-        ? ''
-        : `<button type="button" class="destination-item-add-title-btn">
-             <i class="ti ti-pencil" aria-hidden="true"></i>
-             <span>Add a title</span>
-           </button>`;
-
       const item = document.createElement('div');
       item.className = 'destination-item';
       // 2026-09-14ユーザー指示「順番をドラッグ&ドロップで変えれるようにしたい」
@@ -3586,15 +3583,17 @@
         <button type="button" class="destination-item-drag-handle" aria-label="Drag to reorder">
           <i class="ti ti-menu-2" aria-hidden="true"></i>
         </button>
-        <button type="button" class="destination-item-category-badge destination-item-category-badge--${iconColor}" aria-label="Edit icon: ${DESTINATION_CATEGORY_LABELS[category]}">
+        <div class="destination-item-category-badge destination-item-category-badge--${iconColor}">
           ${DESTINATION_CATEGORY_ICON_SVG[category]}
-        </button>
+        </div>
         <div class="destination-item-info">
           <div class="destination-item-name">${displayName}</div>
           ${subMetaHtml}
-          ${addTitlePromptHtml}
           <div class="destination-item-services" hidden></div>
         </div>
+        <button type="button" class="destination-item-edit-btn" aria-label="Edit">
+          <i class="ti ti-pencil" aria-hidden="true"></i>
+        </button>
         <button type="button" class="destination-item-delete" aria-label="Delete">
           <i class="ti ti-trash" aria-hidden="true"></i>
         </button>
@@ -3608,7 +3607,7 @@
         });
       }
 
-      // アイコンバッジ、または「Add a title」プロンプトをタップすると、
+      // 編集用鉛筆アイコン(.destination-item-edit-btn)をタップすると、
       // タイトル入力・アイコン種類・アイコン色を変更できる編集パネルを
       // インライン展開する（2026-09-13ユーザー指示。By Route/By Bus Stopの
       // 既存カテゴリピッカー展開パターンを踏襲、タップ即反映で別途「保存」
@@ -3618,8 +3617,11 @@
         const existingEditor = item.querySelector('.destination-item-editor');
         if (existingEditor) {
           existingEditor.remove();
+          if (openDestinationEditorId === dest.id) openDestinationEditorId = null;
           return;
         }
+
+        openDestinationEditorId = dest.id;
 
         const editor = document.createElement('div');
         editor.className = 'destination-item-editor';
@@ -3662,10 +3664,6 @@
             if (metaEl) {
               metaEl.textContent = value ? `${dest.description} · ${dest.busStopCode}` : dest.busStopCode;
             }
-            // タイトルが入力されたら常時表示プロンプトは不要になるため隠し、
-            // 逆に空に戻された場合は再表示する。
-            const addTitlePromptEl = item.querySelector('.destination-item-add-title-btn');
-            if (addTitlePromptEl) addTitlePromptEl.hidden = Boolean(value);
           });
         }
 
@@ -3684,14 +3682,19 @@
         });
       }
 
-      const badgeBtn = item.querySelector('.destination-item-category-badge');
-      if (badgeBtn) {
-        badgeBtn.addEventListener('click', toggleDestinationEditor);
+      // 2026-09-21ユーザー指摘「アイコンタップとAdd titleが被ってる、削除の
+      // 左の鉛筆アイコンで統一して」対応。カテゴリバッジ・「Add a title」の
+      // 個別タップは廃止し、編集パネルを開く入口は.destination-item-edit-btn
+      // 1箇所に統一した。
+      const editBtn = item.querySelector('.destination-item-edit-btn');
+      if (editBtn) {
+        editBtn.addEventListener('click', toggleDestinationEditor);
       }
 
-      const addTitleBtn = item.querySelector('.destination-item-add-title-btn');
-      if (addTitleBtn) {
-        addTitleBtn.addEventListener('click', toggleDestinationEditor);
+      // このバス停の編集パネルが開いた状態でrenderDestinationList()が
+      // 呼ばれた場合（カテゴリ/色変更直後など）、再構築後も開いたままにする。
+      if (openDestinationEditorId === dest.id) {
+        toggleDestinationEditor();
       }
 
       // 通過系統番号（2026-09-13ユーザー指示「バス停のところには何番のバスが
@@ -3866,6 +3869,10 @@
       window.alert('This bus stop is already saved to your list.');
       if (addBtn) {
         addBtn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>';
+        // 2026-09-21ユーザー指摘「＋と✓が分かりづらい」対応。塗りつぶしの
+        // ＋（アクション可能）と区別できるよう、登録済み状態は専用クラスで
+        // ニュートラルな見た目にする（CSS側.destination-result-add-btn--added参照）。
+        addBtn.classList.add('destination-result-add-btn--added');
         addBtn.disabled = true;
       }
       return;
@@ -3881,6 +3888,7 @@
 
     if (addBtn) {
       addBtn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>';
+      addBtn.classList.add('destination-result-add-btn--added');
       addBtn.disabled = true;
     }
   }

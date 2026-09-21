@@ -1221,6 +1221,10 @@ button {
   cursor: grab;
 }
 
+/* 2026-09-21ユーザー指摘「アイコンタップとAdd titleが被ってる、削除の左の
+   鉛筆アイコンで統一して」対応。カテゴリバッジ自体は非インタラクティブな
+   表示専用になった（編集の入口は.destination-item-edit-btnに統一）ため、
+   cursor/押下フィードバックは廃止した。 */
 .destination-item-category-badge {
   flex-shrink: 0;
   display: flex;
@@ -1231,12 +1235,6 @@ button {
   border-radius: 50%;
   background: var(--surface-2);
   color: var(--text-secondary);
-  cursor: pointer;
-  transition: transform 0.1s ease;
-}
-
-.destination-item-category-badge:active {
-  transform: scale(0.92);
 }
 
 .destination-item-category-badge svg {
@@ -1427,23 +1425,19 @@ button {
   margin-top: 3px;
 }
 
-/* タイトル未設定時の常時表示プロンプト（2026-09-14ユーザー指示「タイトルを
-   つけられるようにして。どこか分かるようにです。タイトルが重要です」対応）。
-   従来はカテゴリバッジをタップしないとタイトル入力欄の存在に気づけなかった
-   ため、アクセントカラーで目立つ入口を追加した。タップで同じ編集パネルが
-   開く（toggleDestinationEditor()参照）。 */
-.destination-item-add-title-btn {
+/* 2026-09-21新規: カテゴリバッジ・「Add a title」の個別タップに分散していた
+   編集の入口を、削除ボタンの左に並ぶ専用の鉛筆アイコンに統一した。 */
+.destination-item-edit-btn {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 4px;
-  color: var(--text-accent);
-  font-size: 13px;
-  font-weight: 700;
+  justify-content: center;
+  padding: 6px;
 }
 
-.destination-item-add-title-btn i {
-  font-size: 13px;
+.destination-item-edit-btn i {
+  font-size: 18px;
+  color: var(--text-accent);
 }
 
 .destination-item-delete {
@@ -1624,6 +1618,7 @@ button {
   height: 30px;
   border-radius: 50%;
   background: var(--fill-accent);
+  border: 1.5px solid var(--fill-accent);
   color: var(--on-accent);
   transition: transform 0.1s ease;
 }
@@ -1635,6 +1630,18 @@ button {
 .destination-result-add-btn i {
   font-size: 17px;
   color: var(--on-accent);
+}
+
+/* 2026-09-21ユーザー指摘「＋と✓が分かりづらい」対応。登録済み（✓）は
+   塗りつぶしの「＋」(アクション可能=目立たせる)と区別するため、ニュートラル
+   背景+アクセント色の輪郭線のみにする（「もう済んでいるので操作不要」を
+   一目で伝える）。 */
+.destination-result-add-btn--added {
+  background: var(--surface-1);
+}
+
+.destination-result-add-btn--added i {
+  color: var(--fill-accent);
 }
 
 /* ══════════════════════════════════════════════
