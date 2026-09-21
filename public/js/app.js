@@ -1822,6 +1822,37 @@
     return Math.max(APPROACHING_MIN_PX_PER_MIN, usablePx / 15);
   }
 
+  // 5分/10分の境界をまたぐ隣接ドットの隙間の中間に区切り線の位置を返す
+  // （positionsはETA昇順=x昇順）。該当する隙間が無い場合（全ドットが境界の
+  // 手前/以降のいずれかに偏っている、または1件もない）は、trackWidthに
+  // 比例した位置にフォールバックする。
+  function findApproachingDividerX(positions, boundaryMinutes, trackWidth) {
+    const fallbackX = (trackWidth * boundaryMinutes) / 15;
+    if (positions.length === 0) return fallbackX;
+
+    const afterIndex = positions.findIndex((p) => p.clampedMinutes >= boundaryMinutes);
+
+    if (afterIndex === -1) {
+      // 全バスが境界より手前 → 最後のドットのすぐ右側に置く。
+      return positions[positions.length - 1].x + APPROACHING_MIN_GAP_PX / 2;
+    }
+    if (afterIndex === 0) {
+      // 全バスが境界以降 → 先頭ドットのすぐ左側に置く（0未満にはしない）。
+      return Math.max(0, positions[0].x - APPROACHING_MIN_GAP_PX / 2);
+    }
+    return (positions[afterIndex - 1].x + positions[afterIndex].x) / 2;
+  }
+
+  // id指定のApproachingバー目盛りラベルをx座標に配置する。
+  // align: 'left'（Now、そのままの位置から右へ伸びる）/ 'center'（5・10分、
+  // 区切り線の真下に来るよう中央揃え）/ 'right'（15 min+、帯の右端で終わる）。
+  function positionApproachingTickLabel(id, x, align) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.left = `${x}px`;
+    el.style.transform = align === 'center' ? 'translateX(-50%)' : align === 'right' ? 'translateX(-100%)' : 'none';
+  }
+
   function renderApproachingBar(arrivalInstances, stopCode) {
     const track = document.getElementById('home-approaching-track');
     const ticks = document.getElementById('home-approaching-ticks');
@@ -1842,7 +1873,7 @@
       let x = APPROACHING_START_PAD_PX + clampedMinutes * pxPerMin;
       if (x < prevX + APPROACHING_MIN_GAP_PX) x = prevX + APPROACHING_MIN_GAP_PX;
       prevX = x;
-      return { instance, x };
+      return { instance, x, clampedMinutes };
     });
 
     // バスが少ない・密集していない時はpxPerMinが画面ぴったりに収まるスケール
@@ -1853,22 +1884,32 @@
     track.style.width = `${trackWidth}px`;
     if (ticks) ticks.style.width = `${trackWidth}px`;
 
-    // 2026-09-22ユーザー指示「Now〜5分、5〜10分、10〜15分で区切り線」対応。
-    // .home-approaching-ticksの目盛り(Now/5/10/15min+)はjustify-content:
-    // space-betweenでtrackWidthの0/1/3/2/3/1の位置に並ぶため、区切り線も
-    // 同じtrackWidth基準の1/3・2/3位置に置くことで常に目盛りと一致させる
-    // （衝突回避でトラックが伸びた場合、実際の分数とはズレうるが、
-    // 目盛りとの整合性を優先する）。
+    // 2026-09-22ユーザー指示「区切り線は経路番号の間に、分のラベルはその下に」
+    // 対応。5分・10分の境界を単純にtrackWidthの1/3・2/3で機械的に置くと、
+    // ちょうどドットの真上に線が重なって見えることがあったため、境界を
+    // またぐ隣接ドットの隙間の中間にスナップさせる（該当するドットが
+    // 無い場合のみtrackWidth比例のフォールバック位置を使う）。
+    const divider5X = findApproachingDividerX(positions, 5, trackWidth);
+    const divider10X = findApproachingDividerX(positions, 10, trackWidth);
+
     const divider1 = document.getElementById('home-approaching-divider-1');
     const divider2 = document.getElementById('home-approaching-divider-2');
     if (divider1) {
-      divider1.style.left = `${trackWidth / 3}px`;
+      divider1.style.left = `${divider5X}px`;
       divider1.hidden = false;
     }
     if (divider2) {
-      divider2.style.left = `${(trackWidth * 2) / 3}px`;
+      divider2.style.left = `${divider10X}px`;
       divider2.hidden = false;
     }
+
+    // 分ラベル(5/10)は対応する区切り線の真下に来るよう同じx座標に揃える
+    // （ユーザー指示「分のラベルはその下に」）。Now/15 min+は帯の両端に
+    // 固定する。
+    positionApproachingTickLabel('home-approaching-tick-now', 0, 'left');
+    positionApproachingTickLabel('home-approaching-tick-5', divider5X, 'center');
+    positionApproachingTickLabel('home-approaching-tick-10', divider10X, 'center');
+    positionApproachingTickLabel('home-approaching-tick-end', trackWidth, 'right');
 
     positions.forEach(({ instance, x }) => {
       const dot = document.createElement('div');

@@ -756,18 +756,26 @@ button {
   box-shadow: 0 0 0 3px var(--surface-1), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+/* 2026-09-22ユーザー指示「区切り線は経路番号の間に、分のラベルはその下に」
+   対応。従来はflex(justify-content:space-between)で4つのラベルを均等配置
+   していたが、これだとラベル自体の文字幅の違いにより実際の区切り線位置
+   （ドットとドットの間の隙間に合わせて動的に決まる、JS側参照）とズレて
+   見えていた。position:relativeにし、各ラベルをJS側で区切り線と全く同じ
+   x座標にposition:absoluteで配置することで、線とラベルを常に一致させる
+   （renderApproachingBar()参照）。 */
 .home-approaching-ticks {
-  display: flex;
-  justify-content: space-between;
+  position: relative;
   margin-top: 6px;
-  padding: 0 2px;
-  min-width: 100%;
+  height: 13px;
 }
 
 .home-approaching-ticks span {
+  position: absolute;
+  top: 0;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 /* ══════════════════════════════════════════════

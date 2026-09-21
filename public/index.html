@@ -97,13 +97,18 @@
               <div class="home-approaching-stop-flag"><i class="ti ti-map-pin" aria-hidden="true"></i></div>
               <!-- 2026-09-22ユーザー指示「Now〜5分、5〜10分、10〜15分で区切り線を
                    引いて分かりやすく」対応（mockups/approaching-bar-zone-dividers-v1.html
-                   案Bユーザー承認済み）。位置はrenderApproachingBar()が目盛り
-                   (Now/5/10/15min+)と同じtrackWidth基準の計算で毎回更新する。 -->
+                   案Bユーザー承認済み）。当初はtrackWidthの1/3・2/3に固定配置して
+                   いたが、ラベル文字幅の都合で目盛りの実際の表示位置とズレたため、
+                   さらにユーザー指示「区切り線は経路番号の間に、分のラベルは
+                   その下に」により、5分・10分の境界をまたぐ隣接ドットの隙間の
+                   中間に動的スナップする方式に変更した（renderApproachingBar()
+                   内findApproachingDividerX()参照）。分ラベル(5/10)も同じ座標に
+                   揃える。 -->
               <div class="home-approaching-divider" id="home-approaching-divider-1" hidden></div>
               <div class="home-approaching-divider" id="home-approaching-divider-2" hidden></div>
             </div>
             <div class="home-approaching-ticks" id="home-approaching-ticks">
-              <span>Now</span><span>5</span><span>10</span><span>15 min+</span>
+              <span id="home-approaching-tick-now">Now</span><span id="home-approaching-tick-5">5</span><span id="home-approaching-tick-10">10</span><span id="home-approaching-tick-end">15 min+</span>
             </div>
           </div>
           <!-- 2026-09-21ユーザー指摘「横スクロールできることが分かりにくい」対応。
