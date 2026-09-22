@@ -1875,7 +1875,20 @@
       // 全バスが境界以降 → 先頭ドットのすぐ左側に置く（0未満にはしない）。
       return Math.max(0, positions[0].x - APPROACHING_MIN_GAP_PX / 2);
     }
-    return (positions[afterIndex - 1].x + positions[afterIndex].x) / 2;
+    // 2026-09-22ユーザー指摘「区切り線は単純に次があるときだけ」対応で
+    // 5分・10分の表示可否は実バスの存在有無のみで決める方針に統一したため
+    // （hasBusPast5/hasBusPast10）、両方の境界が同じ隙間（例: 0分のバスの
+    // 次が一気に15分クランプのバスに飛ぶ場合）に該当することがある。
+    // 単純な中間点(50%)だと5分・10分が同じ座標に重なってしまうため、
+    // 隙間を挟む2ドットのclampedMinutesの差に対してboundaryMinutesが
+    // どの割合に位置するかで按分する（0.15〜0.85にクランプしドット自体に
+    // めり込まないようにする）。
+    const prev = positions[afterIndex - 1];
+    const next = positions[afterIndex];
+    const span = next.clampedMinutes - prev.clampedMinutes;
+    const fraction = span > 0 ? (boundaryMinutes - prev.clampedMinutes) / span : 0.5;
+    const clampedFraction = Math.min(0.85, Math.max(0.15, fraction));
+    return prev.x + (next.x - prev.x) * clampedFraction;
   }
 
   // id指定のApproachingバー目盛りラベルをx座標に配置する。
@@ -1886,48 +1899,6 @@
     if (!el) return;
     el.style.left = `${x}px`;
     el.style.transform = align === 'center' ? 'translateX(-50%)' : align === 'right' ? 'translateX(-100%)' : 'none';
-  }
-
-  // 隣接する目盛りラベル(Now/5/10/15 min+)の実際の描画幅を見て衝突を検出し、
-  // 重なる場合は中間の目盛り(5・10)とその区切り線を非表示にする
-  // （Now・15 min+は帯の基準となる両端のため常に表示したままにする）。
-  // divider1Elは"5"、divider2Elは"10"に対応する区切り線要素。
-  function resolveApproachingTickOverlaps(divider1El, divider2El) {
-    const nowEl = document.getElementById('home-approaching-tick-now');
-    const fiveEl = document.getElementById('home-approaching-tick-5');
-    const tenEl = document.getElementById('home-approaching-tick-10');
-    const endEl = document.getElementById('home-approaching-tick-end');
-    const pairs = [
-      [nowEl, fiveEl, null],
-      [fiveEl, tenEl, null],
-      [tenEl, endEl, null],
-    ];
-    // 呼び出し元(renderApproachingBar)が実バスの有無に応じて既にhiddenを
-    // 設定済みのため、ここでは強制的な表示リセットはせず、その状態を前提に
-    // 隣接ペアを左から順にピクセル衝突判定する（前のペアの非表示化が
-    // 後続の判定にも影響する）。
-    const MIN_LABEL_GAP_PX = 6;
-    pairs.forEach(([a, b]) => {
-      if (!a || !b || a.hidden || b.hidden) return;
-      const aRect = a.getBoundingClientRect();
-      const bRect = b.getBoundingClientRect();
-      if (bRect.left - aRect.right >= MIN_LABEL_GAP_PX) return;
-
-      // Now・15 min+は帯の基準のため隠さず、中間の目盛り(5/10)側を隠す。
-      if (a === fiveEl) {
-        a.hidden = true;
-        if (divider1El) divider1El.hidden = true;
-      } else if (b === tenEl) {
-        b.hidden = true;
-        if (divider2El) divider2El.hidden = true;
-      } else if (a === tenEl) {
-        a.hidden = true;
-        if (divider2El) divider2El.hidden = true;
-      } else if (b === fiveEl) {
-        b.hidden = true;
-        if (divider1El) divider1El.hidden = true;
-      }
-    });
   }
 
   function renderApproachingBar(arrivalInstances, stopCode) {
@@ -1962,31 +1933,31 @@
     if (ticks) ticks.style.width = `${trackWidth}px`;
 
     // 2026-09-22ユーザー指示「区切り線は経路番号の間に、分のラベルはその下に」
-    // 対応。5分・10分の境界を単純にtrackWidthの1/3・2/3で機械的に置くと、
+    // 対応。5分・10分・15分の境界を単純にtrackWidthの比率で機械的に置くと、
     // ちょうどドットの真上に線が重なって見えることがあったため、境界を
-    // またぐ隣接ドットの隙間の中間にスナップさせる（該当するドットが
+    // またぐ隣接ドットの隙間の中間（寄り）にスナップさせる（該当するドットが
     // 無い場合のみtrackWidth比例のフォールバック位置を使う）。
+    // 2026-09-22ユーザー指摘「15+が48・960(いずれも17分＝15分以上)より左に
+    // 来るはず」対応: 「15 min+」は従来trackWidth（表示中の最後のドットの
+    // さらに右）に固定していたが、これだと「15分以上の全ドットより右」に
+    // 表示されてしまい、5分・10分の区切り線と違って「そのゾーンの開始位置」
+    // を示せていなかった。5分・10分と全く同じ仕組み（15分以上の最初のドットの
+    // 直前にスナップする区切り線）に統一し、5分/10分の区切り線と同列の
+    // 「15分ゾーンの開始マーカー」として扱う。
     const divider5X = findApproachingDividerX(positions, 5, trackWidth);
     const divider10X = findApproachingDividerX(positions, 10, trackWidth);
+    const divider15X = findApproachingDividerX(positions, 15, trackWidth);
 
-    // 2026-09-22ユーザー指摘「961・151が15min+の位置にあるのは変、表示件数の
-    // 上限があるので15+ではなく10が正解では」→さらに「15分以内のバスが
-    // 続く可能性もある」対応。区切り線・目盛りは実際にその分数以降のバスが
-    // 存在する時だけ表示する（例: 全バスが10分未満なら「10」の区切りは
-    // 意味を持たないため出さない）。右端の「15 min+」は、表示中の最後の
-    // バスの実クランプ分数が本当に15分以上の時だけ表示する。それ未満の
-    // 場合、MAX_APPROACHING_BAR_BUSES件数上限により「実際にはまだ15分以内に
-    // 他のバスが存在するが単に表示枠から溢れている」可能性を否定できない
-    // ため、断定的な数値（「10」等）もフォールバックとして出さず非表示に
-    // する（ユーザー指示「表示なし、が正解では」）。
+    // 区切り線・目盛りは実際にその分数以降のバスが存在する時だけ表示する
+    // （例: 全バスが10分未満なら「10」の区切りは意味を持たないため出さない、
+    // 2026-09-22ユーザー指示「単純に次があるときだけ」）。
     const hasBusPast5 = positions.some((p) => p.clampedMinutes >= 5);
     const hasBusPast10 = positions.some((p) => p.clampedMinutes >= 10);
-    const lastPosition = positions.length ? positions[positions.length - 1] : null;
-    const maxClampedMinutes = lastPosition ? lastPosition.clampedMinutes : 0;
-    const hasConfirmed15Plus = Boolean(lastPosition) && maxClampedMinutes >= 15;
+    const hasBusPast15 = positions.some((p) => p.clampedMinutes >= 15);
 
     const divider1 = document.getElementById('home-approaching-divider-1');
     const divider2 = document.getElementById('home-approaching-divider-2');
+    const divider3 = document.getElementById('home-approaching-divider-3');
     if (divider1) {
       divider1.style.left = `${divider5X}px`;
       divider1.hidden = !hasBusPast5;
@@ -1995,11 +1966,15 @@
       divider2.style.left = `${divider10X}px`;
       divider2.hidden = !hasBusPast10;
     }
+    if (divider3) {
+      divider3.style.left = `${divider15X}px`;
+      divider3.hidden = !hasBusPast15;
+    }
 
-    // 分ラベル(5/10)は対応する区切り線の真下に来るよう同じx座標に揃える
-    // （ユーザー指示「分のラベルはその下に」）。Now/右端は帯の両端に固定する。
+    // 分ラベル(5/10/15min+)は対応する区切り線の真下に来るよう同じx座標に
+    // 揃える（ユーザー指示「分のラベルはその下に」）。Nowのみ帯の左端に固定。
     const endLabelEl = document.getElementById('home-approaching-tick-end');
-    if (endLabelEl) endLabelEl.hidden = !hasConfirmed15Plus;
+    if (endLabelEl) endLabelEl.hidden = !hasBusPast15;
     const tick5El = document.getElementById('home-approaching-tick-5');
     const tick10El = document.getElementById('home-approaching-tick-10');
     if (tick5El) tick5El.hidden = !hasBusPast5;
@@ -2007,13 +1982,7 @@
     positionApproachingTickLabel('home-approaching-tick-now', 0, 'left');
     positionApproachingTickLabel('home-approaching-tick-5', divider5X, 'center');
     positionApproachingTickLabel('home-approaching-tick-10', divider10X, 'center');
-    positionApproachingTickLabel('home-approaching-tick-end', trackWidth, 'right');
-
-    // ゾーンに実バスが存在しない目盛りは上記で既に非表示にしているが、
-    // それでも隣接ラベル同士が実際の描画幅でピクセル衝突するケース
-    // （例: 10分の区切りのすぐ後ろに最後のドット＝右端ラベルが来る場合）
-    // が残るため、最終的な保険としてピクセル衝突検出も併用する。
-    resolveApproachingTickOverlaps(divider1, divider2);
+    positionApproachingTickLabel('home-approaching-tick-end', divider15X, 'center');
 
     positions.forEach(({ instance, x }) => {
       const dot = document.createElement('div');
@@ -2132,7 +2101,16 @@
         const etaMinutes = etaAttr === '' || etaAttr === null ? null : Number(etaAttr);
         const label = document.createElement('span');
         label.className = 'home-approaching-eta-label';
-        label.textContent = etaMinutes === null ? '–' : etaMinutes === 0 ? 'Now' : String(etaMinutes);
+        // 2026-09-22ユーザー指摘「15分以上なのに15分より左側に表示されている」
+        // 対応。ドットのx座標は15分を超えると実時間に比例しなくなり
+        // （APPROACHING_MIN_GAP_PXで押し出されるだけの「15分＋オーバーフロー
+        // 置き場」になる）、そこに実分数（例:41）をそのまま出すと、実際には
+        // 15分の右にあるはずの値が視覚的に「15 min+」より左に見えてしまい
+        // 誤解を招く。15分を超える場合は軸右端のラベルと同じ「15 min+」表記に
+        // 揃え、実際の分数を表示するのは位置が実時間に比例する15分以内の
+        // ケースのみに限定する。
+        label.textContent =
+          etaMinutes === null ? '–' : etaMinutes === 0 ? 'Now' : etaMinutes > 15 ? '15 min+' : String(etaMinutes);
         label.style.left = dot.style.left;
         label.style.transform = 'translateX(-50%)';
         label.style.color = colorHex;
@@ -2153,8 +2131,10 @@
     }
     const divider1 = document.getElementById('home-approaching-divider-1');
     const divider2 = document.getElementById('home-approaching-divider-2');
+    const divider3 = document.getElementById('home-approaching-divider-3');
     if (divider1) divider1.hidden = true;
     if (divider2) divider2.hidden = true;
+    if (divider3) divider3.hidden = true;
   }
 
   /* ══════════════════════════════════════════════
