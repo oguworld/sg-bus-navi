@@ -63,47 +63,6 @@
         <button type="button" class="stop-pill stop-pill--active" role="tab" aria-selected="true">Opp The Nexus</button>
       </div>
 
-      <!-- 2026-09-20: Arrivalsビュー廃止に伴い新設。直近の到着バスをETA位置に
-           応じて並べる横帯（renderApproachingBar()が動的生成）。Now=左端の
-           バス停マーカー、右端=15分以上。Save済み目的地行きの系統のみ
-           サイズ+アクセント色で強調する（それ以外は混雑度の色分け無しの
-           ニュートラル表示、Timetable側で既に見えるため二重に持たせない）。
-           2026-09-20ユーザー指示「固定しなくていい、Timetableと同じように
-           動いていい」で一時的に#home-scroll-content内に移動していたが、
-           2026-09-22ユーザー指摘「縦スクロールさせると横スクロールが
-           やりずらい」により地図パネルと同じ固定段（flex-shrink:0）に
-           戻した（縦・横2方向のスクロールジェスチャーが同じ領域で競合
-           しないよう、地図と同様に常時固定表示にする）。 -->
-      <div class="home-approaching-panel" id="home-approaching-panel">
-        <!-- 2026-09-22ユーザー指示「画面を無駄にしたくないのでApproachingラベルは
-             いらない」対応で見出しラベルを撤去した。トラック自体がバス停マーカー
-             (.home-approaching-stop-flag)を持ち何のバーか自明なため、テキスト
-             ラベルなしでも用途は伝わる。 -->
-        <div class="home-approaching-scroll" id="home-approaching-scroll">
-          <div class="home-approaching-track" id="home-approaching-track">
-            <div class="home-approaching-stop-flag"><i class="ti ti-map-pin" aria-hidden="true"></i></div>
-            <!-- 2026-09-22ユーザー指示「Now〜5分、5〜10分、10〜15分で区切り線を
-                 引いて分かりやすく」対応（mockups/approaching-bar-zone-dividers-v1.html
-                 案Bユーザー承認済み）。当初はtrackWidthの1/3・2/3に固定配置して
-                 いたが、ラベル文字幅の都合で目盛りの実際の表示位置とズレたため、
-                 さらにユーザー指示「区切り線は経路番号の間に、分のラベルは
-                 その下に」により、5分・10分の境界をまたぐ隣接ドットの隙間の
-                 中間に動的スナップする方式に変更した（renderApproachingBar()
-                 内findApproachingDividerX()参照）。分ラベル(5/10)も同じ座標に
-                 揃える。 -->
-            <div class="home-approaching-divider" id="home-approaching-divider-1" hidden></div>
-            <div class="home-approaching-divider" id="home-approaching-divider-2" hidden></div>
-          </div>
-          <div class="home-approaching-ticks" id="home-approaching-ticks">
-            <span id="home-approaching-tick-now">Now</span><span id="home-approaching-tick-5">5</span><span id="home-approaching-tick-10">10</span><span id="home-approaching-tick-end">15 min+</span>
-          </div>
-        </div>
-        <!-- 2026-09-21ユーザー指摘「横スクロールできることが分かりにくい」対応。
-             トラックが画面幅を超えている時だけ右端にフェードグラデーションを
-             表示し、最後までスクロールしたら隠す（initApproachingScrollHint()）。 -->
-        <div class="home-approaching-fade" id="home-approaching-fade" hidden></div>
-      </div>
-
       <div class="home-scroll-content" id="home-scroll-content">
 
         <!-- Pull to Refresh インジケーター（フェーズ5第8-2節）。PWAスタンドアロン起動時のみ
@@ -118,6 +77,33 @@
             Allow location access for this site in your settings, and the nearest bus stop will be shown automatically.
           </p>
           <button type="button" class="gps-fallback-retry-btn" id="gps-fallback-retry-btn">Try Again</button>
+        </div>
+
+        <!-- 2026-09-20: Arrivalsビュー廃止に伴い新設。直近の到着バスをETA位置に
+             応じて並べる横帯（renderApproachingBar()が動的生成）。Now=左端の
+             バス停マーカー、右端=15分以上。Save済み目的地行きの系統のみ
+             サイズ+アクセント色で強調する（それ以外は混雑度の色分け無しの
+             ニュートラル表示、Timetable側で既に見えるため二重に持たせない）。
+             2026-09-22ユーザー指摘「縦スクロールさせると横スクロールがやりずらい」
+             により一度地図パネルと同じ固定段(flex-shrink:0)に移したが、
+             その後overflow-y:hiddenの明示漏れ(縦の意図しないラバーバンド)が
+             真因と判明し修正済みのため、2026-09-22ユーザー指示「どっちがいいか
+             試したい」で再度#home-scroll-content内・Timetable直前に戻し、
+             Timetableと一緒にページスクロールする挙動に戻した
+             （固定表示との比較検討用、DOM位置に依存する処理は無いため
+             再度移動しても既存のJS/CSSロジックはそのまま動作する）。 -->
+        <div class="home-approaching-panel" id="home-approaching-panel">
+          <div class="home-approaching-scroll" id="home-approaching-scroll">
+            <div class="home-approaching-track" id="home-approaching-track">
+              <div class="home-approaching-stop-flag"><i class="ti ti-map-pin" aria-hidden="true"></i></div>
+              <div class="home-approaching-divider" id="home-approaching-divider-1" hidden></div>
+              <div class="home-approaching-divider" id="home-approaching-divider-2" hidden></div>
+            </div>
+            <div class="home-approaching-ticks" id="home-approaching-ticks">
+              <span id="home-approaching-tick-now">Now</span><span id="home-approaching-tick-5">5</span><span id="home-approaching-tick-10">10</span><span id="home-approaching-tick-end">15 min+</span>
+            </div>
+          </div>
+          <div class="home-approaching-fade" id="home-approaching-fade" hidden></div>
         </div>
 
         <!-- フェーズ6: Timetableビュー（系統ごとに1行、renderTimetableView()が動的生成）。
