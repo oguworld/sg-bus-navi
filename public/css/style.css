@@ -805,6 +805,13 @@ button {
   white-space: nowrap;
 }
 
+/* 2026-09-22ユーザー指示「ハイライト中の系統は5/10/15ラベルと同じ位置に、
+   来るまでの分数をハイライト色で表示」対応。色はsyncApproachingBarMatches()が
+   インラインstyle.colorで選択中目的地の色を都度設定する。 */
+.home-approaching-eta-label {
+  font-weight: 800;
+}
+
 /* ══════════════════════════════════════════════
  * フェーズ6: Timetableビュー（系統ごとに1行、次の最大3便を分単位で横並び表示）
  * （.claude/plan-phase6-map-timetable-toggle.md 2-7節・4節、

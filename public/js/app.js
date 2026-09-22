@@ -1993,6 +1993,12 @@
       dot.setAttribute('data-origin-code', instance.OriginCode || '');
       dot.setAttribute('data-destination-code', instance.DestinationCode || '');
       dot.setAttribute('data-current-stop-code', stopCode || '');
+      // 2026-09-22ユーザー指示「ハイライト中の系統は5/10/15分ラベルと同じ
+      // 位置に、その系統が来るまでの分数をハイライト色で表示」対応。
+      // syncApproachingBarMatches()はDOMのみを見て再判定するため、分数
+      // 自体をここでdata属性として持たせておく（instanceを保持しない）。
+      const etaMinutes = estimateMinutesFromNow(instance.EstimatedArrival);
+      dot.setAttribute('data-eta-minutes', etaMinutes === null ? '' : String(etaMinutes));
       dot.setAttribute('role', 'button');
       dot.setAttribute('tabindex', '0');
       dot.setAttribute('aria-label', `View route for service ${instance.ServiceNo || '?'}`);
@@ -2068,6 +2074,14 @@
       )
     );
 
+    // 2026-09-22ユーザー指示「Saveしたバス停をハイライトさせてるとき、
+    // プログレスバーの系統番号カードの下の5/10/15ラベルと同じ位置に、
+    // その系統が来るまでの分数をハイライト色で表示」対応。既存のeta
+    // ラベルは一旦全部消してから、マッチしたドットの分だけ作り直す
+    // （ticks側のNow/5/10/15min+固定4要素とは別クラスで管理）。
+    const ticks = document.getElementById('home-approaching-ticks');
+    if (ticks) ticks.querySelectorAll('.home-approaching-eta-label').forEach((el) => el.remove());
+
     track.querySelectorAll('.home-approaching-bus').forEach((dot) => {
       const serviceNo = dot.getAttribute('data-route-number');
       const isMatched = colorHex && matchedServiceNos.has(serviceNo);
@@ -2076,6 +2090,18 @@
       if (inner) {
         inner.style.background = isMatched ? colorHex : '';
         inner.style.borderColor = isMatched ? colorHex : '';
+      }
+
+      if (isMatched && ticks) {
+        const etaAttr = dot.getAttribute('data-eta-minutes');
+        const etaMinutes = etaAttr === '' || etaAttr === null ? null : Number(etaAttr);
+        const label = document.createElement('span');
+        label.className = 'home-approaching-eta-label';
+        label.textContent = etaMinutes === null ? '–' : etaMinutes === 0 ? 'Now' : String(etaMinutes);
+        label.style.left = dot.style.left;
+        label.style.transform = 'translateX(-50%)';
+        label.style.color = colorHex;
+        ticks.appendChild(label);
       }
     });
   }
@@ -2086,7 +2112,10 @@
     if (!track) return;
     track.querySelectorAll('.home-approaching-bus').forEach((el) => el.remove());
     track.style.width = '';
-    if (ticks) ticks.style.width = '';
+    if (ticks) {
+      ticks.style.width = '';
+      ticks.querySelectorAll('.home-approaching-eta-label').forEach((el) => el.remove());
+    }
     const divider1 = document.getElementById('home-approaching-divider-1');
     const divider2 = document.getElementById('home-approaching-divider-2');
     if (divider1) divider1.hidden = true;
