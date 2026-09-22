@@ -436,9 +436,9 @@ button {
 /* ══════════════════════════════════════════════
  * フェーズ6: Home画面 地図パネル（.claude/plan-phase6-map-timetable-toggle.md 2-1節）
  *
- * #screen-homeの4段構成（ヘッダー→地図→バス停ピル行→スクロール領域、
- * Approachingバーは2026-09-20よりスクロール領域内に移動）のうち、
- * 上から2段目。flex-shrink:0の
+ * #screen-homeの5段構成（ヘッダー→地図→バス停ピル行→Approachingバー→
+ * スクロール領域、Approachingバーは2026-09-22よりスクロール領域外の
+ * 固定段に戻した）のうち、上から2段目。flex-shrink:0の
  * 固定的な高さ帯とする（比率指定にするとヘッダーの実高さ変動がそのまま地図の
  * 高さに波及するため、意図的に固定高を採用）。高さは当初`height: 28%;
  * min-height: 170px;`だったが、2026-09-20ユーザー指示「地図の高さをもう少し
@@ -589,17 +589,23 @@ button {
  *   左のほうがいい」を反映。
  * - 表示台数は最大MAX_APPROACHING_BAR_BUSES(10)本まで（app.js参照）。
  * - 2026-09-20実機フィードバック「文字が細かい、固定しなくていい、
- *   Timetableと同じように動いていい」対応。地図直下の固定パネルから
- *   #home-scroll-content内の通常フロー（Timetableと一緒にスクロール）に
- *   移動し、ドット・文字サイズを拡大。台数が多くても窮屈にならないよう
- *   トラック自体をビューポートより広く取り、横スクロール可能にした
- *   （.home-approaching-scroll、トラック幅はrenderApproachingBar()が
- *   台数に応じて動的に設定する）。
+ *   Timetableと同じように動いていい」対応で一度#home-scroll-content内の
+ *   通常フローに移動しドット・文字サイズを拡大したが、2026-09-22
+ *   ユーザー指摘「縦スクロールさせると横スクロールがやりずらい」により、
+ *   地図パネルと同じflex-shrink:0の固定段に戻した（縦スクロール中は
+ *   このバー自体は動かないため、横スクロールのジェスチャーと競合しない）。
+ *   台数が多くても窮屈にならないよう、トラック自体をビューポートより
+ *   広く取り横スクロール可能にする点は変更なし（.home-approaching-scroll、
+ *   トラック幅はrenderApproachingBar()が台数に応じて動的に設定する）。
  * ══════════════════════════════════════════════ */
 .home-approaching-panel {
+  flex-shrink: 0;
   position: relative;
-  margin: 14px 14px 14px;
-  padding: 10px 12px 8px;
+  margin: 10px 14px;
+  /* 2026-09-22ユーザー指示「画面を無駄にしたくないのでApproachingラベルは
+     いらない」対応でラベルを撤去したため、ラベル分の上パディングも
+     不要になり縮小した（従来10px 12px 8px）。 */
+  padding: 8px 12px 8px;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -607,10 +613,11 @@ button {
 }
 
 /* 横スクロール可能な時だけJS側(updateApproachingFadeVisibility())が
-   hidden属性を外す。track領域(ラベル分を除いた高さ)にだけ重ねる。 */
+   hidden属性を外す。track領域にだけ重ねる（ラベル撤去に伴いtopを
+   panelのpadding-topに合わせて縮小）。 */
 .home-approaching-fade {
   position: absolute;
-  top: 29px;
+  top: 8px;
   right: 12px;
   bottom: 8px;
   width: 28px;
@@ -619,17 +626,19 @@ button {
   border-radius: 0 9px 9px 0;
 }
 
-.home-approaching-label {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-}
-
 .home-approaching-scroll {
+  /* 2026-09-22ユーザー指摘「プログレスバーが上下に動く、横スクロールは
+     大丈夫」を受けて再調査し発見: overflow-xのみ指定しoverflow-yを
+     省略すると、CSS Overflow仕様上「片方がvisible以外(auto/scroll/hidden)
+     の時、もう片方のvisibleは自動的にautoとして扱われる」ため、実際には
+     overflow-y:autoとして扱われていた（意図せず縦方向にもスクロール
+     可能になっていた）。-webkit-overflow-scrolling:touchと組み合わさると、
+     実際の縦オーバーフローが無くても、斜め方向のスワイプ操作でiOS Safari
+     特有のラバーバンド（弾性）挙動が発生し、トラックが一瞬上下に動いて
+     見えていたと考えられる。overflow-y:hiddenを明示してこの軸自体を
+     スクロール不可にすることで解消する（横スクロールの動作は変更なし）。 */
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -652,10 +661,17 @@ button {
   position: absolute;
   left: 10px;
   right: 10px;
-  top: 50%;
-  height: 2px;
-  transform: translateY(-50%);
-  background-image: repeating-linear-gradient(90deg, var(--border-strong) 0 10px, transparent 10px 20px);
+  /* 2026-09-22ユーザー指摘「プログレスバーが上下に動く」対応。top:50%+
+     transform:translateY(-50%)は、横スクロール中のiOS Safariで再合成
+     （compositing）のタイミングにより縦位置が一瞬ズレて見えることが
+     あったため、トラック高さ(56px)から逆算した固定px値に置き換えた
+     （.home-approaching-bus/.home-approaching-stop-flagも同様に変更）。 */
+  top: 27px;
+  height: 1.5px;
+  /* 2026-09-22ユーザー指摘「系統番号の下は実線、区切り線の方を点線に」
+     対応。当初は道路っぽい点線をこちらに、ゾーン区切り線を実線にしていたが、
+     ユーザーが逆の方が自然と判断したため入れ替えた。 */
+  background: var(--border-strong);
 }
 
 /* 2026-09-20ユーザー指示「地図上のバス停アイコンと同じにしてください」対応。
@@ -670,8 +686,9 @@ button {
      クリップされ、ピンの左半分が欠けて見えていた。トラック自身の左端
      (0px)以降に収まる正の値に変更する。 */
   left: 4px;
-  top: 50%;
-  transform: translateY(-50%);
+  /* 2026-09-22: top:50%+transform:translateY(-50%)由来の縦方向の
+     ズレ対策として固定px値に変更（.home-approaching-track::before参照）。 */
+  top: 15px;
   width: 26px;
   height: 26px;
   border-radius: 50%;
@@ -690,22 +707,30 @@ button {
 
 /* 2026-09-22ユーザー指示「Now〜5分、5〜10分、10〜15分で区切り線」対応
    （mockups/approaching-bar-zone-dividers-v1.html 案Bユーザー承認済み）。
-   位置(left)はJS側でtrackWidthの1/3・2/3に設定する
-   （.home-approaching-ticksの目盛りラベルもjustify-content:space-betweenで
-   同じ1/3・2/3位置に来るため、区切り線と目盛りが常に一致する）。 */
+   位置(left)はJS側で隣接ドットの隙間の中間にスナップする
+   （findApproachingDividerX()参照）。
+   2026-09-22ユーザー指摘「系統番号の下の実線と区切り線が同じ見た目で
+   紛らわしい、区切り線の方を点線に」対応で、区切り線側を点線に変更した
+   （トラックの実線ベースラインとの区別を明確にする）。 */
 .home-approaching-divider {
   position: absolute;
   top: 4px;
   bottom: 4px;
-  width: 1.5px;
-  background: var(--border-strong);
+  width: 0;
+  border-left: 1.5px dashed var(--border-strong);
   z-index: 1;
 }
 
 .home-approaching-bus {
   position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  /* 2026-09-22ユーザー指摘「プログレスバーが上下に動く」対応。従来は
+     top:50%+transform:translate(-50%,-50%)で縦横を同時に中央寄せして
+     いたが、横スクロール中にY方向だけ再合成タイミングでズレて見える
+     ことがあったため、縦方向はトラック高さ(56px)とドット高さ(30px)
+     から逆算した固定px値に分離し、transformはX方向のみに限定した
+     （.home-approaching-bus--savedはドット高さ40px分を別途上書き）。 */
+  top: 13px;
+  transform: translateX(-50%);
   z-index: 2;
   cursor: pointer;
 }
@@ -738,6 +763,8 @@ button {
    （2026-09-20ユーザー指示「Saveしたバス停に行くバスを目立たせたい、
    それ以外の色はいらない」）。 */
 .home-approaching-bus--saved {
+  /* ドット高さが40pxになる分、縦中央位置も(56-40)/2=8pxに合わせ直す。 */
+  top: 8px;
   z-index: 3;
 }
 
@@ -786,7 +813,11 @@ button {
  * ══════════════════════════════════════════════ */
 .timetable-list {
   background: var(--surface-1);
-  border-radius: var(--radius-card);
+  /* 2026-09-22ユーザー指摘「Approachingのカードとタイムテーブルのカードで
+     角の丸さが違う」対応。Approaching側(.home-approaching-panel)の
+     border-radius:16pxに合わせた（--radius-card=24pxからの変更、
+     この変数は他で使われていないためここでのみ調整）。 */
+  border-radius: 16px;
   box-shadow: var(--shadow-card);
   overflow: hidden;
   margin: 0 14px 14px;
