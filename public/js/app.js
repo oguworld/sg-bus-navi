@@ -234,9 +234,39 @@
 
   // 目的地ハイライトピッカー（2026-09-21新規）: 選択中の目的地id
   // （loadDestinations()の各エントリのid）。nullは未選択（ハイライトなし）。
-  // セッション内のみ保持し、localStorageへの永続化はしない（旧「関連のみ」
-  // フィルターと同方針）。initHighlightPicker()/selectHighlightDestination()参照。
-  let highlightDestinationId = null;
+  // 当初はセッション内のみ保持する仕様だったが、2026-09-22ユーザー指示
+  // 「アプリを閉じて戻ってきても選んだ状態を覚えておきたい」により
+  // localStorageへ永続化する方式に変更した
+  // （HIGHLIGHT_DESTINATION_STORAGE_KEY、loadHighlightDestinationId()/
+  // persistHighlightDestinationId()参照）。initHighlightPicker()/
+  // selectHighlightDestination()参照。
+  const HIGHLIGHT_DESTINATION_STORAGE_KEY = 'sgbusnavi_highlight_destination_id';
+  let highlightDestinationId = loadHighlightDestinationId();
+
+  function loadHighlightDestinationId() {
+    try {
+      return window.localStorage.getItem(HIGHLIGHT_DESTINATION_STORAGE_KEY) || null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // localStorage書き込み関数はサイレント失敗禁止（CLAUDE.mdルール）。
+  // 失敗可否をbooleanで返し、呼び出し元(selectHighlightDestination())が
+  // 失敗時にユーザーへ通知する。
+  function persistHighlightDestinationId(id) {
+    try {
+      if (id) {
+        window.localStorage.setItem(HIGHLIGHT_DESTINATION_STORAGE_KEY, id);
+      } else {
+        window.localStorage.removeItem(HIGHLIGHT_DESTINATION_STORAGE_KEY);
+      }
+      return true;
+    } catch (err) {
+      console.error('ハイライト選択の保存に失敗しました（localStorage書き込みエラー）:', err);
+      return false;
+    }
+  }
 
   /* ══════════════════════════════════════════════
    * フェーズ6: Home画面 地図パネル
@@ -1427,9 +1457,11 @@
     const destinations = loadDestinations();
 
     // 選択中の目的地がSaved画面側で削除されていた場合は選択解除する
-    // （2026-09-21確定仕様）。
+    // （2026-09-21確定仕様）。永続化した選択もあわせて消しておかないと、
+    // 削除済みidがlocalStorageに残り続けてしまう。
     if (highlightDestinationId && !destinations.some((dest) => dest.id === highlightDestinationId)) {
       highlightDestinationId = null;
+      persistHighlightDestinationId(null);
       updateHighlightButtonUI();
     }
 
@@ -1593,6 +1625,9 @@
   // 選択変更のたびに破棄してから再判定する。
   function selectHighlightDestination(id) {
     highlightDestinationId = id || null;
+    if (!persistHighlightDestinationId(highlightDestinationId)) {
+      window.alert('Could not save this selection. Your device storage may be full or restricted.');
+    }
     closeHighlightDropdown();
     updateHighlightButtonUI();
     clearServiceRouteInfoCache();
