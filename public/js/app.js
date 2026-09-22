@@ -73,6 +73,15 @@
         window.Capacitor.Plugins.Browser.open({ url: absoluteUrl });
       }
     });
+
+    // 2026-09-22 App Store審査却下（Guideline 3.1.1）対応: 「Support the app」の
+    // Stripe決済リンク（外部の任意寄付）がApp内課金を使わず決済を行っている
+    // として却下された。WILLOA PTE. LTD.は登録済み非営利団体ではないため
+    // charitable donation(3.2.2)の例外も使えず、対応はApple IAP化か撤去の
+    // 二択。ユーザー選択によりiOSネイティブ版のみから撤去する（Web/PWA版の
+    // bus.willoa.netはApple審査対象外のため外部リンクのまま残す）。
+    const supportLink = document.getElementById('settings-support-link');
+    if (supportLink) supportLink.hidden = true;
   }
 
   // GPSタイムアウト（ミリ秒）。plan.md 4節の「8〜10秒案」を踏まえ10秒に設定。
