@@ -1809,14 +1809,6 @@ button {
   pointer-events: none;
 }
 
-/* display:flexを明示しているため[hidden]のUAデフォルト(display:none)が
-   打ち消されてしまう。2026-09-22 App Store審査却下(Guideline 3.1.1)対応で
-   iOSネイティブ版のみ#settings-support-linkをJS側でhidden=trueにする
-   （app.js内_isCapacitorAppブロック参照）ため、明示的に上書きしておく。 */
-.settings-item[hidden] {
-  display: none;
-}
-
 .settings-item--column {
   flex-direction: column;
   align-items: stretch;
@@ -1837,17 +1829,6 @@ button {
 .settings-item i {
   color: var(--text-muted);
   font-size: 18px;
-}
-
-.settings-item-input {
-  border: none;
-  background: transparent;
-  font-family: var(--font-heading);
-  font-size: 16px; /* iOS自動ズーム防止のため16px以上必須（CLAUDE.md参照） */
-  color: var(--text-primary);
-  text-align: right;
-  outline: none;
-  width: 140px;
 }
 
 .settings-pill-btn {

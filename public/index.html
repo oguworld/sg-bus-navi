@@ -136,18 +136,17 @@
         <div class="saved-header-title">Settings</div>
       </div>
 
-      <!-- 2026-09-17ユーザー指示「設定全体をもうちょと再カテゴリできる？」対応:
-           6セクション(Profile/App Settings/Support & Info/More from Willoa/
-           Share & Support/Feedback)は見出しが多く逆に細切れに見えていたため、
-           関連性の近いものを統合し4セクションに再編した。
-           Profile(Nickname)+App Settings(Dark mode)は両方「自分用の個人設定」
-           のため統合。 -->
+      <!-- 2026-09-23ユーザー指示「SG BusNaviとSG在住Naviの設定画面をあわせたい」
+           対応で両アプリの構成を統一した。Nicknameは保存されるだけで表示・
+           利用箇所が一切ない死んだ機能だったため削除し、セクション名から
+           「Profile」を外した。Privacy Policyは「情報収集していないので
+           気にならない」とのユーザー判断で両アプリとも設定画面から撤去。
+           Support the appはApp Store Guideline 3.1.1(要In-App Purchase)
+           対応の手間をかけない判断により、Web版含め機能ごと撤去した
+           （以前あったiOSネイティブ版のみ非表示にする分岐処理も不要になった
+           ため削除済み）。 -->
       <div class="settings-section">
-        <div class="settings-section-title">Profile &amp; App Settings</div>
-        <div class="settings-item">
-          <span class="settings-item-label">Nickname</span>
-          <input type="text" id="settings-nickname-input" class="settings-item-input" maxlength="20" placeholder="Anonymous">
-        </div>
+        <div class="settings-section-title">App Settings</div>
         <div class="settings-item">
           <span class="settings-item-label">Dark mode</span>
           <button type="button" class="settings-pill-btn" id="settings-dark-mode-btn">
@@ -156,34 +155,18 @@
         </div>
       </div>
 
-      <!-- Website/Contact/Privacy Policyは実URL未確定のため行だけ用意しタップ不可にする
-           （2026-09-13ユーザー指示。URL確定後は.settings-item--disabledを外しhrefを設定する） -->
-      <!-- 2026-09-16ユーザー指摘「アプリの中からウェブサイトやプライバシー
-           ポリシーを開いたとき、戻るボタンがなくて元のアプリに戻れない」対応。
-           ホーム画面追加のPWA(standalone表示)はブラウザの戻るボタン自体が
-           存在しないため、target="_blank"での別タブ起動に頼るのは不安定
-           （iOSのstandalone表示からのtarget="_blank"は新規タブとして確実に
-           分離されるとは限らない）。Website/Privacy Policyはtarget="_blank"を
-           外し同一ウィンドウ内遷移にしたうえで、遷移先ページ自体
-           （public/about.htmlの「Open App →」、willoa.net側の
-           privacy-policyページの明示的な戻りリンク）に確実な戻り導線を
-           用意する方針に統一した。Stripe決済リンク(Support the app)は
-           決済フローという性質上target="_blank"のまま維持する。 -->
-      <!-- 2026-09-17ユーザー指摘「ちょっと煩雑になってきたので整理案ください」対応:
-           元は1つの「Support & Info」ブロックに8行(Website/Contact/About Willoa/
-           SG在住Navi/Privacy Policy/Version/Share with friends/Support the app)が
-           詰め込まれており見通しが悪かったため、性質ごとに3セクションへ分割した。
-           1. Support & Info: 純粋な情報・規約系（Website/Contact/Privacy Policy/Version）
-           2. More from Willoa: Willoaエコシステムへの導線（About Willoa/姉妹アプリ）
-           3. Share & Support: ユーザーに行動してほしい項目（シェア/寄付） -->
+      <!-- 2026-09-16ユーザー指摘「アプリの中からウェブサイトを開いたとき、
+           戻るボタンがなくて元のアプリに戻れない」対応。ホーム画面追加の
+           PWA(standalone表示)はブラウザの戻るボタン自体が存在しないため、
+           target="_blank"での別タブ起動に頼るのは不安定（iOSのstandalone
+           表示からのtarget="_blank"は新規タブとして確実に分離されるとは
+           限らない）。Websiteはtarget="_blank"を外し同一ウィンドウ内遷移に
+           したうえで、遷移先ページ自体（public/about.htmlの「Open App →」）
+           に確実な戻り導線を用意する方針に統一した。 -->
       <div class="settings-section">
         <div class="settings-section-title">Support &amp; Info</div>
         <a href="/about" class="settings-item" id="settings-website-link">
           <span class="settings-item-label">Website</span>
-          <i class="ti ti-chevron-right" aria-hidden="true"></i>
-        </a>
-        <a href="https://willoa.net/privacy-policy/en" class="settings-item" id="settings-privacy-link">
-          <span class="settings-item-label">Privacy Policy</span>
           <i class="ti ti-chevron-right" aria-hidden="true"></i>
         </a>
         <div class="settings-item">
@@ -194,12 +177,8 @@
 
       <!-- Willoa本体・姉妹アプリSG在住Naviとの相互リンク（2026-09-17ユーザー指示）。
            どちらも別ドメインへ完全に離脱する遷移で、戻り導線を相手側に期待できない
-           ため、Support the appと同じtarget="_blank"（新規タブ/ネイティブでは
-           @capacitor/browserのin-appブラウザ）で開く。
-           2026-09-17再編: 元は「More from Willoa」(About Willoa/姉妹アプリ)と
-           「Share & Support」(シェア/寄付)の2セクションだったが、どちらも
-           「Willoaエコシステムに関わる」行動という共通点があるため1セクションに
-           統合した。 -->
+           ため、target="_blank"（新規タブ/ネイティブでは@capacitor/browserの
+           in-appブラウザ）で開く。 -->
       <div class="settings-section">
         <div class="settings-section-title">Willoa</div>
         <a href="https://willoa.net" class="settings-item" id="settings-willoa-link" target="_blank" rel="noopener">
@@ -217,17 +196,6 @@
             <span>Share</span>
           </button>
         </div>
-        <!-- 寄付リンク（2026-09-15ユーザー指示「応援する機能...SG在住Naviを参考に
-             つけてほしい」）。sg-weekend-appと同じStripe決済リンクをそのまま
-             流用する（ユーザー選択「SG在住Naviと同じStripeリンクを使い回す」、
-             同じ運営会社WILLOA PTE. LTD.宛のため新規Payment Link作成は不要と判断）。 -->
-        <a href="https://buy.stripe.com/28EfZ9eN56aZaEEbmY4c800" class="settings-item" id="settings-support-link" target="_blank" rel="noopener">
-          <span class="settings-item-label">Support the app</span>
-          <span class="settings-pill-btn">
-            <i class="ti ti-heart" aria-hidden="true"></i>
-            <span>Donate</span>
-          </span>
-        </a>
       </div>
 
       <div class="settings-section">

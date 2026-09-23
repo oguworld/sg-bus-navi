@@ -61,8 +61,7 @@
   if (_isCapacitorApp) {
     document.addEventListener('click', (event) => {
       const anchor = event.target.closest(
-        '#settings-website-link, #settings-privacy-link, #settings-support-link, ' +
-          '#settings-willoa-link, #settings-sister-app-link, .share-sheet-link'
+        '#settings-website-link, #settings-willoa-link, #settings-sister-app-link, .share-sheet-link'
       );
       if (!anchor) return;
       const href = anchor.getAttribute('href') || '';
@@ -73,15 +72,6 @@
         window.Capacitor.Plugins.Browser.open({ url: absoluteUrl });
       }
     });
-
-    // 2026-09-22 App Store審査却下（Guideline 3.1.1）対応: 「Support the app」の
-    // Stripe決済リンク（外部の任意寄付）がApp内課金を使わず決済を行っている
-    // として却下された。WILLOA PTE. LTD.は登録済み非営利団体ではないため
-    // charitable donation(3.2.2)の例外も使えず、対応はApple IAP化か撤去の
-    // 二択。ユーザー選択によりiOSネイティブ版のみから撤去する（Web/PWA版の
-    // bus.willoa.netはApple審査対象外のため外部リンクのまま残す）。
-    const supportLink = document.getElementById('settings-support-link');
-    if (supportLink) supportLink.hidden = true;
   }
 
   // GPSタイムアウト（ミリ秒）。plan.md 4節の「8〜10秒案」を踏まえ10秒に設定。
@@ -214,7 +204,27 @@
 
   function initGpsDriftCheck() {
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') checkForLocationDrift();
+      if (document.visibilityState !== 'visible') return;
+      // 2026-09-23ユーザー指摘「バックグラウンドから復帰したとき地図が
+      // グレーの空白で表示される」対応。地図パネルのinvalidateSize()は
+      // 従来renderHomeMapPins()内、つまりGPSドリフト検知で実際に近傍バス停を
+      // 再取得した時（150m以上移動した時）にしか呼ばれていなかった。
+      // 大きく移動していないバックグラウンド復帰では再取得がトリガーされず、
+      // その間にiOS側がWebViewの描画レイヤーを破棄すると、Leafletが
+      // サイズ変更を検知できないままタイルが再描画されずグレーのまま
+      // 残ってしまっていた。移動距離に関わらず、フォアグラウンド復帰の
+      // たびに無条件でinvalidateSize()する。ただしinvalidateSize()は
+      // コンテナサイズが実際に変化していない限り内部の再描画処理を
+      // スキップするため（今回のようにサイズ自体は変わらずタイルの描画
+      // だけがiOS側に破棄されたケースをカバーできない）、タイルレイヤーの
+      // redraw()も明示的に呼んで確実に再描画させる。
+      if (homeMapInstance) {
+        homeMapInstance.invalidateSize();
+        homeMapInstance.eachLayer((layer) => {
+          if (typeof layer.redraw === 'function') layer.redraw();
+        });
+      }
+      checkForLocationDrift();
     });
     setInterval(checkForLocationDrift, GPS_DRIFT_CHECK_INTERVAL_MS);
   }
@@ -3090,27 +3100,7 @@
    *   開発者に通知する（2026-09-13ユーザー確定指示「同じline通知でお願いします」）。
    * ══════════════════════════════════════════════ */
 
-  const NICKNAME_STORAGE_KEY = 'sgbusnavi_nickname';
   const THEME_STORAGE_KEY = 'sgbusnavi_theme';
-
-  function loadNickname() {
-    try {
-      return window.localStorage.getItem(NICKNAME_STORAGE_KEY) || '';
-    } catch (err) {
-      return '';
-    }
-  }
-
-  // 戻り値: 保存に成功したかどうか（persistDestinations()と同じ「サイレント失敗禁止」規約）。
-  function persistNickname(value) {
-    try {
-      window.localStorage.setItem(NICKNAME_STORAGE_KEY, value);
-      return true;
-    } catch (err) {
-      console.error('ニックネームの保存に失敗しました（localStorage書き込みエラー）:', err);
-      return false;
-    }
-  }
 
   function getTheme() {
     try {
@@ -3286,14 +3276,6 @@
   }
 
   function initSettingsScreen() {
-    const nicknameInput = document.getElementById('settings-nickname-input');
-    if (nicknameInput) {
-      nicknameInput.value = loadNickname();
-      nicknameInput.addEventListener('input', () => {
-        persistNickname(nicknameInput.value.trim());
-      });
-    }
-
     applyTheme();
 
     const darkModeBtn = document.getElementById('settings-dark-mode-btn');
