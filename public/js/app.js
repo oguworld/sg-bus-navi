@@ -438,6 +438,20 @@
       attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
 
+    // Home画面の地図(ensureHomeMap())と同じ不具合対策。ドラッグ・慣性
+    // スクロール後にタイル・マーカー(経路線・MRT駅ピン等)の描画が崩れる
+    // ことがあるため、移動が収まるたびに強制再描画する。
+    map.on('moveend', () => {
+      map.invalidateSize();
+      map.eachLayer((layer) => {
+        if (typeof layer.redraw === 'function') layer.redraw();
+      });
+      routeModalMarkers.forEach((marker) => {
+        map.removeLayer(marker);
+        marker.addTo(map);
+      });
+    });
+
     routeModalMapInstance = map;
     return map;
   }
@@ -546,8 +560,10 @@
     const map = ensureRouteModalMap();
     const mapEl = document.getElementById('route-modal-map-el');
     const statusEl = document.getElementById('route-modal-status');
+    const recenterBtn = document.getElementById('route-modal-recenter-btn');
     if (!map || !mapEl) {
       if (statusEl) statusEl.innerHTML = buildRouteStatusFallbackHtml('Unable to load the map');
+      if (recenterBtn) recenterBtn.hidden = true;
       return;
     }
 
@@ -555,6 +571,7 @@
 
     if (statusEl) statusEl.innerHTML = '';
     mapEl.hidden = false;
+    if (recenterBtn) recenterBtn.hidden = false;
 
     // モーダルが直前まで非表示（display:none）だった場合、Leafletが
     // 誤ったコンテナサイズを記憶しないよう、表示直後にinvalidateSizeする。
@@ -2489,6 +2506,38 @@
       attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
 
+    // 2026-09-23ユーザー指摘「地図を移動させると表示されるけど暫くすると
+    // 消えちゃう」対応。バックグラウンド復帰後にグレー表示になる不具合
+    // （initGpsDriftCheck()のvisibilitychangeハンドラで対処済み）と同系統の
+    // 問題と考えられる。iOS SafariはLeafletのドラッグ操作中に生成される
+    // 合成レイヤー（leaflet-paneのtransform）の再合成をうまく行えず、
+    // ドラッグ終了から少し経つとタイルの描画が崩れることがあるため、
+    // dragend（ドラッグ操作が終わった瞬間）でも同じ強制再描画を行う。
+    // 2026-09-23ユーザー報告のスクリーンショットで発覚: タイル(地図画像)だけで
+    // なく、現在地ドット・バス停ピン(マーカーレイン)も、ドラッグ後に何も
+    // 表示されなくなることがあった。マーカーには.redraw()に相当するメソッドが
+    // 無いため、既存のマーカーインスタンスをremoveLayer→addLayerし直すことで
+    // アイコンDOMを作り直させ、強制的に再描画する（中心・ズームは変えない
+    // ため、ユーザーがドラッグした表示位置はそのまま維持される）。
+    // dragendではなくmoveendを使う: 慣性スクロール(momentum)が効いている間は
+    // dragend発火後も地図が動き続けることがあり、その場合dragend時点では
+    // まだ最終位置に到達していない。moveendは移動が完全に収まった後に
+    // 必ず発火するため、こちらの方が確実。
+    map.on('moveend', () => {
+      map.invalidateSize();
+      map.eachLayer((layer) => {
+        if (typeof layer.redraw === 'function') layer.redraw();
+      });
+      if (homeMapCurrentMarker) {
+        map.removeLayer(homeMapCurrentMarker);
+        homeMapCurrentMarker.addTo(map);
+      }
+      homeMapStopMarkers.forEach(({ marker }) => {
+        map.removeLayer(marker);
+        marker.addTo(map);
+      });
+    });
+
     homeMapInstance = map;
     return map;
   }
@@ -2499,6 +2548,7 @@
   function showHomeMapFallback(message) {
     const fallbackEl = document.getElementById('home-map-fallback');
     const mapEl = document.getElementById('home-map-el');
+    const recenterBtn = document.getElementById('home-map-recenter-btn');
     if (fallbackEl) {
       fallbackEl.hidden = false;
       const span = fallbackEl.querySelector('span');
@@ -2513,13 +2563,41 @@
       }
     }
     if (mapEl) mapEl.hidden = true;
+    if (recenterBtn) recenterBtn.hidden = true;
   }
 
   function hideHomeMapFallback() {
     const fallbackEl = document.getElementById('home-map-fallback');
     const mapEl = document.getElementById('home-map-el');
+    const recenterBtn = document.getElementById('home-map-recenter-btn');
     if (fallbackEl) fallbackEl.hidden = true;
     if (mapEl) mapEl.hidden = false;
+    if (recenterBtn) recenterBtn.hidden = false;
+  }
+
+  // 2026-09-23ユーザー指示「現在地を中心に表示する(戻す)ボタンを地図の右下に
+  // 付けれる？」対応。地図をドラッグして動かした後、現在地+周辺バス停が
+  // 収まる表示に戻す。renderHomeMapPins()を最後に取得した座標で再実行する
+  // だけなので、通常のバス停切替時と全く同じ表示に確実に戻せる。
+  function initHomeMapRecenterButton() {
+    const btn = document.getElementById('home-map-recenter-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      if (!lastKnownGpsCoords) return;
+      renderHomeMapPins(lastKnownGpsCoords.lat, lastKnownGpsCoords.lng);
+    });
+  }
+
+  // 経路モーダル版の再表示ボタン。現在地のような単一の中心点は無いため、
+  // renderRouteModalMap()の初期表示と同じくルート全体(ポリラインのbounds)に
+  // fitBounds()し直す（padding値も初期表示と揃える）。
+  function initRouteModalRecenterButton() {
+    const btn = document.getElementById('route-modal-recenter-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      if (!routeModalMapInstance || !routeModalPolyline) return;
+      routeModalMapInstance.fitBounds(routeModalPolyline.getBounds(), { padding: [36, 44] });
+    });
   }
 
   // 現在地マーカー・周辺バス停ピンを最新のnearbyStops/currentStopIndexに
@@ -3070,6 +3148,8 @@
     initRouteModal();
     initHighlightPicker();
     initApproachingScrollHint();
+    initHomeMapRecenterButton();
+    initRouteModalRecenterButton();
     initSwipeGesture();
     initGpsLocation();
     initGpsDriftCheck();

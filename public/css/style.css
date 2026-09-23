@@ -464,6 +464,46 @@ button {
   isolation: isolate;
 }
 
+/* 2026-09-23ユーザー指示「現在地を中心に表示する(戻す)ボタンを地図の右下に
+   付けれる？」対応。地図をドラッグして動かした後、元の表示範囲に戻すための
+   浮遊ボタン。位置はLeafletのzoom control相当の右下配置とし、地図操作の
+   邪魔にならない範囲に留める（本アプリはzoomControl:falseのため右下が
+   空いている）。Home画面の地図・経路モーダルの地図の両方で使う共通クラス
+   （2026-09-23ユーザー指示「同じボタンを経路のマップにも表示して」）。 */
+.map-recenter-btn {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  /* 2026-09-23ユーザー指摘「ボタンの色がすごく薄い、地図の色と同化してる」で
+     発覚・修正: Leaflet内部ペインのz-index(tilePane:200〜popupPane:700)より
+     低い値(10)だったため、半透明(opacity:0.88)のタイル層の下に潜り込み、
+     地図の色を透かして薄く見えていた。全ペインより確実に上になる値にする。 */
+  z-index: 1000;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface-1);
+  box-shadow: 0 2px 6px rgba(43, 43, 39, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.map-recenter-btn i {
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.map-recenter-btn:active {
+  transform: scale(0.92);
+}
+
+.map-recenter-btn[hidden] {
+  display: none;
+}
+
 .home-map-el {
   display: block;
   width: 100%;

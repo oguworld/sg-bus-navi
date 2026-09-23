@@ -54,6 +54,14 @@
           <span>Loading map…</span>
         </div>
         <div class="home-map-el" id="home-map-el" hidden></div>
+        <!-- 2026-09-23ユーザー指示「現在地を中心に表示する(戻す)ボタンを地図の
+             右下に付けれる？」対応。地図をドラッグして動かした後、現在地+
+             周辺バス停の表示に戻す。renderHomeMapPins()を再実行するだけの
+             ため、パン操作で稀に一部タイルが読み込まれないまま残る現象の
+             回避策としても機能する。 -->
+        <button type="button" class="map-recenter-btn" id="home-map-recenter-btn" aria-label="Recenter map" hidden>
+          <i class="ti ti-current-location" aria-hidden="true"></i>
+        </button>
       </div>
 
       <!-- ユーザー指示「バス停の横スクロールは地図の下にもってきてください」対応。
@@ -249,6 +257,11 @@
       <div class="route-modal-map">
         <div id="route-modal-status" class="route-modal-status-container"></div>
         <div id="route-modal-map-el" class="route-modal-map-el" hidden></div>
+        <!-- 2026-09-23ユーザー指示「同じボタンを経路のマップにも表示して」対応。
+             タップで経路全体(ポリラインのbounds)が収まる表示に戻す。 -->
+        <button type="button" class="map-recenter-btn" id="route-modal-recenter-btn" aria-label="Recenter map" hidden>
+          <i class="ti ti-current-location" aria-hidden="true"></i>
+        </button>
       </div>
 
       <!-- 実際に停車する全てのバス停を停車順に表示するリスト（2026-09-14ユーザー
