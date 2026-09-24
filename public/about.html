@@ -279,6 +279,16 @@
       margin-bottom: 36px;
       font-size: 15px;
     }
+    .cta-store-badges {
+      display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .store-badge {
+      display: inline-block;
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+    .store-badge:hover { opacity: 0.85; }
 
     /* ── FOOTER ── */
     footer {
@@ -403,9 +413,14 @@
   <section class="cta-bottom">
     <img src="/icons/icon-512.png" alt="SGBusNavi" class="cta-bottom-icon">
     <h2>Try it at your next stop</h2>
-    <p>Free to use, no account needed. Add it to your home screen for the full app experience.</p>
+    <p>Free to use, no account needed.</p>
+    <div class="cta-store-badges">
+      <a href="https://apps.apple.com/us/app/id6812561200" class="store-badge">
+        <img src="https://toolbox.marketingtools.apple.com/api/v2/badges/download-on-the-app-store/black/en-us" alt="Download on the App Store" style="height:54px;width:auto;">
+      </a>
+    </div>
     <div class="hero-btns">
-      <a href="/" class="btn-primary">🚌 Open SGBusNavi</a>
+      <a href="/" class="btn-secondary">🚌 Or open the web app</a>
     </div>
   </section>
 

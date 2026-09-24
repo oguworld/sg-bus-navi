@@ -3389,7 +3389,7 @@
   // (bus.willoa.net)に固定していたが、2026-09-24ユーザー指示「アプリのURLが
   // 変わりました。シェアのアドレスを直して」により、App Store公開後は
   // App Storeのアプリページへ直接誘導するURLに切り替えた。
-  const SHARE_URL = 'https://apps.apple.com/app/sg-busnavi/id6812561200';
+  const SHARE_URL = 'https://apps.apple.com/us/app/id6812561200';
 
   function initShareSheet() {
     const openBtn = document.getElementById('settings-share-btn');
