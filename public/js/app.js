@@ -299,6 +299,15 @@
   let homeMapInstance = null;
   let homeMapCurrentMarker = null;
   let homeMapStopMarkers = []; // { marker, index }[]
+  // 2026-09-24ユーザー指摘「一瞬現在地が表示されてその後に初期状態の場所に
+  // 移動する」で発覚・修正: renderHomeMapPins()内でdvhの遅延解決対策として
+  // 次フレーム以降にも表示範囲の再適用(applyHomeMapView())をスケジュール
+  // していたが、その再適用にガードが無かったため、複数回のrenderHomeMapPins
+  // 呼び出し（並行するGPS段階等で起こり得る）が重なった時、古い呼び出しの
+  // 遅延コールバックが後から発火して新しい呼び出しの正しい表示を上書きして
+  // しまっていた。呼び出しごとに連番を振り、自分より新しい呼び出しが
+  // 既に走っていれば遅延コールバック側の適用をスキップする。
+  let homeMapRenderSeq = 0;
   // 2026-09-24ユーザー指示「地図を動かしたとき遠くのバス停も表示・タップして
   // 見られるようにしたい」対応。nearbyStops(GPS基準の最寄りN件)とは別に、
   // 地図の表示範囲内の全バス停をmoveendのたびに取得して表示するピン。
@@ -1895,11 +1904,14 @@
   // （positionsはETA昇順=x昇順）。該当する隙間が無い場合（全ドットが境界の
   // 手前/以降のいずれかに偏っている、または1件もない）は、trackWidthに
   // 比例した位置にフォールバックする。
-  function findApproachingDividerX(positions, boundaryMinutes, trackWidth) {
-    const fallbackX = (trackWidth * boundaryMinutes) / 15;
-    if (positions.length === 0) return fallbackX;
-
-    const afterIndex = positions.findIndex((p) => p.clampedMinutes >= boundaryMinutes);
+  // 2026-09-24 整理: 「境界がどのドットの隙間に落ちるか(afterIndex)」を
+  // 呼び出し元で1回だけ計算し、位置決め(この関数)と表示可否判定
+  // (computeApproachingDividerVisibility())の両方で使い回す一本化した設計に
+  // 変更した。以前はfindIndex()をここでも表示可否判定でも別々に呼んでおり、
+  // 「同じ境界なのに位置決めと表示可否で別の基準を見ている」ことが、
+  // 複数のパッチが積み重なる原因になっていた。
+  function findApproachingDividerX(positions, boundaryMinutes, afterIndex, trackWidth) {
+    if (positions.length === 0) return (trackWidth * boundaryMinutes) / 15;
 
     if (afterIndex === -1) {
       // 全バスが境界より手前 → 最後のドットのすぐ右側に置く。
@@ -1909,13 +1921,8 @@
       // 全バスが境界以降 → 先頭ドットのすぐ左側に置く（0未満にはしない）。
       return Math.max(0, positions[0].x - APPROACHING_MIN_GAP_PX / 2);
     }
-    // 2026-09-22ユーザー指摘「区切り線は単純に次があるときだけ」対応で
-    // 5分・10分の表示可否は実バスの存在有無のみで決める方針に統一したため
-    // （hasBusPast5/hasBusPast10）、両方の境界が同じ隙間（例: 0分のバスの
-    // 次が一気に15分クランプのバスに飛ぶ場合）に該当することがある。
-    // 単純な中間点(50%)だと5分・10分が同じ座標に重なってしまうため、
-    // 隙間を挟む2ドットのclampedMinutesの差に対してboundaryMinutesが
-    // どの割合に位置するかで按分する。
+    // 隙間を挟む2ドットのclampedMinutesの差に対してboundaryMinutesがどの
+    // 割合に位置するかで按分する。
     const prev = positions[afterIndex - 1];
     const next = positions[afterIndex];
     const span = next.clampedMinutes - prev.clampedMinutes;
@@ -1923,12 +1930,9 @@
     const rawX = prev.x + (next.x - prev.x) * fraction;
 
     // 2026-09-24ユーザー指摘「区切り点線と系統番号カードが被る」対応。
-    // 従来は隙間の15%〜85%という比率でクランプしていたが、ピルの実幅は
-    // 隙間の広さに関わらずほぼ一定（APPROACHING_MIN_GAP_PXが詰まっている
-    // ときは特に）なため、比率ベースの余白だとピルにめり込むことがあった。
-    // 隣接ドットの中心からピルの半分程度が確実にクリアできる固定px幅の
-    // 余白に変更する。隙間自体が狭すぎて両側の余白を確保できない場合は
-    // 中間点にフォールバックする。
+    // 隙間の割合(%)ではなく、ピルの実幅に見合う固定px幅の余白でクランプする
+    // （割合ベースだと隙間が狭い時にピルへめり込んでいた）。隙間自体が
+    // 狭すぎて両側の余白を確保できない場合は中間点にフォールバックする。
     const DIVIDER_MARGIN_PX = 28;
     const minX = prev.x + DIVIDER_MARGIN_PX;
     const maxX = next.x - DIVIDER_MARGIN_PX;
@@ -1936,6 +1940,28 @@
       return Math.min(maxX, Math.max(minX, rawX));
     }
     return (prev.x + next.x) / 2;
+  }
+
+  // 5分・10分・15分の3つの区切りについて、それぞれ表示すべきかを一括判定する。
+  // ルール(2026-09-24、複数回のパッチを1つの規則に整理): ある境界は
+  // 「該当バスが1件もない」か「その境界の隙間(afterIndex)を、より大きい
+  // 境界も共有している」場合だけ非表示にする。後者は、たとえば6分の次の
+  // バスが一気に15分クランプへ飛ぶ場合、10分・15分の区切りが全く同じ
+  // 隙間に計算されてしまい、狭い隙間の中に2本の区切り線を収めきれない
+  // (=ピルとの重なり回避と両立できない)ことに対応するため。より正確な
+  // 情報を持つ大きい方の境界を優先して残す。それ以外(他の境界と隙間が
+  // 被っていない)なら、手前に1件もバスが無い(afterIndex===0)状態でも
+  // そのまま表示してよい。手前にバスが無いこと自体はピルとの重なりを
+  // 起こさないため、非表示にする理由にならない
+  // （2026-09-24ユーザー指摘「このケースは5分の線がいると思った」で発覚。
+  // 唯一のバスがちょうど5分だった場合、5分の区切りだけがafterIndex===0に
+  // なるが10分・15分とは別の隙間なので衝突せず、表示して問題ない）。
+  function computeApproachingDividerVisibility(afterIndices) {
+    return afterIndices.map((afterIndex, i) => {
+      if (afterIndex === -1) return false;
+      const supersededByLargerBoundary = afterIndices.some((otherIndex, j) => j > i && otherIndex === afterIndex);
+      return !supersededByLargerBoundary;
+    });
   }
 
   // id指定のApproachingバー目盛りラベルをx座標に配置する。
@@ -1982,25 +2008,26 @@
     // 2026-09-22ユーザー指示「区切り線は経路番号の間に、分のラベルはその下に」
     // 対応。5分・10分・15分の境界を単純にtrackWidthの比率で機械的に置くと、
     // ちょうどドットの真上に線が重なって見えることがあったため、境界を
-    // またぐ隣接ドットの隙間の中間（寄り）にスナップさせる（該当するドットが
-    // 無い場合のみtrackWidth比例のフォールバック位置を使う）。
+    // またぐ隣接ドットの隙間の中間（寄り）にスナップさせる。
     // 2026-09-22ユーザー指摘「15+が48・960(いずれも17分＝15分以上)より左に
-    // 来るはず」対応: 「15 min+」は従来trackWidth（表示中の最後のドットの
-    // さらに右）に固定していたが、これだと「15分以上の全ドットより右」に
-    // 表示されてしまい、5分・10分の区切り線と違って「そのゾーンの開始位置」
-    // を示せていなかった。5分・10分と全く同じ仕組み（15分以上の最初のドットの
-    // 直前にスナップする区切り線）に統一し、5分/10分の区切り線と同列の
-    // 「15分ゾーンの開始マーカー」として扱う。
-    const divider5X = findApproachingDividerX(positions, 5, trackWidth);
-    const divider10X = findApproachingDividerX(positions, 10, trackWidth);
-    const divider15X = findApproachingDividerX(positions, 15, trackWidth);
+    // 来るはず」対応: 「15 min+」も5分・10分と全く同じ仕組み（該当する
+    // 最初のドットの直前にスナップする区切り線）で統一的に扱う。
+    // 2026-09-24 整理: 各境界が「どのドットの隙間に該当するか(afterIndex)」を
+    // ここで1回だけ求め、位置決め・表示可否判定の両方で使い回す
+    // （findApproachingDividerX()/computeApproachingDividerVisibility()参照）。
+    const afterIndex5 = positions.findIndex((p) => p.clampedMinutes >= 5);
+    const afterIndex10 = positions.findIndex((p) => p.clampedMinutes >= 10);
+    const afterIndex15 = positions.findIndex((p) => p.clampedMinutes >= 15);
 
-    // 区切り線・目盛りは実際にその分数以降のバスが存在する時だけ表示する
-    // （例: 全バスが10分未満なら「10」の区切りは意味を持たないため出さない、
-    // 2026-09-22ユーザー指示「単純に次があるときだけ」）。
-    const hasBusPast5 = positions.some((p) => p.clampedMinutes >= 5);
-    const hasBusPast10 = positions.some((p) => p.clampedMinutes >= 10);
-    const hasBusPast15 = positions.some((p) => p.clampedMinutes >= 15);
+    const divider5X = findApproachingDividerX(positions, 5, afterIndex5, trackWidth);
+    const divider10X = findApproachingDividerX(positions, 10, afterIndex10, trackWidth);
+    const divider15X = findApproachingDividerX(positions, 15, afterIndex15, trackWidth);
+
+    const [hasBusPast5, hasBusPast10, hasBusPast15] = computeApproachingDividerVisibility([
+      afterIndex5,
+      afterIndex10,
+      afterIndex15,
+    ]);
 
     const divider1 = document.getElementById('home-approaching-divider-1');
     const divider2 = document.getElementById('home-approaching-divider-2');
@@ -2667,13 +2694,24 @@
   // たびに呼ぶ（4節正常系「バス停切替のたびに地図の中心・ピンが再取得した
   // nearbyStopsに合わせて更新される」）。
   function renderHomeMapPins(lat, lng) {
+    const renderSeq = ++homeMapRenderSeq;
+    // 2026-09-24ユーザー指摘「最初に開いたとき現在地がマップに表示されず、
+    // 別の場所(MAP_INITIAL_CENTER)が表示される」で発覚・修正: 従来は
+    // ensureHomeMap()（Leaflet地図インスタンスの生成）をhideHomeMapFallback()
+    // （#home-map-elのhidden属性を外す処理）より先に呼んでいたため、初回は
+    // 非表示(display:none、サイズ0)のコンテナに対してLeafletを初期化して
+    // いたことがあった。Leafletはサイズ0のコンテナに対して生成されると、
+    // 後からinvalidateSize()を呼んでも内部状態が正しく復旧しないことがある
+    // （fitBounds()のズーム計算やマーカー配置が壊れたままになる既知の
+    // 挙動）。表示→生成の順に入れ替え、Leafletが必ず実サイズを持つ
+    // 可視コンテナに対して初期化されるようにする。
+    hideHomeMapFallback();
     const map = ensureHomeMap();
     if (!map) {
       showHomeMapFallback('Map unavailable');
       return;
     }
 
-    hideHomeMapFallback();
     map.invalidateSize();
 
     if (homeMapCurrentMarker) {
@@ -2742,21 +2780,45 @@
       homeMapStopMarkers.push({ marker, index });
     });
 
-    if (bounds.length > 1) {
-      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
-      // 2026-09-24ユーザー指摘「最初に表示されるマップが少し遠い、2-3の
-      // バス停が見えるか見えないかくらいでもう少しズームしてほしい」対応。
-      // fitBounds()はnearbyStops(最大5件)全部が収まるよう自動でズーム
-      // アウトするため、バス停同士が離れていると意図以上に引いた表示に
-      // なっていた。最低限このズームレベルは確保する（全件は収まらなく
-      // なってもよい、近くの2-3件がはっきり見えることを優先する）。
-      const MIN_HOME_MAP_ZOOM = 16;
-      if (map.getZoom() < MIN_HOME_MAP_ZOOM) {
-        map.setZoom(MIN_HOME_MAP_ZOOM);
+    // 2026-09-24ユーザー指摘「起動直後、現在地ではなく毎回同じ別の場所
+    // (MacRitchie付近=MAP_INITIAL_CENTER)が表示される」の調査(2回目の実機
+    // デバッグログで確定)で判明した真因: fitBounds()はズーム変化を伴う場合
+    // デフォルトでアニメーション遷移(_tryAnimatedZoom、CSSトランジション経由)
+    // になり、中心・ズームの反映が非同期になる。直後に同期的にmap.getZoom()
+    // を読むとアニメーション開始前の古い値(=コンストラクタ時のMAP_INITIAL_ZOOM)
+    // が返り、それが閾値未満だからと続けてmap.setZoom()を呼ぶと、まだ進行中
+    // だったfitBounds()のアニメーションを「古い(=MAP_INITIAL_CENTERのままの)
+    // 中心」から割り込んで上書きしてしまう。結果としてズームだけは新しい値に
+    // 変わるが、中心はMAP_INITIAL_CENTERのまま取り残される
+    // （実機ログでmoveendのcallerが`_onZoomTransitionEnd`＝Leaflet内部の
+    // アニメーション完了ハンドラであることまで確認済み）。
+    // fitBounds()・setZoom()・setView()すべてに{animate:false}を指定し、
+    // 中心・ズームを同期的に確定させることでこの競合を根本的に回避する
+    // （初回表示でアニメーションさせる必要は元々ない）。
+    map.whenReady(() => {
+      // whenReady()のコールバックは非同期に発火しうるため、待っている間に
+      // より新しいrenderHomeMapPins呼び出しが来ていたら、自分の(古い)
+      // bounds/lat/lngは適用しない。
+      if (renderSeq !== homeMapRenderSeq) {
+        return;
       }
-    } else {
-      map.setView([lat, lng], 16);
-    }
+      map.invalidateSize();
+      if (bounds.length > 1) {
+        map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17, animate: false });
+        // 2026-09-24ユーザー指摘「最初に表示されるマップが少し遠い、2-3の
+        // バス停が見えるか見えないかくらいでもう少しズームしてほしい」対応。
+        // fitBounds()はnearbyStops(最大5件)全部が収まるよう自動でズーム
+        // アウトするため、バス停同士が離れていると意図以上に引いた表示に
+        // なっていた。最低限このズームレベルは確保する（全件は収まらなく
+        // なってもよい、近くの2-3件がはっきり見えることを優先する）。
+        const MIN_HOME_MAP_ZOOM = 16;
+        if (map.getZoom() < MIN_HOME_MAP_ZOOM) {
+          map.setZoom(MIN_HOME_MAP_ZOOM, { animate: false });
+        }
+      } else {
+        map.setView([lat, lng], 16, { animate: false });
+      }
+    });
   }
 
   // switchToStopIndex()経由でのバス停切替時、地図の中心・ズームは変えずに
@@ -3020,11 +3082,26 @@
     if (approachingPanel) approachingPanel.hidden = false;
   }
 
+  // 2026-09-24ユーザー指摘「最初に開いたとき現在地がマップに表示されず、
+  // 別の場所が表示される」の根本原因調査で発覚: initGpsLocation()は
+  // 「1.キャッシュ座標で即時表示」「3.高精度GPSで確定表示」を待ち合わせず
+  // 並行に走らせる設計（体感速度優先のため意図的）。キャッシュ座標の
+  // fetch('/api/bus-stops/nearby')が何らかの理由で遅れ、高精度GPS側の
+  // 呼び出しより後に解決すると、後から解決した方(=古いキャッシュ座標基準の
+  // nearbyStops)がnearbyStops/地図の描画に「勝って」上書きしてしまう
+  // （lastKnownGpsCoordsは各呼び出しの冒頭で同期的に更新されるため、地図の
+  // 現在地ドットは新しいGPS座標のまま、しかしバス停一覧・fitBounds()の
+  // 基準は古いキャッシュ座標のまま、という不整合が起きる）。呼び出しごとに
+  // 連番(requestSeq)を振り、自分より新しい呼び出しが既に始まっていたら
+  // 自分のfetch結果は古いものとして反映せず破棄する。
+  let nearbyStopsRequestSeq = 0;
+
   // /api/bus-stops/nearby を呼び出し、成功時は最寄りバス停の到着情報を表示する。
   // isGpsUpdate:false は「遠くのバス停」タップ等、実GPSではない地点を
   // 表示中心として使う呼び出し。この場合はlastKnownGpsCoords（現在地ドット・
   // ドリフト判定の基準）を更新しない。
   async function loadNearbyStopsAndArrivals(lat, lng, { isGpsUpdate = true } = {}) {
+    const requestSeq = ++nearbyStopsRequestSeq;
     renderGpsLoadingState();
     if (isGpsUpdate) {
       saveLastLocation(lat, lng);
@@ -3039,9 +3116,15 @@
       );
     } catch (err) {
       // ネットワークエラー等でサーバーに到達できない場合
-      showGpsFallback('Unable to load bus stop information. Please check your connection and try again.');
+      if (requestSeq === nearbyStopsRequestSeq) {
+        showGpsFallback('Unable to load bus stop information. Please check your connection and try again.');
+      }
       return;
     }
+    // 自分より新しい呼び出しが既に走っている場合、このレスポンスは古いので
+    // 画面には一切反映しない（フォールバック表示も含め、新しい呼び出しの
+    // 結果を上書きしない）。
+    if (requestSeq !== nearbyStopsRequestSeq) return;
 
     if (response.status === 503) {
       // busStopsCacheが空（マスタ未準備）。権限拒否とは異なるメッセージにする。
@@ -3058,9 +3141,12 @@
     try {
       data = await response.json();
     } catch (err) {
-      showGpsFallback('Unable to load bus stop information. Please try again later.');
+      if (requestSeq === nearbyStopsRequestSeq) {
+        showGpsFallback('Unable to load bus stop information. Please try again later.');
+      }
       return;
     }
+    if (requestSeq !== nearbyStopsRequestSeq) return;
 
     const stops = Array.isArray(data.stops) ? data.stops : [];
     if (stops.length === 0) {
