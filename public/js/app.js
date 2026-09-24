@@ -2577,7 +2577,11 @@
       });
       const marker = window.L.marker([stop.Latitude, stop.Longitude], { icon }).addTo(homeMapInstance);
       marker.on('click', () => {
-        loadNearbyStopsAndArrivals(stop.Latitude, stop.Longitude);
+        // isGpsUpdate:false — タップしたバス停の座標はブラウズ用の表示中心
+        // であって実際のGPS座標ではない。現在地ドット(lastKnownGpsCoords)を
+        // 上書きしないよう明示的に区別する（2026-09-24ユーザー指摘「バス停を
+        // タップすると現在地も一緒に移動する」対応）。
+        loadNearbyStopsAndArrivals(stop.Latitude, stop.Longitude, { isGpsUpdate: false });
       });
       homeMapExtraStopMarkers.push(marker);
     });
@@ -2618,14 +2622,18 @@
 
   // 2026-09-23ユーザー指示「現在地を中心に表示する(戻す)ボタンを地図の右下に
   // 付けれる？」対応。地図をドラッグして動かした後、現在地+周辺バス停が
-  // 収まる表示に戻す。renderHomeMapPins()を最後に取得した座標で再実行する
-  // だけなので、通常のバス停切替時と全く同じ表示に確実に戻せる。
+  // 収まる表示に戻す。
+  // 2026-09-24修正: 「遠くのバス停」タップ機能追加後、nearbyStopsがタップ先の
+  // 遠方バス停のまま残っていると、renderHomeMapPins()単体呼び出しではbounds
+  // 計算(現在地+古いnearbyStops)が遠方まで含んでしまい、現在地が中心に来ない
+  // 不具合があった。loadNearbyStopsAndArrivals()を実GPS座標で呼び直し、
+  // nearbyStops自体を現在地まわりのものに再取得してから描画する。
   function initHomeMapRecenterButton() {
     const btn = document.getElementById('home-map-recenter-btn');
     if (!btn) return;
     btn.addEventListener('click', () => {
       if (!lastKnownGpsCoords) return;
-      renderHomeMapPins(lastKnownGpsCoords.lat, lastKnownGpsCoords.lng);
+      loadNearbyStopsAndArrivals(lastKnownGpsCoords.lat, lastKnownGpsCoords.lng, { isGpsUpdate: true });
     });
   }
 
@@ -2667,12 +2675,21 @@
     homeMapExtraStopMarkers.forEach((marker) => map.removeLayer(marker));
     homeMapExtraStopMarkers = [];
 
-    const currentIcon = window.L.divIcon({
-      className: '',
-      html: '<div class="home-map-current-dot"></div>',
-      iconSize: [16, 16],
-    });
-    homeMapCurrentMarker = window.L.marker([lat, lng], { icon: currentIcon }).addTo(map);
+    // 現在地ドットは常に実際のGPS座標(lastKnownGpsCoords)に描画する。引数の
+    // lat/lngは「表示中心（=nearbyStops取得の基準点）」で、遠くのバス停を
+    // タップして閲覧しているときは実GPS座標と一致しない
+    // （2026-09-24ユーザー指摘「バス停をタップすると現在地も一緒に移動する」対応）。
+    if (lastKnownGpsCoords) {
+      const currentIcon = window.L.divIcon({
+        className: '',
+        html: '<div class="home-map-current-dot"></div>',
+        iconSize: [16, 16],
+      });
+      homeMapCurrentMarker = window.L.marker(
+        [lastKnownGpsCoords.lat, lastKnownGpsCoords.lng],
+        { icon: currentIcon }
+      ).addTo(map);
+    }
 
     const bounds = [[lat, lng]];
 
@@ -2981,11 +2998,16 @@
   }
 
   // /api/bus-stops/nearby を呼び出し、成功時は最寄りバス停の到着情報を表示する。
-  async function loadNearbyStopsAndArrivals(lat, lng) {
+  // isGpsUpdate:false は「遠くのバス停」タップ等、実GPSではない地点を
+  // 表示中心として使う呼び出し。この場合はlastKnownGpsCoords（現在地ドット・
+  // ドリフト判定の基準）を更新しない。
+  async function loadNearbyStopsAndArrivals(lat, lng, { isGpsUpdate = true } = {}) {
     renderGpsLoadingState();
-    saveLastLocation(lat, lng);
-    // checkForLocationDrift()が次回の判定基準にする直近座標を更新する。
-    lastKnownGpsCoords = { lat, lng };
+    if (isGpsUpdate) {
+      saveLastLocation(lat, lng);
+      // checkForLocationDrift()が次回の判定基準にする直近座標を更新する。
+      lastKnownGpsCoords = { lat, lng };
+    }
 
     let response;
     try {
@@ -3340,11 +3362,11 @@
 
   // シェアシート（Settings画面「Share」ボタン、2026-09-14追加、姉妹アプリ
   // sg-weekend-appのQR共有シートを参考に実装。ユーザー指示「SG在住Naviの設定を
-  // 参考に、シェアをつけて」）。ネイティブアプリが未リリースのため、QRコード・
-  // シェア本文のリンク先は当面Web版URL(bus.willoa.net)に固定する（ユーザー指示
-  // 「QRコードのURLはまだWeb版のURLでいいです」）。ネイティブアプリが出た際は
-  // ここを差し替える。
-  const SHARE_URL = 'https://bus.willoa.net';
+  // 参考に、シェアをつけて」）。当初はネイティブアプリ未リリースのためWeb版URL
+  // (bus.willoa.net)に固定していたが、2026-09-24ユーザー指示「アプリのURLが
+  // 変わりました。シェアのアドレスを直して」により、App Store公開後は
+  // App Storeのアプリページへ直接誘導するURLに切り替えた。
+  const SHARE_URL = 'https://apps.apple.com/app/sg-busnavi/id6812561200';
 
   function initShareSheet() {
     const openBtn = document.getElementById('settings-share-btn');
