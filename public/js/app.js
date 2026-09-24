@@ -299,6 +299,10 @@
   let homeMapInstance = null;
   let homeMapCurrentMarker = null;
   let homeMapStopMarkers = []; // { marker, index }[]
+  // 2026-09-24ユーザー指示「地図を動かしたとき遠くのバス停も表示・タップして
+  // 見られるようにしたい」対応。nearbyStops(GPS基準の最寄りN件)とは別に、
+  // 地図の表示範囲内の全バス停をmoveendのたびに取得して表示するピン。
+  let homeMapExtraStopMarkers = [];
 
   /* ══════════════════════════════════════════════
    * ボトムナビによる画面切替
@@ -2508,8 +2512,75 @@
     // なっていたため撤去した。原因そのものへの予防策(.home-map-el
     // .leaflet-tile-paneのwill-change:transform、CSS参照)のみで様子を見る。
 
+    // 2026-09-24ユーザー指示「地図を動かしたとき遠くのバス停も表示・タップして
+    // 見られるようにしたい」対応。移動が収まるたびに表示範囲内の全バス停を
+    // 取得し直す（fetchAndRenderInBoundsStops()参照）。
+    map.on('moveend', () => {
+      fetchAndRenderInBoundsStops();
+    });
+
     homeMapInstance = map;
     return map;
+  }
+
+  // 地図の現在の表示範囲(バウンディングボックス)内の全バス停を取得し、
+  // nearbyStopsに含まれない分だけ「遠くのバス停」ピンとして追加表示する。
+  // タップすると、その地点を中心にnearbyStops一式を再取得してHome画面
+  // 全体を切り替える（loadNearbyStopsAndArrivals()、GPS更新時と同じ経路）。
+  let inBoundsFetchAbortController = null;
+  async function fetchAndRenderInBoundsStops() {
+    if (!homeMapInstance) return;
+    const bounds = homeMapInstance.getBounds();
+
+    // 短時間に連続してmoveendが発火した場合、古いリクエストの結果で
+    // 新しいリクエストの結果が上書きされないよう、前回分を中断する。
+    if (inBoundsFetchAbortController) inBoundsFetchAbortController.abort();
+    const abortController = new AbortController();
+    inBoundsFetchAbortController = abortController;
+
+    let response;
+    try {
+      response = await fetch(
+        API_BASE +
+          `/api/bus-stops/in-bounds?north=${bounds.getNorth()}&south=${bounds.getSouth()}` +
+          `&east=${bounds.getEast()}&west=${bounds.getWest()}`,
+        { signal: abortController.signal }
+      );
+    } catch (err) {
+      return; // 中断・ネットワークエラーは無視（地図の主機能ではないため）
+    }
+    if (!response.ok) return;
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (err) {
+      return;
+    }
+    if (!homeMapInstance) return; // レスポンス到達までにHome画面を離れた場合
+
+    const stops = Array.isArray(data.stops) ? data.stops : [];
+    const nearbyStopCodes = new Set(nearbyStops.map((stop) => stop.BusStopCode));
+
+    homeMapExtraStopMarkers.forEach((marker) => homeMapInstance.removeLayer(marker));
+    homeMapExtraStopMarkers = [];
+
+    stops.forEach((stop) => {
+      if (stop.Latitude == null || stop.Longitude == null) return;
+      if (nearbyStopCodes.has(stop.BusStopCode)) return; // 既存のnearbyStopsピンと重複させない
+
+      const icon = window.L.divIcon({
+        className: '',
+        html: '<i class="ti ti-map-pin home-map-stop-pin" aria-hidden="true"></i>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 18],
+      });
+      const marker = window.L.marker([stop.Latitude, stop.Longitude], { icon }).addTo(homeMapInstance);
+      marker.on('click', () => {
+        loadNearbyStopsAndArrivals(stop.Latitude, stop.Longitude);
+      });
+      homeMapExtraStopMarkers.push(marker);
+    });
   }
 
   // 地図パネルをフォールバック表示に切り替える（4節失敗系: GPS未確定・
@@ -2590,6 +2661,11 @@
     }
     homeMapStopMarkers.forEach((entry) => map.removeLayer(entry.marker));
     homeMapStopMarkers = [];
+    // 「遠くのバス停」ピンも一旦クリアする。表示中心が変わるとnearbyStopsの
+    // 内容も変わるため、古いピンが新しいnearbyStopsと重複しうる。移動後の
+    // moveendでfetchAndRenderInBoundsStops()が最新の表示範囲基準で再取得する。
+    homeMapExtraStopMarkers.forEach((marker) => map.removeLayer(marker));
+    homeMapExtraStopMarkers = [];
 
     const currentIcon = window.L.divIcon({
       className: '',

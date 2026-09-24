@@ -1871,6 +1871,51 @@ app.get('/api/bus-stops/nearby', (req, res) => {
 });
 
 /* ══════════════════════════════════════════════
+ * GET /api/bus-stops/in-bounds
+ *
+ * 2026-09-24ユーザー指示「地図を動かしたとき遠くのバス停も表示・タップして
+ * 情報を見られるようにしたい」対応。GPS基準のnearby(最寄りN件)とは別に、
+ * 地図の現在の表示範囲(緯度経度の矩形)に入る全バス停を返す。Home画面の
+ * 地図パネルでmoveendのたびに呼ばれる想定。極端にズームアウトされた場合に
+ * 応答サイズ・地図上のピン数が膨れ上がらないよう上限を設ける。
+ * ══════════════════════════════════════════════ */
+const IN_BOUNDS_MAX_LIMIT = 100;
+
+app.get('/api/bus-stops/in-bounds', (req, res) => {
+  if (busStopsCache.length === 0) {
+    return res.status(503).json({
+      error: 'Bus stop information is being prepared. Please try again later.',
+    });
+  }
+
+  const north = Number(req.query.north);
+  const south = Number(req.query.south);
+  const east = Number(req.query.east);
+  const west = Number(req.query.west);
+
+  if (
+    req.query.north === undefined ||
+    req.query.south === undefined ||
+    req.query.east === undefined ||
+    req.query.west === undefined ||
+    [north, south, east, west].some((value) => Number.isNaN(value))
+  ) {
+    return res.status(400).json({
+      error: 'north, south, east, and west must be numbers.',
+    });
+  }
+
+  const stops = busStopsCache
+    .filter(
+      (stop) =>
+        stop.Latitude <= north && stop.Latitude >= south && stop.Longitude <= east && stop.Longitude >= west
+    )
+    .slice(0, IN_BOUNDS_MAX_LIMIT);
+
+  res.json({ stops, truncated: stops.length === IN_BOUNDS_MAX_LIMIT });
+});
+
+/* ══════════════════════════════════════════════
  * GET /api/bus-stops/:stopCode/services
  *
  * 指定バス停を通る系統番号の一覧を返す（Saved画面で保存済みバス停に
