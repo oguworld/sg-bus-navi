@@ -511,10 +511,18 @@ button {
 }
 
 /* 経路モーダルと同一のグレースケール処理（.route-modal-map-el .leaflet-tile-pane参照）。
-   タイル画像だけにfilterを絞り、現在地マーカー・バス停ピンの色は本来の色のまま表示する。 */
+   タイル画像だけにfilterを絞り、現在地マーカー・バス停ピンの色は本来の色のまま表示する。
+   2026-09-24: filterとLeafletのドラッグ時transform(GPU合成)の組み合わせは
+   iOS Safariが再合成に失敗しやすい既知のパターンのため、will-change:transform
+   で事前にGPUレイヤー化しておく（transform自体はLeafletがJS側で
+   インラインstyleとして書き換えるため、ここでtransform:translateZ(0)を
+   直接指定すると上書きされ無効になる。will-changeは別プロパティなので
+   競合しない）。ensureHomeMap()側のJS対症療法(moveendでの強制redraw)と
+   合わせた二段構えの対策。 */
 .home-map-el .leaflet-tile-pane {
   filter: grayscale(0.92) brightness(1.4) saturate(0.25) contrast(0.85);
   opacity: 0.88;
+  will-change: transform;
 }
 
 .home-map-el .leaflet-control-zoom,
@@ -2146,6 +2154,9 @@ button {
      少し落としても文字の視認性には影響しない。 */
   filter: grayscale(0.92) brightness(1.4) saturate(0.25) contrast(0.85);
   opacity: 0.88;
+  /* 2026-09-24: home-map-el側と同じGPUレイヤー事前確保対策
+     （.home-map-el .leaflet-tile-pane参照、理由も同様）。 */
+  will-change: transform;
 }
 
 /* Leafletのズーム操作は無効化済みだが、標準の＋/－コントロールが

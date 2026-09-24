@@ -438,19 +438,13 @@
       attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
 
-    // Home画面の地図(ensureHomeMap())と同じ不具合対策。ドラッグ・慣性
-    // スクロール後にタイル・マーカー(経路線・MRT駅ピン等)の描画が崩れる
-    // ことがあるため、移動が収まるたびに強制再描画する。
-    map.on('moveend', () => {
-      map.invalidateSize();
-      map.eachLayer((layer) => {
-        if (typeof layer.redraw === 'function') layer.redraw();
-      });
-      routeModalMarkers.forEach((marker) => {
-        map.removeLayer(marker);
-        marker.addTo(map);
-      });
-    });
+    // 2026-09-23〜24: ドラッグ後にタイル・マーカーの描画が崩れる不具合の
+    // 対症療法として、moveend後に強制的にタイルを消して再取得
+    // (layer.redraw())+マーカーを作り直す処理を入れていたが、2026-09-24
+    // ユーザー指摘「ずらした後に一瞬再読み込みが走るようなパッパッという
+    // 見た目になる」により、対症療法自体が目に見えるチラつきの原因になって
+    // いたため撤去した。原因そのものへの予防策(.route-modal-map-el
+    // .leaflet-tile-paneのwill-change:transform、CSS参照)のみで様子を見る。
 
     routeModalMapInstance = map;
     return map;
@@ -2506,37 +2500,13 @@
       attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
 
-    // 2026-09-23ユーザー指摘「地図を移動させると表示されるけど暫くすると
-    // 消えちゃう」対応。バックグラウンド復帰後にグレー表示になる不具合
-    // （initGpsDriftCheck()のvisibilitychangeハンドラで対処済み）と同系統の
-    // 問題と考えられる。iOS SafariはLeafletのドラッグ操作中に生成される
-    // 合成レイヤー（leaflet-paneのtransform）の再合成をうまく行えず、
-    // ドラッグ終了から少し経つとタイルの描画が崩れることがあるため、
-    // dragend（ドラッグ操作が終わった瞬間）でも同じ強制再描画を行う。
-    // 2026-09-23ユーザー報告のスクリーンショットで発覚: タイル(地図画像)だけで
-    // なく、現在地ドット・バス停ピン(マーカーレイン)も、ドラッグ後に何も
-    // 表示されなくなることがあった。マーカーには.redraw()に相当するメソッドが
-    // 無いため、既存のマーカーインスタンスをremoveLayer→addLayerし直すことで
-    // アイコンDOMを作り直させ、強制的に再描画する（中心・ズームは変えない
-    // ため、ユーザーがドラッグした表示位置はそのまま維持される）。
-    // dragendではなくmoveendを使う: 慣性スクロール(momentum)が効いている間は
-    // dragend発火後も地図が動き続けることがあり、その場合dragend時点では
-    // まだ最終位置に到達していない。moveendは移動が完全に収まった後に
-    // 必ず発火するため、こちらの方が確実。
-    map.on('moveend', () => {
-      map.invalidateSize();
-      map.eachLayer((layer) => {
-        if (typeof layer.redraw === 'function') layer.redraw();
-      });
-      if (homeMapCurrentMarker) {
-        map.removeLayer(homeMapCurrentMarker);
-        homeMapCurrentMarker.addTo(map);
-      }
-      homeMapStopMarkers.forEach(({ marker }) => {
-        map.removeLayer(marker);
-        marker.addTo(map);
-      });
-    });
+    // 2026-09-23〜24: ドラッグ後にタイル・マーカー(現在地ドット・バス停ピン)の
+    // 描画が崩れる不具合の対症療法として、moveend後に強制的にタイルを消して
+    // 再取得(layer.redraw())+マーカーを作り直す処理を入れていたが、
+    // 2026-09-24ユーザー指摘「ずらした後に一瞬再読み込みが走るようなパッパッ
+    // という見た目になる」により、対症療法自体が目に見えるチラつきの原因に
+    // なっていたため撤去した。原因そのものへの予防策(.home-map-el
+    // .leaflet-tile-paneのwill-change:transform、CSS参照)のみで様子を見る。
 
     homeMapInstance = map;
     return map;
