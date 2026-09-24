@@ -763,12 +763,18 @@ button {
    2026-09-22ユーザー指摘「系統番号の下の実線と区切り線が同じ見た目で
    紛らわしい、区切り線の方を点線に」対応で、区切り線側を点線に変更した
    （トラックの実線ベースラインとの区別を明確にする）。 */
+/* 2026-09-24ユーザー指摘「区切り線が点(ドット)にしか見えない」で発覚・修正:
+   border-left:dashedは線幅1.5pxのような極細サイズだと破線パターンの
+   レンダリングが環境によって不安定になり、実機ではほぼ1つの点にしか
+   見えなくなっていた。.home-approaching-track::beforeの水平破線で既に
+   実績のあるrepeating-linear-gradientによる自前パターン方式に統一し、
+   縦方向でも確実に破線として見えるようにする。 */
 .home-approaching-divider {
   position: absolute;
   top: 4px;
   bottom: 4px;
-  width: 0;
-  border-left: 1.5px dashed var(--border-strong);
+  width: 1.5px;
+  background-image: repeating-linear-gradient(180deg, var(--border-strong) 0 4px, transparent 4px 8px);
   z-index: 1;
 }
 

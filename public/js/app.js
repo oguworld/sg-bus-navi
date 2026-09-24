@@ -1915,14 +1915,27 @@
     // 次が一気に15分クランプのバスに飛ぶ場合）に該当することがある。
     // 単純な中間点(50%)だと5分・10分が同じ座標に重なってしまうため、
     // 隙間を挟む2ドットのclampedMinutesの差に対してboundaryMinutesが
-    // どの割合に位置するかで按分する（0.15〜0.85にクランプしドット自体に
-    // めり込まないようにする）。
+    // どの割合に位置するかで按分する。
     const prev = positions[afterIndex - 1];
     const next = positions[afterIndex];
     const span = next.clampedMinutes - prev.clampedMinutes;
     const fraction = span > 0 ? (boundaryMinutes - prev.clampedMinutes) / span : 0.5;
-    const clampedFraction = Math.min(0.85, Math.max(0.15, fraction));
-    return prev.x + (next.x - prev.x) * clampedFraction;
+    const rawX = prev.x + (next.x - prev.x) * fraction;
+
+    // 2026-09-24ユーザー指摘「区切り点線と系統番号カードが被る」対応。
+    // 従来は隙間の15%〜85%という比率でクランプしていたが、ピルの実幅は
+    // 隙間の広さに関わらずほぼ一定（APPROACHING_MIN_GAP_PXが詰まっている
+    // ときは特に）なため、比率ベースの余白だとピルにめり込むことがあった。
+    // 隣接ドットの中心からピルの半分程度が確実にクリアできる固定px幅の
+    // 余白に変更する。隙間自体が狭すぎて両側の余白を確保できない場合は
+    // 中間点にフォールバックする。
+    const DIVIDER_MARGIN_PX = 28;
+    const minX = prev.x + DIVIDER_MARGIN_PX;
+    const maxX = next.x - DIVIDER_MARGIN_PX;
+    if (minX <= maxX) {
+      return Math.min(maxX, Math.max(minX, rawX));
+    }
+    return (prev.x + next.x) / 2;
   }
 
   // id指定のApproachingバー目盛りラベルをx座標に配置する。
@@ -2731,6 +2744,16 @@
 
     if (bounds.length > 1) {
       map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
+      // 2026-09-24ユーザー指摘「最初に表示されるマップが少し遠い、2-3の
+      // バス停が見えるか見えないかくらいでもう少しズームしてほしい」対応。
+      // fitBounds()はnearbyStops(最大5件)全部が収まるよう自動でズーム
+      // アウトするため、バス停同士が離れていると意図以上に引いた表示に
+      // なっていた。最低限このズームレベルは確保する（全件は収まらなく
+      // なってもよい、近くの2-3件がはっきり見えることを優先する）。
+      const MIN_HOME_MAP_ZOOM = 16;
+      if (map.getZoom() < MIN_HOME_MAP_ZOOM) {
+        map.setZoom(MIN_HOME_MAP_ZOOM);
+      }
     } else {
       map.setView([lat, lng], 16);
     }
