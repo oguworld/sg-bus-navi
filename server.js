@@ -1631,6 +1631,81 @@ app.get('/api/bus-routes/contains-stop', (req, res) => {
 });
 
 /* ══════════════════════════════════════════════
+ * GET /api/bus-routes/stops-toward?destinationStopCode=&stopCodes=
+ *
+ * フェーズ9追加: Home画面の目的地ハイライトを、現在表示中のバス停の
+ * Timetable行だけでなく、バス停ピル・地図上のピンにも反映したい
+ * （2026-09-27ユーザー指示）。/api/bus-routes/contains-stopは「1系統・1方向」
+ * 単位の判定なので、ピル/ピンのように「このバス停発のどれか1本でも目的地に
+ * 届くか」を多数のバス停に対して一括判定したい用途には向かない
+ * （フロント側でバス停ごとに系統一覧を取得→系統ごとにcontains-stopを叩く、
+ * という組み合わせはバス停数×系統数ぶんのリクエストになり非現実的）。
+ *
+ * destinationStopCodeはカンマ区切りで複数指定できる（フェーズ10「目的地に
+ * 複数バス停を紐づけられる」対応、2026-09-27ユーザー指示。1目的地が
+ * 例えば「最寄り停+向かいの停」の2件を持つ場合、いずれか1つにでも到達
+ * できればその目的地への到達ありとみなすOR判定）。
+ *
+ * ここではLTAへの問い合わせを伴わない静的な経路トポロジー判定のみで完結する
+ * （busStopCodeToServiceNumbersMap・busRoutesByServiceDirectionは起動時に
+ * 一度構築済みのメモリ上Map、generalApiLimiter配下）。候補バス停それぞれに
+ * ついて、そこを通る系統×両方向のいずれかで、いずれかの目的地バス停が
+ * それより後のStopSequenceに存在すれば一致とみなす（contains-stopの
+ * isAheadMatch()と同じ「これから行く方向のみ」判定を流用）。
+ * ══════════════════════════════════════════════ */
+app.get('/api/bus-routes/stops-toward', (req, res) => {
+  if (busRoutesCache.length === 0) {
+    return res.status(503).json({
+      error: 'Route information is being prepared. Please try again later.',
+    });
+  }
+
+  const { destinationStopCode, stopCodes } = req.query;
+
+  if (!destinationStopCode || !stopCodes) {
+    return res.status(400).json({
+      error: 'destinationStopCode and stopCodes are required (e.g. ?destinationStopCode=75009&stopCodes=83139,84009).',
+    });
+  }
+
+  const destinationCodes = String(destinationStopCode)
+    .split(',')
+    .map((code) => code.trim())
+    .filter((code) => code.length > 0);
+
+  const candidateCodes = String(stopCodes)
+    .split(',')
+    .map((code) => code.trim())
+    .filter((code) => code.length > 0);
+
+  function stopReachesDestination(stopCode) {
+    const serviceNos = busStopCodeToServiceNumbersMap.get(stopCode) || [];
+    return serviceNos.some((serviceNo) =>
+      [1, 2].some((direction) => {
+        const stops = busRoutesByServiceDirection.get(makeServiceDirectionKey(serviceNo, direction));
+        if (!stops || stops.length === 0) return false;
+        const fromIndex = stops.findIndex((stop) => stop.BusStopCode === stopCode);
+        if (fromIndex === -1) return false;
+        return destinationCodes.some((destCode) => {
+          const toIndex = stops.findIndex((stop) => stop.BusStopCode === destCode);
+          return toIndex !== -1 && fromIndex <= toIndex;
+        });
+      })
+    );
+  }
+
+  const matches = {};
+  candidateCodes.forEach((stopCode) => {
+    // 目的地自身（複数のいずれか）は判定対象外（Home画面側の既存ロジックと
+    // 同じ扱い、どの系統の経路にも出発点として含まれてしまい常にtrueに
+    // なるため）。
+    matches[stopCode] = destinationCodes.includes(stopCode) ? false : stopReachesDestination(stopCode);
+  });
+
+  res.json({ matches });
+});
+
+/* ══════════════════════════════════════════════
  * GET /api/bus-routes/path?serviceNo=&direction=&fromStopCode=&toStopCode=
  *
  * 指定系統・方向の乗車区間（fromStopCode〜toStopCode、両端含む）に含まれる

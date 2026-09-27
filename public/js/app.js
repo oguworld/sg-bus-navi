@@ -262,6 +262,13 @@
   const HIGHLIGHT_DESTINATION_STORAGE_KEY = 'sgbusnavi_highlight_destination_id';
   let highlightDestinationId = loadHighlightDestinationId();
 
+  // フェーズ9追加(2026-09-27ユーザー指示): 目的地ハイライトの色を、Timetableの
+  // 行だけでなくバス停ピル・地図上のピンにも反映する。BusStopCode ->
+  // matched(boolean)のキャッシュ。/api/bus-routes/stops-towardの結果を溜め、
+  // 同じバス停に対する再判定を避ける（選択中の目的地が変わったら破棄する、
+  // selectHighlightDestination()参照）。
+  let destinationMatchCache = new Map();
+
   function loadHighlightDestinationId() {
     try {
       return window.localStorage.getItem(HIGHLIGHT_DESTINATION_STORAGE_KEY) || null;
@@ -298,7 +305,19 @@
   // routeModalMapInstanceと同じパターン）。
   let homeMapInstance = null;
   let homeMapCurrentMarker = null;
-  let homeMapStopMarkers = []; // { marker, index }[]
+  // フェーズ9: 「近隣5件(nearbyStops)」と「表示範囲内の全バス停」の2種類の
+  // ピン集合を別々に描画していたが、ユーザー決定「表示範囲内は全部同列に
+  // 統合」により1本化した。ピンは常にfetchAndRenderInBoundsStops()（地図の
+  // 表示範囲ベース）だけが描画し、nearbyStopsはバス停詳細モーダルのピル行・
+  // 横スワイプ専用の別データとして独立させる（switchToStopIndex()参照）。
+  // インデックスではなくstopCodeで管理する（表示範囲内のピンはnearbyStopsの
+  // 配列位置と無関係なため）。
+  let homeMapStopMarkers = []; // { marker, stopCode }[]
+  // フェーズ11(2026-09-27ユーザー指示「選択した目的地の色で、アクティブな
+  // バス停から目的地までの経路を線で結んで見えるようにしたい」): Home画面の
+  // 地図上に表示する、現在開いているバス停→選択中の目的地の実ルート線。
+  // applyRouteEnrichment()が判定を終えるたびに描き直す（drawDestinationRouteOnHomeMap()参照）。
+  let homeMapDestinationRouteLine = null;
   // 2026-09-24ユーザー指摘「一瞬現在地が表示されてその後に初期状態の場所に
   // 移動する」で発覚・修正: renderHomeMapPins()内でdvhの遅延解決対策として
   // 次フレーム以降にも表示範囲の再適用(applyHomeMapView())をスケジュール
@@ -308,10 +327,6 @@
   // しまっていた。呼び出しごとに連番を振り、自分より新しい呼び出しが
   // 既に走っていれば遅延コールバック側の適用をスキップする。
   let homeMapRenderSeq = 0;
-  // 2026-09-24ユーザー指示「地図を動かしたとき遠くのバス停も表示・タップして
-  // 見られるようにしたい」対応。nearbyStops(GPS基準の最寄りN件)とは別に、
-  // 地図の表示範囲内の全バス停をmoveendのたびに取得して表示するピン。
-  let homeMapExtraStopMarkers = [];
 
   /* ══════════════════════════════════════════════
    * ボトムナビによる画面切替
@@ -339,27 +354,15 @@
 
     isHomeScreenActive = target === 'home';
 
-    // Homeタップ時は、横スワイプで2番目・3番目のバス停に移動していても
-    // 必ず最寄り(0番目)のバス停表示に戻す（2026-09-13ユーザー指示）。
+    // 2026-09-27ユーザー指示「Homeを押したときに最寄りバス停のモーダルが
+    // 開くのは初回起動時だけでいい、使ってる途中でHomeを押した時はマップだけ
+    // でいい」対応。以前はここでopenStopDetailModal(0)を毎回強制していたが、
+    // 撤去した。起動直後の自動オープンはinitGpsLocation()
+    // →loadNearbyStopsAndArrivals()側のshowStopDetailModal()が既に担っている
+    // ため、この関数からは何もしなくても「初回のみ自動オープン」を満たす。
+    // モーダルを閉じてマップをブラウズしていた状態のままHome以外のタブへ
+    // 行って戻ってきても、その状態（開/閉）をそのまま保持する。
     if (target === 'home') {
-      switchToStopIndex(0);
-
-      // 2026-09-14ユーザー指示「Arrivalを押した時に上のバス停の横スクロール
-      // も一番左に戻して」対応。switchToStopIndex(0)はcurrentStopIndexが
-      // 既に0の場合(早期return)何もしないため、ピル行のスクロール位置だけ
-      // 右にずれたまま残ってしまう不具合があった。スクロール位置のリセットは
-      // switchToStopIndex()の早期returnと無関係に、ここで確実に行う。
-      const stopPillRow = document.getElementById('stop-pill-row');
-      if (stopPillRow) stopPillRow.scrollTo({ left: 0, behavior: 'smooth' });
-
-      // 2026-09-21ユーザー指摘「Homeを押した時、Approachingバーの横スクロール
-      // が元に戻っていない」対応。同じ理由でカード一覧の縦スクロール位置も
-      // 併せてリセットする（他のバス停まで下にスクロールした状態のまま
-      // Homeタブに戻ると、切り替わった内容が画面外になってしまうため）。
-      const homeScrollContent = document.getElementById('home-scroll-content');
-      if (homeScrollContent) homeScrollContent.scrollTo({ top: 0, behavior: 'smooth' });
-      resetApproachingBarScroll();
-
       // Saved画面で目的地を追加・削除した後にHomeへ戻った場合に備え、
       // ハイライトピッカーボタンの表示/非表示・ラベルを最新の状態に同期する。
       updateHighlightButtonUI();
@@ -671,11 +674,7 @@
     // 登録済み目的地に一致する経由地はMRT駅マーカーで強調表示する
     // （2026-09-14ユーザー指示「自分の目的地がある場合はそこもハイライトして
     // ほしい」）。
-    const destinationByStopCode = new Map(
-      loadDestinations()
-        .filter((dest) => dest.busStopCode)
-        .map((dest) => [dest.busStopCode, dest])
-    );
+    const destinationByStopCode = buildDestinationByStopCodeMap(loadDestinations());
 
     // 2026-09-14ユーザー指摘「ラベルの重なり・文字切れ」対応。従来のpadding
     // (24px一律)では、現在地マーカーの黒文字ラベル(right方向にはみ出す)が
@@ -989,10 +988,8 @@
         // 同じ仕組みで、サーバー選定のwaypoints(MRT駅・ランドマークのみ)に
         // 実際に一致した登録済み目的地を追加でマージしてから地図に渡す。
         const allDestinations = loadDestinations();
-        const destinationByStopCode = new Map(
-          allDestinations.filter((dest) => dest.busStopCode).map((dest) => [dest.busStopCode, dest])
-        );
-        const destinationStopCodes = allDestinations.map((dest) => dest.busStopCode).filter(Boolean);
+        const destinationByStopCode = buildDestinationByStopCodeMap(allDestinations);
+        const destinationStopCodes = Array.from(getAllSavedBusStopCodes(allDestinations));
         const { matchedStopCodes, positions: matchedPositions } = await fetchMatchedSavedDestinationStopCodes(
           number,
           summary.direction,
@@ -1385,15 +1382,18 @@
   // stopIndex（2026-09-14追加）: /api/bus-routes/contains-stopのpositionsから
   // 取得したstops配列内の絶対位置。summary.waypointsのstopIndexと直接比較可能
   // で、表示順を実際の経由順に揃えるために使う。
-  function buildSavedDestinationWaypoint(dest, stopIndex) {
+  // フェーズ10: destは目的地グループ、stopはその中の「実際に一致した1件」
+  // （目的地は複数バス停を持ちうるため、表示すべき座標・説明文は
+  // destではなくstop側から取る）。
+  function buildSavedDestinationWaypoint(dest, stop, stopIndex) {
     return {
-      BusStopCode: dest.busStopCode,
-      Description: dest.description,
+      BusStopCode: stop.busStopCode,
+      Description: stop.description,
       reason: 'saved_destination',
       mrtLine: null,
       mrtColor: null,
-      Latitude: dest.lat,
-      Longitude: dest.lng,
+      Latitude: stop.lat,
+      Longitude: stop.lng,
       matchedDestination: dest,
       stopIndex: typeof stopIndex === 'number' ? stopIndex : null,
     };
@@ -1425,7 +1425,8 @@
       .filter((code) => code && !existingCodes.has(code) && !exclude.has(code))
       .map((code) => {
         const dest = destinationByStopCode.get(code);
-        return dest ? buildSavedDestinationWaypoint(dest, positionMap[code]) : null;
+        const stop = dest ? dest.stops.find((s) => s.busStopCode === code) : null;
+        return dest && stop ? buildSavedDestinationWaypoint(dest, stop, positionMap[code]) : null;
       })
       .filter(Boolean);
     return base.concat(extra);
@@ -1484,6 +1485,59 @@
    * （iconColor）でハイライトする(バッジは使わず色のみ、ユーザー指示)。
    * 何も選択していなければ判定自体を行わない。
    * ══════════════════════════════════════════════ */
+  // フェーズ11: Home地図上の目的地ルート線を消す（選択解除・現在地=目的地・
+  // 一致なし等、描画すべきでない状態に入るたびに呼ぶ）。
+  function clearHomeMapDestinationRoute() {
+    if (homeMapDestinationRouteLine && homeMapInstance) {
+      homeMapInstance.removeLayer(homeMapDestinationRouteLine);
+    }
+    homeMapDestinationRouteLine = null;
+  }
+
+  // フェーズ11: 現在開いているバス停(fromStopCode)から選択中の目的地への
+  // 実際のバス経路（/api/bus-routes/pathを再利用、経路モーダルと同じ
+  // データソース）をHome地図に選択中目的地の色で描画する。routeInfoは
+  // applyRouteEnrichment()が判定時に見つけた「最初に一致した系統・方向・
+  // 到達先バス停」（複数一致しても1本のみ描画、ユーザー決定「アクティブな
+  // バス停のみ」）。
+  async function drawDestinationRouteOnHomeMap(routeInfo, fromStopCode, hex) {
+    clearHomeMapDestinationRoute();
+    if (!homeMapInstance || !routeInfo || !fromStopCode || !hex) return;
+    if (!routeInfo.serviceNo || routeInfo.direction == null || !routeInfo.toStopCode) return;
+
+    let data;
+    try {
+      const response = await fetch(
+        API_BASE +
+          `/api/bus-routes/path?serviceNo=${encodeURIComponent(routeInfo.serviceNo)}` +
+          `&direction=${encodeURIComponent(routeInfo.direction)}` +
+          `&fromStopCode=${encodeURIComponent(fromStopCode)}&toStopCode=${encodeURIComponent(routeInfo.toStopCode)}`
+      );
+      if (!response.ok) return;
+      data = await response.json();
+    } catch (err) {
+      return;
+    }
+
+    // 判定中に目的地の選択・表示中バス停が変わっていたら、古い結果を描画しない。
+    if (!highlightDestinationId) return;
+    if (!homeMapInstance) return;
+    if (!currentDisplayedStop || currentDisplayedStop.BusStopCode !== fromStopCode) return;
+
+    const path = Array.isArray(data.path) ? data.path : [];
+    if (path.length < 2) return;
+
+    const latlngs = path.map((point) => [point.lat, point.lng]);
+    homeMapDestinationRouteLine = window.L.polyline(latlngs, {
+      color: hex,
+      weight: 4,
+      opacity: 0.85,
+      lineJoin: 'round',
+    }).addTo(homeMapInstance);
+    // ピン・現在地ドットの下に隠れないよう、常に最背面（タイルのすぐ上）に送る。
+    homeMapDestinationRouteLine.bringToBack();
+  }
+
   async function applyRouteEnrichment() {
     const cards = collectEnrichableElements();
 
@@ -1494,6 +1548,7 @@
 
     if (cards.length === 0) {
       syncApproachingBarMatches(null);
+      clearHomeMapDestinationRoute();
       return;
     }
 
@@ -1510,21 +1565,26 @@
 
     if (!highlightDestinationId) {
       syncApproachingBarMatches(null);
+      clearHomeMapDestinationRoute();
       return;
     }
 
     const selectedDestination = destinations.find((dest) => dest.id === highlightDestinationId);
-    if (!selectedDestination || !selectedDestination.busStopCode) {
+    if (!selectedDestination || !Array.isArray(selectedDestination.stops) || selectedDestination.stops.length === 0) {
       syncApproachingBarMatches(null);
+      clearHomeMapDestinationRoute();
       return;
     }
 
     // 2026-09-14ユーザー指示で発見・修正した既存の考慮を踏襲: 現在表示中の
-    // バス停自体が選択中の目的地の場合、どの系統の経路にも(出発点として)
-    // 必ず含まれ「関連あり」判定が常にtrueになってしまうため、判定を行わない。
+    // バス停自体が選択中の目的地に紐づくバス停の1つの場合、どの系統の経路にも
+    // (出発点として)必ず含まれ「関連あり」判定が常にtrueになってしまうため、
+    // 判定を行わない（フェーズ10: 目的地は複数バス停を持ちうるため、いずれか
+    // 1つでも一致すれば対象外）。
     const currentStopCode = currentDisplayedStop ? currentDisplayedStop.BusStopCode : null;
-    if (selectedDestination.busStopCode === currentStopCode) {
+    if (selectedDestination.stops.some((stop) => stop.busStopCode === currentStopCode)) {
       syncApproachingBarMatches(null);
+      clearHomeMapDestinationRoute();
       return;
     }
 
@@ -1532,17 +1592,23 @@
     // （同一系統の複数到着インスタンスに対して重複してAPIを叩かないため）。
     const groups = groupCardsByServiceNo(cards);
     const serviceNos = Array.from(groups.keys());
+    // フェーズ10: 目的地の全バス停コードを渡す。cardMatchesAnyDestination()は
+    // 元々「いずれか1つでも一致すればOK」というOR判定を実装済みのため
+    // （複数の異なる目的地を同時判定する用途で設計されていたが、1目的地が
+    // 複数バス停を持つケースにもそのまま使える）、この呼び出し側だけの変更で済む。
+    const destinationStopCodes = selectedDestination.stops.map((stop) => stop.busStopCode);
 
     let routeInfos;
     try {
       routeInfos = await Promise.all(
         serviceNos.map((serviceNo) => {
           const representativeCard = groups.get(serviceNo)[0];
-          return getOrFetchServiceRouteInfo(serviceNo, representativeCard, [selectedDestination.busStopCode]);
+          return getOrFetchServiceRouteInfo(serviceNo, representativeCard, destinationStopCodes);
         })
       );
     } catch (err) {
       syncApproachingBarMatches(null);
+      clearHomeMapDestinationRoute();
       return;
     }
 
@@ -1550,18 +1616,37 @@
     const hex = getCategoryColorHex(colorKey);
     if (!hex) {
       syncApproachingBarMatches(null);
+      clearHomeMapDestinationRoute();
       return;
     }
+
+    // フェーズ11: 最初に一致した系統・方向・到達先バス停を1件だけ記録する
+    // （ユーザー決定「アクティブなバス停のみ」、複数一致しても地図には
+    // 1本だけ描く。ハイライトのマーキング自体は従来通り全一致系統に適用）。
+    let firstMatchedRoute = null;
 
     serviceNos.forEach((serviceNo, index) => {
       const routeInfo = routeInfos[index] || {};
       if (routeInfo.matched !== true) return;
       groups.get(serviceNo).forEach((card) => applyHighlightIndicator(card, hex));
+      if (!firstMatchedRoute) {
+        firstMatchedRoute = {
+          serviceNo,
+          direction: routeInfo.summary ? routeInfo.summary.direction : null,
+          toStopCode: Array.isArray(routeInfo.matchedStopCodes) ? routeInfo.matchedStopCodes[0] : null,
+        };
+      }
     });
 
     // Timetable側のハイライトが確定したので、Approachingバーの該当ドットにも
     // 同じ色を反映する（系統単位の判定を二重に行わない）。
     syncApproachingBarMatches(hex);
+
+    if (firstMatchedRoute) {
+      drawDestinationRouteOnHomeMap(firstMatchedRoute, currentStopCode, hex);
+    } else {
+      clearHomeMapDestinationRoute();
+    }
   }
 
   // 行(.tt-row)1件に選択中目的地の色でハイライトを適用する（背景の薄いトーン+
@@ -1621,7 +1706,7 @@
       const colorKey = normalizeDestinationIconColor(dest.iconColor);
       const hex = getCategoryColorHex(colorKey) || 'var(--fill-accent)';
       const category = normalizeDestinationCategory(dest.category);
-      const label = dest.title && dest.title.trim() ? dest.title.trim() : dest.description;
+      const label = dest.title && dest.title.trim() ? dest.title.trim() : dest.stops[0].description;
       html += `
         <div class="home-highlight-dropdown-item${isSelected ? ' home-highlight-dropdown-item--selected' : ''}" data-highlight-id="${escapeHtml(dest.id)}">
           <span class="home-highlight-dropdown-item-icon" style="background:${hex};">${DESTINATION_CATEGORY_ICON_SVG[category]}</span>
@@ -1651,7 +1736,7 @@
     if (selected) {
       const colorKey = normalizeDestinationIconColor(selected.iconColor);
       const hex = getCategoryColorHex(colorKey);
-      labelEl.textContent = selected.title && selected.title.trim() ? selected.title.trim() : selected.description;
+      labelEl.textContent = selected.title && selected.title.trim() ? selected.title.trim() : selected.stops[0].description;
       btn.classList.add('home-highlight-btn--active');
       btn.style.background = hex || '';
       btn.style.color = hex ? 'var(--on-accent)' : '';
@@ -1675,6 +1760,18 @@
     updateHighlightButtonUI();
     clearServiceRouteInfoCache();
     applyRouteEnrichment();
+
+    // ピル・地図ピンの目的地ハイライトも同期する。判定結果は対象の目的地が
+    // 変わると意味を持たなくなるため、まずキャッシュを破棄して見た目を
+    // 即座にクリアし（選択解除時はhexがnullになるためここで消える）、その後
+    // 現在表示中のピル・ピンぶんだけ新しい目的地で再判定する。
+    destinationMatchCache = new Map();
+    applyDestinationMatchStyles();
+    const knownStopCodes = [
+      ...nearbyStops.map((stop) => stop.BusStopCode),
+      ...homeMapStopMarkers.map((entry) => entry.stopCode),
+    ];
+    refreshDestinationMatches(knownStopCodes);
   }
 
   function initHighlightPicker() {
@@ -2139,6 +2236,85 @@
     return getCategoryColorHex(normalizeDestinationIconColor(dest.iconColor)) || null;
   }
 
+  // フェーズ9追加(2026-09-27ユーザー指示「目的地の色をバス停ピル・地図の
+  // ピンにも反映させたい」): 指定したバス停コード群のうち、選択中の目的地に
+  // 「これから」到達できるもの（/api/bus-routes/stops-toward、Timetableの
+  // ハイライトと同じisAheadMatch()相当の判定をサーバー側で一括実行）を
+  // 判定し、destinationMatchCacheに溜める。キャッシュ済みのコードは
+  // 再フェッチしない。完了後は必ずapplyDestinationMatchStyles()でDOMに反映する。
+  async function refreshDestinationMatches(stopCodes) {
+    const hex = getCurrentHighlightColorHex();
+    if (!hex) return;
+
+    const dest = loadDestinations().find((d) => d.id === highlightDestinationId);
+    if (!dest || !Array.isArray(dest.stops) || dest.stops.length === 0) return;
+
+    // フェーズ10: 目的地は複数バス停を持ちうるため、そのうちどれか1つに
+    // でも到達できれば一致とみなす（サーバー側もカンマ区切りでOR判定する
+    // よう対応済み、/api/bus-routes/stops-toward参照）。
+    const destinationStopCodes = dest.stops.map((stop) => stop.busStopCode);
+    const destinationStopCodeSet = new Set(destinationStopCodes);
+
+    const codesToCheck = Array.from(new Set(stopCodes)).filter(
+      (code) => code && !destinationStopCodeSet.has(code) && !destinationMatchCache.has(code)
+    );
+    if (codesToCheck.length === 0) {
+      applyDestinationMatchStyles();
+      return;
+    }
+
+    let data;
+    try {
+      const response = await fetch(
+        API_BASE +
+          `/api/bus-routes/stops-toward?destinationStopCode=${encodeURIComponent(destinationStopCodes.join(','))}` +
+          `&stopCodes=${encodeURIComponent(codesToCheck.join(','))}`
+      );
+      if (!response.ok) return;
+      data = await response.json();
+    } catch (err) {
+      return;
+    }
+
+    // 判定中に目的地の選択自体が変わっていたら、古い判定結果を書き込まない。
+    if (!highlightDestinationId || highlightDestinationId !== dest.id) return;
+
+    Object.entries(data.matches || {}).forEach(([code, matched]) => {
+      destinationMatchCache.set(code, matched === true);
+    });
+    applyDestinationMatchStyles();
+  }
+
+  // destinationMatchCacheの内容を、現在DOM上にあるバス停ピル・地図ピンに
+  // 反映する（.stop-pill--dest-match/.home-map-stop-pin--dest-match）。
+  // 現在表示中(アクティブ)のバス停は、既にモーダルが開いて強調されているため
+  // 対象から除く（見た目の二重強調を避ける）。
+  function applyDestinationMatchStyles() {
+    const hex = getCurrentHighlightColorHex();
+    const activeStopCode = currentDisplayedStop ? currentDisplayedStop.BusStopCode : null;
+
+    const pillRow = document.getElementById('stop-pill-row');
+    if (pillRow) {
+      Array.from(pillRow.querySelectorAll('.stop-pill')).forEach((pill, index) => {
+        const stop = nearbyStops[index];
+        const matched =
+          Boolean(hex) && !!stop && stop.BusStopCode !== activeStopCode && destinationMatchCache.get(stop.BusStopCode) === true;
+        pill.classList.toggle('stop-pill--dest-match', matched);
+        pill.style.setProperty('--pill-match-color', matched ? hex : '');
+      });
+    }
+
+    homeMapStopMarkers.forEach((entry) => {
+      const iconEl = entry.marker.getElement();
+      if (!iconEl) return;
+      const pin = iconEl.querySelector('.home-map-stop-pin');
+      if (!pin) return;
+      const matched = Boolean(hex) && entry.stopCode !== activeStopCode && destinationMatchCache.get(entry.stopCode) === true;
+      pin.classList.toggle('home-map-stop-pin--dest-match', matched);
+      pin.style.setProperty('--pin-match-color', matched ? hex : '');
+    });
+  }
+
   // applyRouteEnrichment()が確定させたTimetable行のハイライト状態
   // （.tt-row--highlight）を読み取り、同じ系統番号のApproachingバードットにも
   // 同じ色で強調表示を反映する。colorHexがnullの場合は「ハイライトなし」。
@@ -2568,6 +2744,11 @@
   // タップすると、その地点を中心にnearbyStops一式を再取得してHome画面
   // 全体を切り替える（loadNearbyStopsAndArrivals()、GPS更新時と同じ経路）。
   let inBoundsFetchAbortController = null;
+  // フェーズ9: 地図の表示範囲内の全バス停ピンを描画する唯一の関数（ユーザー
+  // 決定「表示範囲内は全部同列に統合」により、旧nearbyStops専用ピン
+  // （renderHomeMapPins内）とこの「遠くのバス停」ピンの2系統を統合した）。
+  // moveendのたびに呼ばれ、地図の表示範囲が変わるたびにピン集合を丸ごと
+  // 再取得・再描画する。
   async function fetchAndRenderInBoundsStops() {
     if (!homeMapInstance) return;
     const bounds = homeMapInstance.getBounds();
@@ -2600,31 +2781,43 @@
     if (!homeMapInstance) return; // レスポンス到達までにHome画面を離れた場合
 
     const stops = Array.isArray(data.stops) ? data.stops : [];
-    const nearbyStopCodes = new Set(nearbyStops.map((stop) => stop.BusStopCode));
+    const activeStopCode = currentDisplayedStop ? currentDisplayedStop.BusStopCode : null;
 
-    homeMapExtraStopMarkers.forEach((marker) => homeMapInstance.removeLayer(marker));
-    homeMapExtraStopMarkers = [];
+    homeMapStopMarkers.forEach((entry) => homeMapInstance.removeLayer(entry.marker));
+    homeMapStopMarkers = [];
 
     stops.forEach((stop) => {
       if (stop.Latitude == null || stop.Longitude == null) return;
-      if (nearbyStopCodes.has(stop.BusStopCode)) return; // 既存のnearbyStopsピンと重複させない
 
+      const isActive = stop.BusStopCode === activeStopCode;
       const icon = window.L.divIcon({
         className: '',
-        html: '<i class="ti ti-map-pin home-map-stop-pin" aria-hidden="true"></i>',
+        html: `<i class="ti ti-map-pin home-map-stop-pin${isActive ? ' home-map-stop-pin--active' : ''}" aria-hidden="true"></i>`,
         iconSize: [20, 20],
         iconAnchor: [10, 18],
       });
       const marker = window.L.marker([stop.Latitude, stop.Longitude], { icon }).addTo(homeMapInstance);
       marker.on('click', () => {
-        // isGpsUpdate:false — タップしたバス停の座標はブラウズ用の表示中心
-        // であって実際のGPS座標ではない。現在地ドット(lastKnownGpsCoords)を
-        // 上書きしないよう明示的に区別する（2026-09-24ユーザー指摘「バス停を
-        // タップすると現在地も一緒に移動する」対応）。
-        loadNearbyStopsAndArrivals(stop.Latitude, stop.Longitude, { isGpsUpdate: false });
+        // 近隣5件(nearbyStops、ピル行と同じ集合)の1つならインデックス切替のみの
+        // 軽量処理、そうでなければ（「遠くのバス停」タップ）isGpsUpdate:false —
+        // タップしたバス停の座標はブラウズ用の表示中心であって実際のGPS座標
+        // ではない。現在地ドット(lastKnownGpsCoords)を上書きしないよう明示的に
+        // 区別する（2026-09-24ユーザー指摘「バス停をタップすると現在地も
+        // 一緒に移動する」対応）。
+        const nearbyIndex = nearbyStops.findIndex((s) => s.BusStopCode === stop.BusStopCode);
+        if (nearbyIndex !== -1) {
+          openStopDetailModal(nearbyIndex);
+        } else {
+          loadNearbyStopsAndArrivals(stop.Latitude, stop.Longitude, { isGpsUpdate: false });
+        }
       });
-      homeMapExtraStopMarkers.push(marker);
+      homeMapStopMarkers.push({ marker, stopCode: stop.BusStopCode, description: stop.Description });
     });
+
+    // 目的地ハイライトの色を地図ピンにも反映する（buildStopPillRow()と同じ
+    // パターン）。
+    refreshDestinationMatches(stops.map((stop) => stop.BusStopCode));
+    applyDestinationMatchStyles();
   }
 
   // 地図パネルをフォールバック表示に切り替える（4節失敗系: GPS未確定・
@@ -2668,12 +2861,20 @@
   // 計算(現在地+古いnearbyStops)が遠方まで含んでしまい、現在地が中心に来ない
   // 不具合があった。loadNearbyStopsAndArrivals()を実GPS座標で呼び直し、
   // nearbyStops自体を現在地まわりのものに再取得してから描画する。
+  // 2026-09-27ユーザー指摘「現在地ボタンを押すとHomeタブを押した時と同じ
+  // ようにモーダルが開く」で発覚・修正: このボタンは地図を中心に戻すための
+  // ものであって、閉じていたバス停詳細モーダルを開き直す意図はない。
+  // openModal:falseで、モーダル表示自体はスキップする（データは更新される
+  // ため、次に開いた時は最新の内容になる）。
   function initHomeMapRecenterButton() {
     const btn = document.getElementById('home-map-recenter-btn');
     if (!btn) return;
     btn.addEventListener('click', () => {
       if (!lastKnownGpsCoords) return;
-      loadNearbyStopsAndArrivals(lastKnownGpsCoords.lat, lastKnownGpsCoords.lng, { isGpsUpdate: true });
+      loadNearbyStopsAndArrivals(lastKnownGpsCoords.lat, lastKnownGpsCoords.lng, {
+        isGpsUpdate: true,
+        openModal: false,
+      });
     });
   }
 
@@ -2718,13 +2919,6 @@
       map.removeLayer(homeMapCurrentMarker);
       homeMapCurrentMarker = null;
     }
-    homeMapStopMarkers.forEach((entry) => map.removeLayer(entry.marker));
-    homeMapStopMarkers = [];
-    // 「遠くのバス停」ピンも一旦クリアする。表示中心が変わるとnearbyStopsの
-    // 内容も変わるため、古いピンが新しいnearbyStopsと重複しうる。移動後の
-    // moveendでfetchAndRenderInBoundsStops()が最新の表示範囲基準で再取得する。
-    homeMapExtraStopMarkers.forEach((marker) => map.removeLayer(marker));
-    homeMapExtraStopMarkers = [];
 
     // 現在地ドットは常に実際のGPS座標(lastKnownGpsCoords)に描画する。引数の
     // lat/lngは「表示中心（=nearbyStops取得の基準点）」で、遠くのバス停を
@@ -2742,42 +2936,14 @@
       ).addTo(map);
     }
 
+    // フェーズ9: バス停ピンの描画自体はfetchAndRenderInBoundsStops()（地図の
+    // 表示範囲ベース、moveendのたびに再取得）に一本化した。ここではfitBounds()
+    // の計算材料としてnearbyStopsの座標を使うのみで、ピンは描画しない
+    // （ユーザー決定「表示範囲内は全部同列に統合」）。
     const bounds = [[lat, lng]];
-
-    nearbyStops.forEach((stop, index) => {
+    nearbyStops.forEach((stop) => {
       if (stop.Latitude == null || stop.Longitude == null) return;
       bounds.push([stop.Latitude, stop.Longitude]);
-
-      const isActive = index === currentStopIndex;
-      // ドット→ティアドロップ型ピン(ti-map-pin)への変更に伴い、マーカーの
-      // 実位置はピンの「先端」に合わせる必要がある(円形ドットと違い
-      // 左右非対称のため、中心アンカーのままだとピン全体が実座標より
-      // 上にずれて見える)。経路モーダル終点マーカー(26px→anchor[13,24])と
-      // 同じ比率で20pxにスケールし、anchor[10,18]を採用する。
-      const icon = window.L.divIcon({
-        className: '',
-        html: `<i class="ti ti-map-pin home-map-stop-pin${isActive ? ' home-map-stop-pin--active' : ''}" aria-hidden="true"></i>`,
-        iconSize: [20, 20],
-        iconAnchor: [10, 18],
-      });
-      const marker = window.L.marker([stop.Latitude, stop.Longitude], { icon }).addTo(map);
-
-      // 2-4節: 地図タップでのバス停切替。ピル行・カード一覧の横スワイプと同じ
-      // switchToStopIndex()を呼ぶことで、3手段が同じ同期ロジックを共有する。
-      marker.on('click', () => switchToStopIndex(index));
-
-      if (isActive) {
-        marker
-          .bindTooltip(`<div class="home-map-stop-label">${escapeHtml(stop.Description || 'Bus stop')}</div>`, {
-            permanent: true,
-            direction: 'right',
-            offset: [12, 0],
-            className: 'home-map-stop-tooltip',
-          })
-          .openTooltip();
-      }
-
-      homeMapStopMarkers.push({ marker, index });
     });
 
     // 2026-09-24ユーザー指摘「起動直後、現在地ではなく毎回同じ別の場所
@@ -2818,21 +2984,28 @@
       } else {
         map.setView([lat, lng], 16, { animate: false });
       }
+      // animate:falseなのでこの時点で同期的にmoveendが発火し、通常は
+      // ensureHomeMap()内のmoveendリスナーがfetchAndRenderInBoundsStops()を
+      // 呼ぶ。ただし表示範囲が偶然変化しなかった場合はmoveendが発火しない
+      // ことがあるため、念のためここでも明示的に呼んでおく（二重に呼ばれても
+      // 後勝ちで上書きされるだけで実害はない）。
+      fetchAndRenderInBoundsStops();
     });
   }
 
-  // switchToStopIndex()経由でのバス停切替時、地図の中心・ズームは変えずに
-  // 選択ピンの見た目（アクティブ状態・ラベル）だけを同期する
-  // （4節正常系「地図の選択状態が正しく追従する」）。地図タップ自体は
-  // renderHomeMapPins()の呼び出し元(loadNearbyStopsAndArrivals)を経由しない
-  // 軽量な切替のため、ピンの再生成はせずスタイルの付け替えのみ行う。
+  // switchToStopIndex()/openStopDetailModal()経由でのバス停切替時、地図の
+  // 中心・ズームは変えずに選択ピンの見た目（アクティブ状態）だけを同期する
+  // （4節正常系「地図の選択状態が正しく追従する」）。フェーズ9: ピンは
+  // fetchAndRenderInBoundsStops()由来の1本化された集合(homeMapStopMarkers、
+  // { marker, stopCode }[])になったため、インデックスではなくstopCodeで
+  // 一致判定する。
   function updateHomeMapSelection() {
     if (!homeMapInstance) return;
 
+    const activeStopCode = currentDisplayedStop ? currentDisplayedStop.BusStopCode : null;
+
     homeMapStopMarkers.forEach((entry) => {
-      const stop = nearbyStops[entry.index];
-      if (!stop) return;
-      const isActive = entry.index === currentStopIndex;
+      const isActive = entry.stopCode === activeStopCode;
 
       entry.marker.unbindTooltip();
       const iconEl = entry.marker.getElement();
@@ -2843,7 +3016,7 @@
 
       if (isActive) {
         entry.marker
-          .bindTooltip(`<div class="home-map-stop-label">${escapeHtml(stop.Description || 'Bus stop')}</div>`, {
+          .bindTooltip(`<div class="home-map-stop-label">${escapeHtml(entry.description || 'Bus stop')}</div>`, {
             permanent: true,
             direction: 'right',
             offset: [12, 0],
@@ -2854,42 +3027,74 @@
     });
   }
 
-  /* ══════════════════════════════════════════════
-   * フェーズ2 タスク5: 横スワイプ・ドットインジケーター連携
-   * ══════════════════════════════════════════════ */
+  // currentStopIndex を指定インデックスに切り替え、モーダルヘッダー・ピル・
+  // 地図の選択ピンを再描画する共通処理（switchToStopIndex/openStopDetailModal
+  // の両方から呼ばれる）。範囲外の場合は何もしない。
+  function applyStopIndex(index) {
+    if (!Array.isArray(nearbyStops) || nearbyStops.length === 0) return null;
 
-  // 横スワイプ判定の閾値（px）。この距離以上の水平移動があればスワイプとみなす。
-  const SWIPE_THRESHOLD_PX = 50;
-
-  // 縦スクロールとの誤認識を防ぐため、垂直方向の移動が水平方向の移動を
-  // 上回っている場合はスワイプ操作として扱わない。
-  function isHorizontalSwipe(deltaX, deltaY) {
-    return Math.abs(deltaX) >= SWIPE_THRESHOLD_PX && Math.abs(deltaX) > Math.abs(deltaY);
-  }
-
-  // currentStopIndex を指定インデックスに切り替え、バスカード・ヘッダー・
-  // ドットを再描画する。範囲外・変化なしの場合は何もしない。
-  function switchToStopIndex(index) {
-    if (!Array.isArray(nearbyStops) || nearbyStops.length === 0) return;
-
-    const clamped = Math.min(Math.max(index, 0), nearbyStops.length - 1);
-    if (clamped === currentStopIndex) return;
-
-    currentStopIndex = clamped;
+    currentStopIndex = Math.min(Math.max(index, 0), nearbyStops.length - 1);
     const stop = nearbyStops[currentStopIndex];
-    if (!stop) return;
+    if (!stop) return null;
 
     currentDisplayedStop = stop;
-    updateHeaderStopName(stop.Description || 'Near your location');
+    updateHeaderStopName(stop);
     loadBusArrivals(stop.BusStopCode);
     updateStopPillActiveState();
-    // 2-4節: 地図・ピル行・カード一覧の横スワイプの3手段が共通してこの関数を
-    // 呼ぶため、ここで地図の選択ピン表示（アクティブ状態・ラベル）も同期する。
+    // 2-4節: 地図・ピル行の2手段が共通してこの関数を呼ぶため、ここで地図の
+    // 選択ピン表示（アクティブ状態・ラベル）も同期する。
     updateHomeMapSelection();
+    // アクティブなバス停自体は目的地ハイライトの対象外にしているため
+    // （applyDestinationMatchStyles()参照）、切替のたびに再適用する。
+    applyDestinationMatchStyles();
     // バス停切り替え時はApproachingバーの中身が総入れ替えになるため、
-    // 横スクロール位置も必ず最初に戻す（ピル/スワイプ/地図タップいずれも
-    // ここを通る）。
+    // 横スクロール位置も必ず最初に戻す（ピル/地図タップいずれもここを通る）。
     resetApproachingBarScroll();
+    return stop;
+  }
+
+  // ピルタップ用: モーダルは既に開いている前提で、中身だけを差し替える。
+  // 範囲外・変化なしの場合は何もしない。
+  function switchToStopIndex(index) {
+    if (!Array.isArray(nearbyStops) || nearbyStops.length === 0) return;
+    const clamped = Math.min(Math.max(index, 0), nearbyStops.length - 1);
+    if (clamped === currentStopIndex) return;
+    applyStopIndex(clamped);
+  }
+
+  // フェーズ9: 地図ピンタップ・起動時の自動オープン用。モーダルを必ず表示
+  // する（switchToStopIndex()は同じインデックスなら早期returnするため、
+  // 一度閉じたモーダルを同じバス停で再度開き直すケースをカバーできない）。
+  function openStopDetailModal(index) {
+    const stop = applyStopIndex(index);
+    if (!stop) return;
+    showStopDetailModal();
+  }
+
+  function showStopDetailModal() {
+    const overlay = document.getElementById('stop-modal-overlay');
+    if (overlay) overlay.classList.add('visible');
+  }
+
+  // モーダルを閉じ、見えなくなったバス停のポーリングも止める
+  // （地図をブラウズしている間は無駄なAPI呼び出しをしない）。
+  function closeStopDetailModal() {
+    stopArrivalPolling();
+    const overlay = document.getElementById('stop-modal-overlay');
+    if (overlay) overlay.classList.remove('visible');
+  }
+
+  // バツボタン・背景タップで閉じる（.route-modal-overlayと同じパターン、
+  // モーダル本体のクリックでは閉じない）。
+  function initStopDetailModal() {
+    const overlay = document.getElementById('stop-modal-overlay');
+    const closeBtn = document.getElementById('stop-modal-close-btn');
+    if (closeBtn) closeBtn.addEventListener('click', closeStopDetailModal);
+    if (overlay) {
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) closeStopDetailModal();
+      });
+    }
   }
 
   // #stop-pill-row を nearbyStops に応じて動的に再構築する（2026-09-13、姉妹アプリ
@@ -2920,6 +3125,12 @@
 
       rowEl.appendChild(pill);
     });
+
+    // 目的地ハイライトの色をピルにも反映する（キャッシュ済みの停留所は
+    // 即座にapplyDestinationMatchStyles()内で反映、未知の停留所のみ
+    // 非同期でAPIを叩く）。
+    refreshDestinationMatches(nearbyStops.map((stop) => stop.BusStopCode));
+    applyDestinationMatchStyles();
   }
 
   // currentStopIndex に対応するピルにのみactiveクラス・aria-selectedを付与する。
@@ -2946,91 +3157,25 @@
     });
   }
 
-  // #home-timetable-list に対してタッチ（および開発確認用のマウスドラッグ）
-  // による横スワイプを検出し、currentStopIndex を+1/-1する
-  // （ユーザー指示「Timetableも横スワイプでバス停がかわるようにして」対応）。
-  function initSwipeGesture() {
-    const container = document.getElementById('home-timetable-list');
-    if (container) bindSwipeGestureToContainer(container);
-  }
-
-  function bindSwipeGestureToContainer(container) {
-    let startX = 0;
-    let startY = 0;
-    let tracking = false;
-
-    function onSwipeStart(x, y) {
-      startX = x;
-      startY = y;
-      tracking = true;
-    }
-
-    function onSwipeEnd(x, y) {
-      if (!tracking) return;
-      tracking = false;
-
-      const deltaX = x - startX;
-      const deltaY = y - startY;
-
-      if (!isHorizontalSwipe(deltaX, deltaY)) return;
-
-      if (deltaX < 0) {
-        // 左スワイプ（次へ）
-        switchToStopIndex(currentStopIndex + 1);
-      } else {
-        // 右スワイプ（前へ）
-        switchToStopIndex(currentStopIndex - 1);
-      }
-    }
-
-    // タッチイベント（実機・モバイルブラウザ向け、必須要件）
-    container.addEventListener(
-      'touchstart',
-      (event) => {
-        const touch = event.touches[0];
-        if (touch) onSwipeStart(touch.clientX, touch.clientY);
-      },
-      { passive: true }
-    );
-
-    container.addEventListener(
-      'touchend',
-      (event) => {
-        const touch = event.changedTouches[0];
-        if (touch) onSwipeEnd(touch.clientX, touch.clientY);
-      },
-      { passive: true }
-    );
-
-    // マウスドラッグ（PCブラウザでの開発確認用。必須ではないが実装容易なため追加）
-    container.addEventListener('mousedown', (event) => {
-      onSwipeStart(event.clientX, event.clientY);
-    });
-
-    container.addEventListener('mouseup', (event) => {
-      onSwipeEnd(event.clientX, event.clientY);
-    });
-
-    // ドラッグ中にカードリスト外でボタンを離した場合はスワイプ扱いにしない
-    container.addEventListener('mouseleave', () => {
-      tracking = false;
-    });
-  }
-
   /* ══════════════════════════════════════════════
    * フェーズ2 タスク4: GPS取得〜最寄りバス停自動検出
    * ══════════════════════════════════════════════ */
 
-  // 現在ヘッダーに表示中のバス停名。ミニ経路図（renderMiniRoute）の
-  // 始点ラベルに使うため、updateHeaderStopName()の呼び出しに合わせて
-  // モジュールスコープに保持しておく（フェーズ4 タスク分解ステップ2）。
+  // 現在表示中のバス停名。ミニ経路図（renderMiniRoute）の始点ラベルに使うため、
+  // updateHeaderStopName()の呼び出しに合わせてモジュールスコープに保持して
+  // おく（フェーズ4 タスク分解ステップ2）。
   let currentStopName = '';
 
-  // ヘッダーのバス停名表示を更新する
-  function updateHeaderStopName(name) {
-    currentStopName = name || '';
-    const el = document.querySelector('.app-header-stop-name');
-    if (el) el.textContent = name;
+  // フェーズ9: バス停詳細モーダルのヘッダー（コード+名前）表示を更新する
+  // （旧ヘッダー直下の.app-header-stop-nameは全面マップ化に伴い廃止済み、
+  // 表示先がモーダルヘッダーに変わっただけで役割・呼び出し元は変更なし）。
+  function updateHeaderStopName(stop) {
+    const name = (stop && stop.Description) || 'Near your location';
+    currentStopName = name;
+    const codeEl = document.getElementById('stop-modal-code');
+    const nameEl = document.getElementById('stop-modal-name');
+    if (codeEl) codeEl.textContent = (stop && stop.BusStopCode) || '';
+    if (nameEl) nameEl.textContent = name;
   }
 
   // GPS取得中〜nearby API呼び出し中のローディング表示。
@@ -3047,39 +3192,25 @@
     clearApproachingBar();
   }
 
-  // GPS失敗時・マスタ未準備時のフォールバックUI表示切替。
-  // 表示中はTimetable・バス停ピル行・Approachingバーを隠し、フォールバックUIの
-  // みを見せる。地図パネルは4節失敗系「GPS取得前・取得失敗時は、地図パネルは
-  // 空またはフォールバック表示にとどめ、下部のGPSフォールバックUIの表示を
-  // 妨げない」方針のとおり、独立してフォールバック表示に切り替える。
+  // GPS失敗時・マスタ未準備時のフォールバックUI表示切替。フェーズ9で全面
+  // マップ化してからは、地図パネルを覆うオーバーレイとして表示する
+  // （CSS側の.gps-fallback参照）。表示中の状態を残さないよう、開いていた
+  // バス停詳細モーダルも閉じる（無効な内容のまま残らないようにするため）。
   function showGpsFallback(message) {
     const fallback = document.getElementById('gps-fallback');
     const messageEl = document.getElementById('gps-fallback-message');
-    const timetableList = document.getElementById('home-timetable-list');
-    const pillRow = document.getElementById('stop-pill-row');
-    const approachingPanel = document.getElementById('home-approaching-panel');
 
     if (messageEl && message) messageEl.textContent = message;
     if (fallback) fallback.hidden = false;
-    if (timetableList) timetableList.hidden = true;
-    if (pillRow) pillRow.hidden = true;
-    if (approachingPanel) approachingPanel.hidden = true;
+    closeStopDetailModal();
     showHomeMapFallback('Map unavailable');
   }
 
-  // 通常コンテンツ（Timetable・バス停ピル行・Approachingバー）を再表示し、
   // フォールバックUIを隠す。GPS取得に成功した場合に呼ぶ。
   // 地図自体の表示切替はrenderHomeMapPins()呼び出し側で行う。
   function hideGpsFallback() {
     const fallback = document.getElementById('gps-fallback');
-    const timetableList = document.getElementById('home-timetable-list');
-    const pillRow = document.getElementById('stop-pill-row');
-    const approachingPanel = document.getElementById('home-approaching-panel');
-
     if (fallback) fallback.hidden = true;
-    if (timetableList) timetableList.hidden = false;
-    if (pillRow) pillRow.hidden = false;
-    if (approachingPanel) approachingPanel.hidden = false;
   }
 
   // 2026-09-24ユーザー指摘「最初に開いたとき現在地がマップに表示されず、
@@ -3100,7 +3231,12 @@
   // isGpsUpdate:false は「遠くのバス停」タップ等、実GPSではない地点を
   // 表示中心として使う呼び出し。この場合はlastKnownGpsCoords（現在地ドット・
   // ドリフト判定の基準）を更新しない。
-  async function loadNearbyStopsAndArrivals(lat, lng, { isGpsUpdate = true } = {}) {
+  // openModal:false は地図の再表示ボタン専用（2026-09-27ユーザー指摘「現在地
+  // ボタンを押すとHomeタブを押した時と同じようにモーダルが開く」で発覚・修正:
+  // 地図をブラウズ中に閉じたバス停詳細モーダルを、地図を中心に戻すだけの
+  // ボタンが勝手に開き直してしまっていた。地図の再センタリングと
+  // モーダルの開閉は別の操作意図のため切り離す）。
+  async function loadNearbyStopsAndArrivals(lat, lng, { isGpsUpdate = true, openModal = true } = {}) {
     const requestSeq = ++nearbyStopsRequestSeq;
     renderGpsLoadingState();
     if (isGpsUpdate) {
@@ -3167,8 +3303,15 @@
 
     const nearestStop = nearbyStops[0];
     currentDisplayedStop = nearestStop;
-    updateHeaderStopName(nearestStop.Description || 'Near your location');
+    updateHeaderStopName(nearestStop);
     loadBusArrivals(nearestStop.BusStopCode);
+    // フェーズ9: GPS確定直後の自動オープン(起動時)・地図上の別バス停タップ
+    // (isGpsUpdate:false)の経路では、成功したら必ずバス停詳細モーダルを
+    // 表示する。「一目でわかる・タップ不要」という既存コンセプトを維持する
+    // ため、起動直後は最寄り停のモーダルが自動で開いた状態になる。
+    // openModal:false（地図の再表示ボタン専用）の時だけ、閉じていたモーダルを
+    // 勝手に開き直さない（データ自体は更新済みなので、次に開いた時は最新）。
+    if (openModal) showStopDetailModal();
   }
 
   // ネイティブアプリ(Capacitor)/Web両対応の位置情報取得ラッパー。
@@ -3327,7 +3470,7 @@
     initApproachingScrollHint();
     initHomeMapRecenterButton();
     initRouteModalRecenterButton();
-    initSwipeGesture();
+    initStopDetailModal();
     initGpsLocation();
     initGpsDriftCheck();
 
@@ -3339,7 +3482,6 @@
     }
 
     initDestinations();
-    initPullToRefresh();
     initSettingsScreen();
   });
 
@@ -3719,6 +3861,19 @@
   }
 
   // localStorageから登録済み目的地一覧を読み込む。壊れたデータは空配列扱いにする。
+  // フェーズ10(2026-09-27ユーザー指示「目的地に複数のバス停を紐づけたい」):
+  // 目的地1件が単一のbusStopCodeを持つ旧モデルから、stops:[{busStopCode,
+  // description,lat,lng}]という配列を持つグループ形式に変更した。旧データ
+  // (dest.busStopCode単数、stopsフィールド無し)は読み込み時にここで
+  // stops:[{busStopCode:dest.busStopCode,...}]へ自動移行し、そのまま
+  // 書き戻す（重複除去と同じ「読み込み時に移行→persist」パターン）。
+  function migrateDestinationToStopsArray(dest) {
+    if (Array.isArray(dest.stops)) return dest;
+    if (!dest.busStopCode) return { ...dest, stops: [] };
+    const { busStopCode, description, lat, lng, ...rest } = dest;
+    return { ...rest, stops: [{ busStopCode, description, lat, lng }] };
+  }
+
   function loadDestinations() {
     try {
       const raw = window.localStorage.getItem(DESTINATIONS_STORAGE_KEY);
@@ -3726,24 +3881,43 @@
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
 
+      let migrated = false;
+      const withStopsArray = parsed
+        .filter((dest) => dest)
+        .map((dest) => {
+          if (Array.isArray(dest.stops)) return dest;
+          migrated = true;
+          return migrateDestinationToStopsArray(dest);
+        });
+
       // 同一busStopCodeの重複除去（2026-09-14実機で発見・修正: 従来は
       // saveDestination()に重複チェックがなく、同じバス停を複数回登録できて
       // しまっていた。既存データに紛れ込んだ重複を読み込み時に自動で
       // クリーンアップし、そのまま書き戻す。先に登録された方（カスタム
-      // タイトル等を設定済みの可能性が高い）を残す）。
+      // タイトル等を設定済みの可能性が高い）を残す。フェーズ10で「1バス停=
+      // 1目的地」の判定対象が全目的地のstopsを平坦化した集合に変わった、
+      // 同一目的地内での重複も併せて除去する）。
       const seenStopCodes = new Set();
       let hasDuplicates = false;
-      const deduped = parsed.filter((dest) => {
-        if (!dest || !dest.busStopCode) return true;
-        if (seenStopCodes.has(dest.busStopCode)) {
-          hasDuplicates = true;
-          return false;
-        }
-        seenStopCodes.add(dest.busStopCode);
-        return true;
-      });
+      const deduped = withStopsArray
+        .map((dest) => {
+          const uniqueStops = dest.stops.filter((stop) => {
+            if (!stop || !stop.busStopCode) return false;
+            if (seenStopCodes.has(stop.busStopCode)) {
+              hasDuplicates = true;
+              return false;
+            }
+            seenStopCodes.add(stop.busStopCode);
+            return true;
+          });
+          if (uniqueStops.length !== dest.stops.length) hasDuplicates = true;
+          return { ...dest, stops: uniqueStops };
+        })
+        // stopsが0件になった目的地（重複除去の結果、紐づくバス停が
+        // 1件も残らなかった場合）は目的地自体を消す。
+        .filter((dest) => dest.stops.length > 0);
 
-      if (hasDuplicates) {
+      if (migrated || hasDuplicates || deduped.length !== parsed.length) {
         persistDestinations(deduped);
       }
 
@@ -3773,12 +3947,31 @@
     }
   }
 
-  // 新しい目的地を1件追加する。plan.md 2-1節のデータ構造（id/busStopCode/
-  // description/lat/lng/registeredAt）に従う。
+  // busStopCode -> 目的地 のMapを作る（各目的地のstops全件ぶん平坦化）。
+  // 経路モーダルのMRT駅・経由地マーカーで「登録済み目的地に一致するか」を
+  // 判定する際に使う（addMrtWaypointMarkers()/renderRouteModalStopList()等）。
+  function buildDestinationByStopCodeMap(destinations) {
+    const map = new Map();
+    destinations.forEach((dest) => {
+      dest.stops.forEach((stop) => {
+        if (stop.busStopCode) map.set(stop.busStopCode, dest);
+      });
+    });
+    return map;
+  }
+
+  // 全目的地のstopsを平坦化したbusStopCodeの集合を返す。フェーズ10決定
+  // 「1バス停=1目的地に限定」の判定に使う（どの目的地に紐づいているかを
+  // 問わず、バス停コード単位で重複を禁止する）。
+  function getAllSavedBusStopCodes(destinations) {
+    return new Set(destinations.flatMap((dest) => dest.stops.map((stop) => stop.busStopCode)));
+  }
+
+  // 新しい目的地を1件、最初のバス停付きで追加する。
   // 2026-09-14実機で発見・修正: 同じバス停を複数回登録できてしまう不具合が
   // 報告された（当初は「重複登録の排除は行わない」という未確定仕様だったが、
   // ユーザー指示によりここで排除するよう確定）。同一busStopCodeが既に
-  // 登録済みの場合は追加せず'duplicate'を返す。
+  // （どの目的地であれ）登録済みの場合は追加せず'duplicate'を返す。
   // 戻り値: 'duplicate'（既に登録済み）/ true（保存成功）/ false（保存失敗、
   // 呼び出し元でUIフィードバックに使う）。
   function saveDestination(stop, lat, lng, category = 'other') {
@@ -3787,16 +3980,13 @@
     }
 
     const before = loadDestinations();
-    if (before.some((dest) => dest.busStopCode === stop.BusStopCode)) {
+    if (getAllSavedBusStopCodes(before).has(stop.BusStopCode)) {
       return 'duplicate';
     }
 
     const entry = {
       id: generateDestinationId(),
-      busStopCode: stop.BusStopCode,
-      description: stop.Description || 'Bus stop',
-      lat,
-      lng,
+      stops: [{ busStopCode: stop.BusStopCode, description: stop.Description || 'Bus stop', lat, lng }],
       registeredAt: new Date().toISOString(),
       category: normalizeDestinationCategory(category),
       iconColor: 'green',
@@ -3805,6 +3995,45 @@
     const updated = [...before, entry];
     const ok = persistDestinations(updated);
     return ok;
+  }
+
+  // フェーズ10新規: 既存の目的地にバス停をもう1件紐づける（例:「Home」に
+  // 最寄り停+向かいの停の両方を紐づける、ユーザー指示の具体例）。
+  // 戻り値の規約はsaveDestination()と同じ。
+  function addStopToDestination(destinationId, stop) {
+    if (!stop || !stop.BusStopCode) return false;
+
+    const destinations = loadDestinations();
+    const index = destinations.findIndex((dest) => dest.id === destinationId);
+    if (index === -1) return false;
+
+    if (getAllSavedBusStopCodes(destinations).has(stop.BusStopCode)) {
+      return 'duplicate';
+    }
+
+    destinations[index] = {
+      ...destinations[index],
+      stops: [
+        ...destinations[index].stops,
+        { busStopCode: stop.BusStopCode, description: stop.Description || 'Bus stop', lat: stop.Latitude, lng: stop.Longitude },
+      ],
+    };
+    return persistDestinations(destinations);
+  }
+
+  // フェーズ10新規: 目的地からバス停を1件外す。最後の1件は外せない
+  // （目的地にバス停が0件になる状態を作らない。呼び出し元のUIでも
+  // 1件しかない時はボタン自体を出さない）。
+  function removeStopFromDestination(destinationId, busStopCode) {
+    const destinations = loadDestinations();
+    const index = destinations.findIndex((dest) => dest.id === destinationId);
+    if (index === -1) return false;
+
+    const stops = destinations[index].stops.filter((stop) => stop.busStopCode !== busStopCode);
+    if (stops.length === 0 || stops.length === destinations[index].stops.length) return false;
+
+    destinations[index] = { ...destinations[index], stops };
+    return persistDestinations(destinations);
   }
 
   // 指定idの目的地を削除する。
@@ -3988,13 +4217,21 @@
       const iconColor = normalizeDestinationIconColor(dest.iconColor);
 
       // カスタムタイトル（例:「日本人会」）が設定されていればそれを表示名にし、
-      // バス停の元の名称は補足情報として下に小さく残す。未設定時は従来通り
-      // バス停名を表示名として使う（2026-09-14ユーザー指示）。
+      // 未設定時は従来通り1件目のバス停名を表示名として使う（2026-09-14
+      // ユーザー指示）。フェーズ10: 紐づく全バス停を、要約せず1件ずつ
+      // そのまま一覧表示する（2026-09-27ユーザー指示「紐づいてるバス停が
+      // 全部表示されるようにしたい」、「+N件」等の要約はしない）。
       const hasCustomTitle = Boolean(dest.title && dest.title.trim());
-      const displayName = hasCustomTitle ? escapeHtml(dest.title.trim()) : escapeHtml(dest.description);
-      const subMetaHtml = hasCustomTitle
-        ? `<div class="destination-item-meta">${escapeHtml(dest.description)} · ${dest.busStopCode}</div>`
-        : `<div class="destination-item-meta">${dest.busStopCode}</div>`;
+      const displayName = hasCustomTitle ? escapeHtml(dest.title.trim()) : escapeHtml(dest.stops[0].description);
+      const stopsListHtml = dest.stops
+        .map(
+          (stop) => `
+        <div class="destination-item-stop-row" data-stop-code="${escapeHtml(stop.busStopCode)}">
+          <span class="destination-item-stop-text">${escapeHtml(stop.busStopCode)} · ${escapeHtml(stop.description)}</span>
+          <span class="destination-item-stop-services" hidden></span>
+        </div>`
+        )
+        .join('');
 
       const item = document.createElement('div');
       item.className = 'destination-item';
@@ -4011,8 +4248,7 @@
         </div>
         <div class="destination-item-info">
           <div class="destination-item-name">${displayName}</div>
-          ${subMetaHtml}
-          <div class="destination-item-services" hidden></div>
+          <div class="destination-item-stops">${stopsListHtml}</div>
         </div>
         <button type="button" class="destination-item-edit-btn" aria-label="Edit">
           <i class="ti ti-pencil" aria-hidden="true"></i>
@@ -4031,11 +4267,12 @@
       }
 
       // 編集用鉛筆アイコン(.destination-item-edit-btn)をタップすると、
-      // タイトル入力・アイコン種類・アイコン色を変更できる編集パネルを
-      // インライン展開する（2026-09-13ユーザー指示。By Route/By Bus Stopの
-      // 既存カテゴリピッカー展開パターンを踏襲、タップ即反映で別途「保存」
-      // ボタンは設けない）。2026-09-14: タイトル欄の入口をバッジタップだけに
-      // 頼らず複数用意するため、トグル処理を関数化して両方から呼べるようにした。
+      // タイトル入力・アイコン種類・アイコン色・紐づくバス停を変更できる
+      // 編集パネルをインライン展開する（2026-09-13ユーザー指示。By Route/
+      // By Bus Stopの既存カテゴリピッカー展開パターンを踏襲、タップ即反映で
+      // 別途「保存」ボタンは設けない）。2026-09-14: タイトル欄の入口を
+      // バッジタップだけに頼らず複数用意するため、トグル処理を関数化して
+      // 両方から呼べるようにした。
       function toggleDestinationEditor() {
         const existingEditor = item.querySelector('.destination-item-editor');
         if (existingEditor) {
@@ -4045,6 +4282,23 @@
         }
 
         openDestinationEditorId = dest.id;
+
+        // フェーズ10新規: 紐づくバス停の管理セクション（削除・追加）。
+        // 最後の1件はremoveStopFromDestination()側でも拒否するが、
+        // UI上もボタン自体を出さずわかりやすくする。
+        const stopsEditorRowsHtml = dest.stops
+          .map(
+            (stop) => `
+          <div class="destination-item-stops-editor-row" data-stop-code="${escapeHtml(stop.busStopCode)}">
+            <span>${escapeHtml(stop.busStopCode)} · ${escapeHtml(stop.description)}</span>
+            ${
+              dest.stops.length > 1
+                ? '<button type="button" class="destination-item-stop-remove-btn" aria-label="Remove this stop"><i class="ti ti-x" aria-hidden="true"></i></button>'
+                : ''
+            }
+          </div>`
+          )
+          .join('');
 
         const editor = document.createElement('div');
         editor.className = 'destination-item-editor';
@@ -4057,6 +4311,13 @@
           </div>
           ${buildCategoryPickerHtml(category, getCategoryColorHex(iconColor))}
           ${buildIconColorPickerHtml(iconColor)}
+          <div class="destination-item-stops-editor">
+            <div class="destination-item-stops-editor-label">Linked bus stops</div>
+            <div class="destination-item-stops-editor-list">${stopsEditorRowsHtml}</div>
+            <button type="button" class="destination-item-add-stop-btn">
+              <i class="ti ti-plus" aria-hidden="true"></i><span>Add another stop</span>
+            </button>
+          </div>
           <div class="destination-item-editor-footer">
             <button type="button" class="destination-item-editor-done">Done</button>
           </div>
@@ -4082,11 +4343,7 @@
             const value = titleInput.value.trim();
             updateDestination(dest.id, { title: value });
             const nameEl = item.querySelector('.destination-item-name');
-            if (nameEl) nameEl.textContent = value || dest.description;
-            const metaEl = item.querySelector('.destination-item-meta');
-            if (metaEl) {
-              metaEl.textContent = value ? `${dest.description} · ${dest.busStopCode}` : dest.busStopCode;
-            }
+            if (nameEl) nameEl.textContent = value || dest.stops[0].description;
           });
         }
 
@@ -4103,6 +4360,27 @@
             renderDestinationList();
           });
         });
+
+        editor.querySelectorAll('.destination-item-stop-remove-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const row = btn.closest('.destination-item-stops-editor-row');
+            const stopCode = row ? row.dataset.stopCode : null;
+            if (!stopCode) return;
+            if (removeStopFromDestination(dest.id, stopCode)) {
+              renderDestinationList();
+            }
+          });
+        });
+
+        const addStopBtn = editor.querySelector('.destination-item-add-stop-btn');
+        if (addStopBtn) {
+          // 2026-09-27ユーザー指示「既存の目的地にバス停をもう1件追加」対応。
+          // 既存のBy Route/By Bus Stopピッカーを「この目的地に紐づける」
+          // モードで開く（openDestinationPickerModal(dest.id)参照）。
+          addStopBtn.addEventListener('click', () => {
+            openDestinationPickerModal(dest.id);
+          });
+        }
       }
 
       // 2026-09-21ユーザー指摘「アイコンタップとAdd titleが被ってる、削除の
@@ -4123,16 +4401,19 @@
       // 通過系統番号（2026-09-13ユーザー指示「バス停のところには何番のバスが
       // 通るかも表示するように」）。バス停一覧全体の初回描画をブロックしたく
       // ないため、行自体は即座に描画し、系統番号だけ非同期に差し込む。
-      const servicesEl = item.querySelector('.destination-item-services');
-      if (servicesEl && dest.busStopCode) {
-        fetchStopServiceNumbers(dest.busStopCode).then((services) => {
+      // フェーズ10: 紐づく全バス停ぶん、それぞれの行に個別で表示する。
+      dest.stops.forEach((stop) => {
+        const stopRow = item.querySelector(`.destination-item-stop-row[data-stop-code="${CSS.escape(stop.busStopCode)}"]`);
+        const servicesEl = stopRow ? stopRow.querySelector('.destination-item-stop-services') : null;
+        if (!servicesEl) return;
+        fetchStopServiceNumbers(stop.busStopCode).then((services) => {
           if (!services || services.length === 0) return;
           const shown = services.slice(0, 10).join(', ');
           const suffix = services.length > 10 ? '…' : '';
           servicesEl.textContent = `Bus: ${shown}${suffix}`;
           servicesEl.hidden = false;
         });
-      }
+      });
 
       listEl.appendChild(item);
     });
@@ -4155,12 +4436,39 @@
     return stopServiceNumbersCache.get(stopCode);
   }
 
+  // フェーズ10新規: nullなら「新規目的地を作成」モード（従来通り）、
+  // 目的地idが入っていれば「そのバス停を既存の目的地に追加する」モード
+  // （Saved画面の編集パネル「+ Add another stop」から開いた場合）。
+  // handleDestinationResultAdd()がこの値を見て登録先を振り分ける。
+  let destinationPickerTargetId = null;
+
   // 目的地登録モーダル（2タブ: By Route/By Bus Stop）を開く。
   // 2026-09-14ユーザー指示「By Mapはやっぱり要らない、分かりにくい」により
   // By Mapタブ（Leaflet地図タップ登録フロー）自体を廃止した。
-  function openDestinationPickerModal() {
+  // targetDestinationId（フェーズ10追加）: 指定時は「既存の目的地にバス停を
+  // 追加する」モードで開く。タイトルを対象の目的地名に変えて、どちらの
+  // モードかを分かりやすくする。
+  function openDestinationPickerModal(targetDestinationId = null) {
     const overlay = document.getElementById('destination-map-modal-overlay');
     if (!overlay) return;
+
+    destinationPickerTargetId = targetDestinationId || null;
+
+    const titleEl = document.getElementById('destination-map-modal-title');
+    if (titleEl) {
+      if (destinationPickerTargetId) {
+        const targetDest = loadDestinations().find((d) => d.id === destinationPickerTargetId);
+        const label =
+          targetDest && targetDest.title && targetDest.title.trim()
+            ? targetDest.title.trim()
+            : targetDest
+              ? targetDest.stops[0].description
+              : 'this destination';
+        titleEl.textContent = `Add Stop to ${label}`;
+      } else {
+        titleEl.textContent = 'Add Bus Stop';
+      }
+    }
 
     overlay.classList.add('visible');
     switchDestinationTab('route');
@@ -4169,6 +4477,7 @@
   function closeDestinationPickerModal() {
     const overlay = document.getElementById('destination-map-modal-overlay');
     if (overlay) overlay.classList.remove('visible');
+    destinationPickerTargetId = null;
   }
 
   /* ── タブ切替（セグメントコントロール） ── */
@@ -4316,6 +4625,50 @@
     }
   }
 
+  // フェーズ10新規: 既存の目的地にバス停を1件追加する版
+  // （registerDestinationFromResult()と同じUIフィードバックパターン、
+  // データ層だけaddStopToDestination()を呼ぶ違い）。
+  function attachStopToDestination(destinationId, stop, addBtn) {
+    if (!stop || !stop.BusStopCode) return;
+
+    const result = addStopToDestination(destinationId, stop);
+    renderDestinationList();
+
+    if (result === 'duplicate') {
+      window.alert('This bus stop is already saved to your list.');
+      if (addBtn) {
+        addBtn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>';
+        addBtn.classList.add('destination-result-add-btn--added');
+        addBtn.disabled = true;
+      }
+      return;
+    }
+
+    if (!result) {
+      window.alert('Could not save this destination. Your device storage may be full or restricted.');
+      return;
+    }
+
+    if (addBtn) {
+      addBtn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>';
+      addBtn.classList.add('destination-result-add-btn--added');
+      addBtn.disabled = true;
+    }
+  }
+
+  // フェーズ10新規: By Route/By Bus Stopタブの結果一覧「＋」タップの
+  // 共通ディスパッチャー。destinationPickerTargetId（openDestinationPickerModal()
+  // 参照）が設定されていれば「既存の目的地に追加」、なければ従来通り
+  // 「新規目的地として作成」する。buildDestinationResultItem()のonAdd
+  // コールバックとして渡す。
+  function handleDestinationResultAdd(stop, addBtn, category) {
+    if (destinationPickerTargetId) {
+      attachStopToDestination(destinationPickerTargetId, stop, addBtn);
+    } else {
+      registerDestinationFromResult(stop, addBtn, category);
+    }
+  }
+
   // /api/bus-services/:serviceNo/stops を呼び出し、結果を描画する。
   async function performRouteStopsSearch(serviceNo) {
     const token = ++routeStopsRequestToken;
@@ -4368,7 +4721,7 @@
     if (!listEl) return;
     listEl.innerHTML = '';
     stops.forEach((stop) => {
-      listEl.appendChild(buildDestinationResultItem(stop, registerDestinationFromResult));
+      listEl.appendChild(buildDestinationResultItem(stop, handleDestinationResultAdd));
     });
   }
 
@@ -4467,7 +4820,7 @@
     const stops = Array.isArray(data.stops) ? data.stops : [];
     listEl.innerHTML = '';
     stops.forEach((stop) => {
-      listEl.appendChild(buildDestinationResultItem(stop, registerDestinationFromResult));
+      listEl.appendChild(buildDestinationResultItem(stop, handleDestinationResultAdd));
     });
   }
 
@@ -4527,7 +4880,7 @@
     if (!listEl) return;
     listEl.innerHTML = '';
     stops.forEach((stop) => {
-      listEl.appendChild(buildDestinationResultItem(stop, registerDestinationFromResult));
+      listEl.appendChild(buildDestinationResultItem(stop, handleDestinationResultAdd));
     });
   }
 
@@ -4561,153 +4914,6 @@
     });
   }
 
-  /* ══════════════════════════════════════════════
-   * PULL TO REFRESH（フェーズ5第8-2節、Home画面限定・PWAスタンドアロン時のみ）
-   *
-   * SG在住Navi（/home/masahiko/sg-weekend-app/public/app.js の _initPtr()、
-   * 189行目付近）を参考に実装する。スクロールコンテナ内部の先頭に置いた
-   * インジケーター要素のheight/opacityのみをJSで操作する点は同一。
-   * ヘッダー・app-shell・html/bodyのposition/overflow/heightは一切変更しない。
-   *
-   * SG在住Naviとの相違点:
-   * - SGBusNaviも2026-09-16以降Capacitorネイティブアプリに対応した(_isCapacitorApp
-   *   は本ファイル冒頭で定義、API_BASEの判定に使用)。2026-09-17実機で発見・修正:
-   *   当初PTRの起動判定はwindow.matchMedia('(display-mode: standalone)').matches ||
-   *   window.navigator.standalone === trueのみだったため、ネイティブアプリ
-   *   (Capacitor WKWebView)ではどちらも真にならず、下に引っ張って更新する
-   *   操作自体が一切効かなかった(ユーザー指摘「アプリ側、更新のために下に
-   *   Pullすることができないね」)。isStandalonePwa()に_isCapacitorAppも
-   *   条件に加え、ネイティブアプリ内でもPTRを有効化した。
-   * - 2026-09-13、Home画面のヘッダー（タイトル・バス停ピル行）を固定表示にする
-   *   刷新に伴い、SGBusNaviもSG在住Naviと同じ専用overflow:autoスクロール
-   *   コンテナ（#home-scroll-content）を持つ構造に変更した。これにより
-   *   container.scrollTopで直接スクロール位置を判定できるようになり、
-   *   以前使っていたwindow.scrollYベースの判定は不要になった。
-   * ══════════════════════════════════════════════ */
-  const PTR_THRESHOLD = 60; // これ以上引っ張って離したらリフレッシュ確定
-  const PTR_MAX_PULL = 90; // インジケーターの最大高さ（クランプ）
-
-  // ホーム画面限定のPWAスタンドアロン起動判定（ネイティブアプリも含む）。
-  // iOS Safari: navigator.standalone、Android Chrome等: display-mode: standalone、
-  // Capacitorネイティブアプリ: _isCapacitorApp のいずれかがtrueなら、
-  // ブラウザのアドレスバー等が存在しない「アプリらしい」画面とみなす。
-  function isStandalonePwa() {
-    return (
-      _isCapacitorApp ||
-      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-      window.navigator.standalone === true
-    );
-  }
-
-  // container: タッチイベントを監視するDOM要素（#home-scroll-content）。
-  // indicatorId: インジケーター要素のid。
-  // onRefresh: async関数。データ再取得処理。
-  // getScrollTop: 現在のスクロール位置を返す関数（最上部判定に使用）。
-  function _initPtr(container, indicatorId, onRefresh, getScrollTop) {
-    if (!isStandalonePwa()) return; // PWAスタンドアロン起動時のみ有効化
-    if (!container || container._ptrInit) return;
-    container._ptrInit = true;
-
-    const indicator = document.getElementById(indicatorId);
-    if (!indicator) return;
-
-    let startY = 0;
-    let pulling = false;
-    let refreshing = false;
-
-    container.addEventListener(
-      'touchstart',
-      (e) => {
-        if (refreshing) return;
-        startY = e.touches[0].clientY;
-        pulling = false;
-      },
-      { passive: true }
-    );
-
-    container.addEventListener(
-      'touchmove',
-      (e) => {
-        if (refreshing) return;
-
-        const dy = e.touches[0].clientY - startY;
-        if (dy <= 0) {
-          // 上方向 or 動きなし → 通常のスクロールに委ねる
-          if (pulling) {
-            pulling = false;
-            indicator.style.height = '0px';
-            indicator.style.opacity = '0';
-          }
-          return;
-        }
-        if (getScrollTop() > 0) return; // 最上部でない → PTR対象外
-
-        pulling = true;
-        e.preventDefault(); // 引っ張り中はスクロールコンテナのバウンスを起こさない
-        const pull = Math.min(dy, PTR_MAX_PULL);
-        indicator.style.height = pull + 'px';
-        indicator.style.opacity = String(Math.min(pull / PTR_THRESHOLD, 1));
-      },
-      { passive: false }
-    );
-
-    container.addEventListener(
-      'touchend',
-      async () => {
-        if (refreshing || !pulling) {
-          pulling = false;
-          return;
-        }
-        pulling = false;
-        const curHeight = parseFloat(indicator.style.height) || 0;
-        if (curHeight >= PTR_THRESHOLD) {
-          refreshing = true;
-          indicator.classList.add('ptr-refreshing');
-          indicator.style.height = PTR_THRESHOLD + 'px';
-          indicator.style.opacity = '1';
-          try {
-            await onRefresh();
-          } catch (_) {
-            // 失敗してもインジケーターは必ず消す（無限ローディング防止）
-          } finally {
-            indicator.classList.remove('ptr-refreshing');
-            indicator.style.height = '0px';
-            indicator.style.opacity = '0';
-            refreshing = false;
-          }
-        } else {
-          indicator.style.height = '0px';
-          indicator.style.opacity = '0';
-        }
-      },
-      { passive: true }
-    );
-  }
-
-  // Home画面のスクロール位置（bodyスクロール構造のためwindow.scrollYを使う。
-  // 一部ブラウザ向けフォールバックとしてdocument.documentElement.scrollTopも見る）。
-  function getHomeScrollTop() {
-    const container = document.getElementById('home-scroll-content');
-    return container ? container.scrollTop : 0;
-  }
-
-  // Home画面限定でプルリフレッシュを初期化する。リフレッシュ処理は
-  // 既存の到着情報再取得ロジック（loadBusArrivals）を呼び出す。表示中のバス停は
-  // currentDisplayedStopから取得する（GPS/スワイプ/検索いずれの経路でも対応）。
-  function initPullToRefresh() {
-    const container = document.getElementById('home-scroll-content');
-    _initPtr(
-      container,
-      'ptr-indicator-home',
-      async () => {
-        if (currentDisplayedStop && currentDisplayedStop.BusStopCode) {
-          await loadBusArrivals(currentDisplayedStop.BusStopCode);
-        }
-      },
-      getHomeScrollTop
-    );
-  }
-
   // 目的地登録UI・モーダル（By Route/By Bus Stopの2タブ）一式の初期化。
   function initDestinations() {
     renderDestinationList();
@@ -4723,7 +4929,11 @@
     const overlay = document.getElementById('destination-map-modal-overlay');
 
     if (addBtn) {
-      addBtn.addEventListener('click', openDestinationPickerModal);
+      // openDestinationPickerModal()はフェーズ10でtargetDestinationId引数を
+      // 受け取るようになったため、addEventListenerに直接渡すとクリック
+      // イベントオブジェクトが引数に渡ってしまう（新規作成モードのつもりが
+      // 誤って「追加モード」と誤認識する）。引数無しで呼ぶラムダを挟む。
+      addBtn.addEventListener('click', () => openDestinationPickerModal());
     }
 
     if (closeBtn) {

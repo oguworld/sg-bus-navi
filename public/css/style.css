@@ -207,11 +207,9 @@ button {
 
 /* ══════════════════════════════════════════════
  * ヘッダー（Home画面）
- * 2026-09-13デザイン刷新: SG在住Naviの「くらし情報」画面（タイトル＋固定の
- * カテゴリフィルターピル行＋独立スクロールのコンテンツ）を参考に、
- * Home画面のヘッダー全体（タイトル・バス停ピル行）を固定表示にした
- * （ユーザー指示）。#screen-homeがflex-directionでheader(flex-shrink:0)+
- * #home-scroll-content(flex:1, overflow-y:auto)の2段構成になる。
+ * #screen-homeはheader(flex-shrink:0)+.home-map-panel(flex:1、フェーズ9で
+ * 全面マップ化)の2段構成。バス停ピル行・Approachingバー・Timetableは
+ * バス停詳細モーダル側に移設済み（下記.stop-modal-*参照）。
  * ══════════════════════════════════════════════ */
 .app-header {
   flex-shrink: 0;
@@ -362,15 +360,18 @@ button {
   color: var(--fill-accent);
 }
 
-/* バス停切替ピル行（SG在住Naviの.filter-chip行と寸法を一致させる:
-   gap:8px、padding:8px 20px 12px、横スクロール、折り返しなし）。
-   各ピル(.stop-pill)は最寄り/2番目/3番目に近いバス停を表す
-   タブとして機能し、タップでswitchToStopIndex()を呼ぶ（app.js参照）。 */
+/* フェーズ9: バス停切替ピル行。従来は地図直下の画面全幅の帯だったが、
+   ユーザー指示「バス停の情報ピルの情報はこのモーダルの中にしたい」により
+   #stop-modal-overlay内（ヘッダー直下）に移設した。画面端まで伸ばす必要が
+   なくなったため左右paddingをモーダルの他要素(14px)に揃え、上端はヘッダーの
+   border-bottomに接するため上paddingは無し。ピル自体の見た目(.stop-pill/
+   .stop-pill--active)はSG在住Navi .filter-chipパターンのまま変更なし。
+   各ピルはタップでswitchToStopIndex()を呼ぶ（app.js参照）。 */
 .stop-pill-row {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding: 8px 20px 12px;
+  padding: 0 14px 12px;
   flex-shrink: 0;
   -webkit-overflow-scrolling: touch;
 }
@@ -406,61 +407,55 @@ button {
   font-weight: 700;
 }
 
-/* Home画面専用スクロールコンテナ。ヘッダー（タイトル・ピル行）を固定表示にし、
-   バスカード一覧のみが独立してスクロールするようにする
-   （姉妹アプリの#home-scroll-content構造と統一）。
-   2026-09-14実機で発見・修正: bodyや.app-shellがmin-height:100dvh（上限なし）の
-   ため、カード一覧が長くなるとページ全体（body）がそのまま伸びてブラウザ側が
-   スクロールしてしまい、ヘッダーごと流れて見えなくなっていた（ユーザー指示
-   「バス停情報より上をヘッダーとして固定して」が実機では効いていなかった
-   根本原因）。#screen-home自体をビューポート1つ分の高さに固定し
-   overflow:hiddenにすることで、内部の.home-scroll-content（flex:1、
-   overflow-y:auto）だけが独立してスクロールするようにした。 */
+/* フェーズ9追加(2026-09-27ユーザー指示「目的地の色をバス停ピル・地図の
+   ピンにも反映させたい」): 選択中の目的地に「これから」到達できるバス停の
+   ピルを、その目的地のアイコン色で縁取り+文字色にする（app.js側の
+   applyDestinationMatchStyles()が--pill-match-colorをインラインで設定、
+   6色固定パレットのためCSSクラスでの色分けはしない）。アクティブ(表示中)の
+   ピルは対象外にしているため.stop-pill--activeとの併用は考慮不要。 */
+.stop-pill--dest-match {
+  border-color: var(--pill-match-color);
+  color: var(--pill-match-color);
+  font-weight: 700;
+}
+
+/* フェーズ9: Home画面は全面マップ化に伴い専用スクロールコンテナ
+   (.home-scroll-content)を廃止した。#screen-home自体はヘッダー+
+   地図パネル(flex:1)の2段構成で画面ちょうど1つ分に収まるため、
+   引き続きheight:100dvh; overflow:hidden;のままでよい
+   （バス停詳細モーダルは独自にposition:fixedでオーバーレイ表示するため、
+   このoverflow:hiddenの影響を受けない）。 */
 #screen-home {
-  padding-bottom: 0; /* 内部に専用スクロールコンテナを持つため、.screen共通のpaddingは無効化する */
+  padding-bottom: 0; /* 地図パネルを画面下端まで伸ばすため、.screen共通のpaddingは無効化する */
   height: 100dvh;
   overflow: hidden;
 }
 
-.home-scroll-content {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: none;
-  /* ボトムナビ分の余白（.screenの元のpadding-bottomと同じ計算式に統一、
-     2026-09-15の修正参照）。 */
-  padding-bottom: calc(84px + env(safe-area-inset-bottom));
-}
-
 /* ══════════════════════════════════════════════
- * フェーズ6: Home画面 地図パネル（.claude/plan-phase6-map-timetable-toggle.md 2-1節）
+ * フェーズ9: Home画面 地図パネル（.claude/plan-phase9-fullmap-stopmodal.md）
  *
- * #screen-homeの4段構成（ヘッダー→地図→バス停ピル行→スクロール領域、
- * Approachingバーは2026-09-22時点でスクロール領域内・Timetable直前に
- * 配置し、固定表示との比較検討中）のうち、上から2段目。flex-shrink:0の
- * 固定的な高さ帯とする（比率指定にするとヘッダーの実高さ変動がそのまま地図の
- * 高さに波及するため、意図的に固定高を採用）。高さは当初`height: 28%;
- * min-height: 170px;`だったが、2026-09-20ユーザー指示「地図の高さをもう少し
- * 縮めて」により縮小。グレースケール処理は経路モーダルの.route-modal-map-elと
- * 完全に同一の値をそのまま流用し、デザインの一貫性を保つ（2-2節）。
+ * ユーザー指示「Homeは全面をマップにして」により、#screen-homeは
+ * ヘッダー(flex-shrink:0)+地図パネル(flex:1、画面の残り全部)の2段構成に
+ * なった。従来はheight:20%の固定的な高さ帯だったが、その下にあった
+ * バス停ピル行・Approachingバー・Timetableは全て#stop-modal-overlay
+ * （バス停詳細モーダル、下記参照）に移設されたため、地図パネルが
+ * 画面の主役になる。グレースケール処理は経路モーダルの.route-modal-map-elと
+ * 完全に同一の値をそのまま流用し、デザインの一貫性を保つ（変更なし）。
  * ══════════════════════════════════════════════ */
 .home-map-panel {
-  flex-shrink: 0;
-  height: 20%;
-  min-height: 130px;
+  flex: 1;
+  min-height: 0;
   position: relative;
   background: var(--surface-1);
-  border-bottom: 1px solid var(--border);
   /* 2026-09-20ユーザー指摘「モーダルのレイヤーの順番を調べて。系統の図が
      一番上になってないはず」で発見・修正。position:relativeだけでは
-     新しいスタッキングコンテキストが作られないため、内部の
-     .home-view-flip(z-index:450)やLeaflet内部のペイン(markerPane等、
-     z-index 200〜700)がこのパネルの外、ページ全体レベルで
-     .route-modal-overlay(z-index:100)等のモーダルと直接比較され、
-     本来モーダルの下にあるべきホーム画面の地図・ボタンがモーダルより
-     前面に出てしまう不具合があった。isolation:isolateでスタッキング
-     コンテキストを確立し、内部のz-indexをこのパネル内に閉じ込める。 */
+     新しいスタッキングコンテキストが作られないため、内部のLeaflet内部の
+     ペイン(markerPane等、z-index 200〜700)がこのパネルの外、ページ全体
+     レベルで#stop-modal-overlay(z-index:90)や.route-modal-overlay
+     (z-index:100)等のモーダルと直接比較され、本来モーダルの下にあるべき
+     ホーム画面の地図・ボタンがモーダルより前面に出てしまう不具合があった。
+     isolation:isolateでスタッキングコンテキストを確立し、内部のz-indexを
+     このパネル内に閉じ込める。 */
   isolation: isolate;
 }
 
@@ -502,6 +497,15 @@ button {
 
 .map-recenter-btn[hidden] {
   display: none;
+}
+
+/* フェーズ9: Home画面の地図パネルは画面下端(ボトムナビの裏)まで伸びるため、
+   共通クラス(.map-recenter-btn)のbottom:10pxのままだと不透明なボトムナビ
+   (position:fixed、高さ約84px)の下に隠れてしまう。Home画面の地図に限り
+   ボトムナビ分クリアランスを足す（経路モーダルの地図はボトムナビと重ならない
+   ため.map-recenter-btnの基本値のまま）。 */
+.home-map-panel .map-recenter-btn {
+  bottom: calc(84px + env(safe-area-inset-bottom) + 10px);
 }
 
 .home-map-el {
@@ -602,6 +606,16 @@ button {
   box-shadow: 0 2px 6px rgba(43, 43, 39, 0.3), 0 0 0 3px rgba(111, 143, 99, 0.25);
 }
 
+/* フェーズ9追加(2026-09-27ユーザー指示): .stop-pill--dest-matchと同じ目的地
+   ハイライトを地図ピンにも反映する。既定のニュートラル色(--caramel)の
+   代わりに目的地のアイコン色でピンを塗る（app.js側の
+   applyDestinationMatchStyles()が--pin-match-colorをインラインで設定）。
+   アクティブ(表示中)のピンは対象外にしているため.home-map-stop-pin--active
+   との併用は考慮不要。 */
+.home-map-stop-pin--dest-match {
+  color: var(--pin-match-color);
+}
+
 .home-map-stop-label {
   font-size: 11px;
   font-weight: 700;
@@ -617,6 +631,120 @@ button {
   background: none;
   border: none;
   box-shadow: none;
+}
+
+/* ══════════════════════════════════════════════
+ * フェーズ9: バス停詳細モーダル（中央カード型）
+ * mockups/home-stopmodal-centeredcard-swipe-v1.html ユーザー承認済み「B」案
+ * （既存の.route-modal-overlay/.route-modalと同じ「暗い背景オーバーレイ+
+ * 中央配置カード」パターン）。GPSで最寄りバス停が確定次第、自動で
+ * オープンした状態になる（loadNearbyStopsAndArrivals()参照、「一目でわかる・
+ * タップ不要」という既存コンセプトを維持するため）。
+ *
+ * z-index:90は.route-modal-overlay(100)より低い値にしてある。系統番号
+ * バッジタップで経路モーダルを開いたとき、このモーダルの上に正しく
+ * 重なるようにするため（このモーダルの中から経路モーダルを開く導線があり、
+ * 二重にモーダルが表示される唯一のケース）。
+ * ══════════════════════════════════════════════ */
+.stop-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 90;
+}
+
+.stop-modal-overlay.visible {
+  display: flex;
+}
+
+.stop-modal {
+  width: 100%;
+  max-width: 420px;
+  /* .route-modalと同じ寸法に揃える（2026-09-27ユーザー指摘で発覚: 従来は
+     max-height:80%だったため、.route-modalのheight:78vh(固定)とは基準
+     （%は.stop-modal-overlayのpadding込みボックス、vhはビューポート直接）も
+     値も異なり、特に内容が短い(Timetableの系統数が少ない)場合に2つの
+     モーダルの大きさが揃わなかった）。 */
+  height: 78vh;
+  background: var(--surface-2);
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
+  border: 0.5px solid var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.stop-modal-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 10px;
+  background: var(--surface-1);
+}
+
+.stop-modal-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.stop-modal-title-code {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* 他のモーダルタイトル(.route-modal-title/.destination-map-modal-title)と
+   揃えてfont-size:15pxにする（design-checkerエージェントの指摘パターン踏襲）。 */
+.stop-modal-title-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stop-modal-close {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stop-modal-close i {
+  font-size: 17px;
+  color: var(--text-muted);
+}
+
+.stop-modal-close:active {
+  transform: scale(0.92);
+}
+
+/* バス停切替ピル行(.stop-pill-row)はヘッダーと同じ背景色で1つの操作エリアに
+   見せる。区切り線は次のstop-modal-body-wrapのborder-topが担う。 */
+.stop-modal-header + .stop-pill-row {
+  background: var(--surface-1);
+}
+
+.stop-modal-body-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  padding: 4px 0 calc(20px + env(safe-area-inset-bottom));
 }
 
 /* ══════════════════════════════════════════════
@@ -1032,11 +1160,17 @@ button {
 
 /* ══════════════════════════════════════════════
  * GPS取得失敗時のフォールバックUI
- * 表示中はバスカードリスト・バス停ピル行を非表示にする
- * （app.js側でピル行にもhidden属性を付与する）。
+ * フェーズ9: 従来は#home-scroll-content内の独立ブロックだったが、Home画面が
+ * 全面マップ化されたため、.home-map-panel（地図パネル自体）を覆う不透明な
+ * オーバーレイに変更した。表示中は地図・#home-map-fallback・ピン等の下の
+ * レイヤーが完全に隠れる（showGpsFallback()がclose相当の処理でバス停詳細
+ * モーダルも閉じるため、エラー状態でモーダルが残ることはない）。
  * ══════════════════════════════════════════════ */
 .gps-fallback {
-  flex: 1;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: var(--surface-1);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1452,6 +1586,82 @@ button {
   transform: scale(0.96);
 }
 
+/* フェーズ10新規: 編集パネル内の「紐づくバス停」管理セクション
+   （削除ボタン付き一覧+「+ Add another stop」）。カテゴリ/色ピッカーの
+   直後、Doneボタンの前に配置する。 */
+.destination-item-stops-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.destination-item-stops-editor-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.destination-item-stops-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.destination-item-stops-editor-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.destination-item-stop-remove-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-1);
+}
+
+.destination-item-stop-remove-btn i {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.destination-item-stop-remove-btn:active {
+  transform: scale(0.9);
+}
+
+.destination-item-add-stop-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-accent);
+  background: transparent;
+}
+
+.destination-item-add-stop-btn i {
+  font-size: 13px;
+}
+
+.destination-item-add-stop-btn:active {
+  transform: scale(0.97);
+}
+
 /* カスタムタイトル入力欄の行（2026-09-14ユーザー指摘「Custome Tilteはフィール
    ドの左にラベルをつけて、何のフィールドかわかるようにして」対応）。
    従来はplaceholderのみで、値が入力されると何のフィールドか分からなくなって
@@ -1531,15 +1741,34 @@ button {
   white-space: nowrap;
 }
 
-.destination-item-meta {
+/* フェーズ10(2026-09-27ユーザー指示「目的地に複数のバス停を紐づけたい」
+   「紐づいてるバス停が全部表示されるようにしたい」): 1目的地が複数の
+   バス停を持ちうるようになったため、旧.destination-item-meta（1行のみ）
+   /.destination-item-services（1目的地につき1個）を、バス停ごとに1行ずつ
+   並ぶ.destination-item-stop-rowの並びに置き換えた。要約（「+N件」等）は
+   せず、紐づく全バス停をそのまま並べる。 */
+.destination-item-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.destination-item-stop-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.destination-item-stop-text {
   font-size: 13px;
   color: var(--text-muted);
 }
 
-.destination-item-services {
+.destination-item-stop-services {
   font-size: 12px;
   color: var(--text-secondary);
-  margin-top: 3px;
 }
 
 /* 2026-09-21新規: カテゴリバッジ・「Add a title」の個別タップに分散していた
@@ -2537,36 +2766,4 @@ button {
 
 .share-sheet-btn i {
   font-size: 17px;
-}
-
-/* ══════════════════════════════════════════════
- * PULL TO REFRESH（フェーズ5第8-2節、Home画面限定・PWAスタンドアロン時のみ）
- * スクロールコンテナ先頭に置く子要素。height/opacityのみJSで操作する。
- * ヘッダー・app-shell・html/bodyのposition/overflow/heightには一切触れない
- * （SG在住Navi _initPtr の設計方針を踏襲）。
- * ══════════════════════════════════════════════ */
-.ptr-indicator {
-  height: 0;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.ptr-indicator .ptr-spinner {
-  width: 22px;
-  height: 22px;
-  border: 2.5px solid var(--sand-dark);
-  border-top-color: var(--caramel);
-  border-radius: 50%;
-  animation: ptr-spin 0.7s linear infinite;
-}
-
-@keyframes ptr-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }

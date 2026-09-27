@@ -22,16 +22,8 @@
     <!-- ═══════════ Home画面 ═══════════ -->
     <section class="screen visible" id="screen-home">
 
-      <!-- 2026-09-13デザイン刷新: ヘッダー全体（タイトル・ピル行）をスクロールに
-           対して固定表示にした（ユーザー指示）。バスカード一覧側だけが
-           スクロールする専用コンテナ(#home-scroll-content)を持つ構造は、
-           姉妹アプリの#home-scroll-content構造と統一している
-           （initPullToReflesh参照、window.scrollY方式から変更済み）。
-           2026-09-20ユーザー指示「右上のRelevant Onlyいらない」により、
-           「関連のみ」フィルタートグルを撤去した。
-           2026-09-21ユーザー指示「保存済みバス停を1件だけ選べるようにし、
-           選んだ時だけカードの色をSave停の色ベースでハイライトしたい」対応で、
-           同じ位置に目的地ハイライトピッカーを新設した（initHighlightPicker()、
+      <!-- フェーズ9で地図パネルが全面化した後も、ヘッダー自体は変更なし
+           （タイトル+目的地ハイライトピッカーのみの1行、initHighlightPicker()、
            mockups/home-destination-highlight-picker-v1.htmlユーザー承認済み）。
            保存済み目的地が0件の時はボタン自体を非表示にする。 -->
       <header class="app-header">
@@ -45,9 +37,12 @@
         <div class="home-highlight-dropdown" id="home-highlight-dropdown" hidden></div>
       </header>
 
-      <!-- フェーズ6: 地図パネル（現在地+周辺バス停ピン）。initHomeMap()/renderHomeMapPins()が
-           GPS取得・nearbyStops確定後に描画する。Leaflet未読み込み・GPS未確定時は
-           #home-map-fallbackのメッセージにフォールバックする（.claude/plan-phase6参照）。 -->
+      <!-- フェーズ9: Home画面を全面マップ化（.claude/plan-phase9-fullmap-stopmodal.md、
+           mockups/home-fullmap-stopmodal-v1.html→home-stopmodal-centeredcard-swipe-v1.html
+           ユーザー承認済み）。地図パネルは20%固定高からflex:1（画面の残り全部）に変更し、
+           initHomeMap()/renderHomeMapPins()がGPS取得後の現在地表示・中心合わせを担当する。
+           Leaflet未読み込み時は#home-map-fallback、GPS未確定・取得失敗時は#gps-fallback
+           （このパネル内にオーバーレイとして重ねる、下記参照）にフォールバックする。 -->
       <div class="home-map-panel" id="home-map-panel">
         <div class="home-map-fallback" id="home-map-fallback">
           <i class="ti ti-loader-2" aria-hidden="true"></i>
@@ -62,22 +57,12 @@
         <button type="button" class="map-recenter-btn" id="home-map-recenter-btn" aria-label="Recenter map" hidden>
           <i class="ti ti-current-location" aria-hidden="true"></i>
         </button>
-      </div>
 
-      <!-- ユーザー指示「バス停の横スクロールは地図の下にもってきてください」対応。
-           ヘッダー内から地図直下に移動（app.js側のbuildStopPillRow()/DOM参照は
-           id="stop-pill-row"のまま変更不要）。 -->
-      <div class="stop-pill-row" id="stop-pill-row" role="tablist" aria-label="Nearest bus stops">
-        <button type="button" class="stop-pill stop-pill--active" role="tab" aria-selected="true">Opp The Nexus</button>
-      </div>
-
-      <div class="home-scroll-content" id="home-scroll-content">
-
-        <!-- Pull to Refresh インジケーター（フェーズ5第8-2節）。PWAスタンドアロン起動時のみ
-             有効化される（_initPtr内で判定）。height/opacityのみJSで操作する。 -->
-        <div class="ptr-indicator" id="ptr-indicator-home"><div class="ptr-spinner"></div></div>
-
-        <!-- GPS取得失敗時のフォールバックUI（通常は非表示。app.jsがdisplayを切り替える） -->
+        <!-- GPS取得失敗時のフォールバックUI。フェーズ9で全面マップ化するまでは
+             #home-scroll-content内の独立ブロックだったが、地図パネル自体が
+             画面のほぼ全体になったため、地図パネルを覆うオーバーレイとして
+             ここに統合した（表示時はshowHomeMapFallback()も併用し、
+             下の地図・ピンも隠す。app.jsのshowGpsFallback()/hideGpsFallback()参照）。 -->
         <div class="gps-fallback" id="gps-fallback" hidden>
           <i class="ti ti-map-pin-off" aria-hidden="true"></i>
           <p class="gps-fallback-title" id="gps-fallback-title">Unable to get your location</p>
@@ -86,39 +71,61 @@
           </p>
           <button type="button" class="gps-fallback-retry-btn" id="gps-fallback-retry-btn">Try Again</button>
         </div>
+      </div>
 
-        <!-- 2026-09-20: Arrivalsビュー廃止に伴い新設。直近の到着バスをETA位置に
-             応じて並べる横帯（renderApproachingBar()が動的生成）。Now=左端の
-             バス停マーカー、右端=15分以上。Save済み目的地行きの系統のみ
-             サイズ+アクセント色で強調する（それ以外は混雑度の色分け無しの
-             ニュートラル表示、Timetable側で既に見えるため二重に持たせない）。
-             2026-09-22ユーザー指摘「縦スクロールさせると横スクロールがやりずらい」
-             により一度地図パネルと同じ固定段(flex-shrink:0)に移したが、
-             その後overflow-y:hiddenの明示漏れ(縦の意図しないラバーバンド)が
-             真因と判明し修正済みのため、2026-09-22ユーザー指示「どっちがいいか
-             試したい」で再度#home-scroll-content内・Timetable直前に戻し、
-             Timetableと一緒にページスクロールする挙動に戻した
-             （固定表示との比較検討用、DOM位置に依存する処理は無いため
-             再度移動しても既存のJS/CSSロジックはそのまま動作する）。 -->
-        <div class="home-approaching-panel" id="home-approaching-panel">
-          <div class="home-approaching-scroll" id="home-approaching-scroll">
-            <div class="home-approaching-track" id="home-approaching-track">
-              <div class="home-approaching-stop-flag"><i class="ti ti-map-pin" aria-hidden="true"></i></div>
-              <div class="home-approaching-divider" id="home-approaching-divider-1" hidden></div>
-              <div class="home-approaching-divider" id="home-approaching-divider-2" hidden></div>
-              <div class="home-approaching-divider" id="home-approaching-divider-3" hidden></div>
+      <!-- フェーズ9: バス停詳細モーダル（中央カード型、mockups/
+           home-stopmodal-centeredcard-swipe-v1.htmlユーザー承認済み「B」案）。
+           GPSで最寄りバス停が確定次第、自動でオープンした状態になる
+           （loadNearbyStopsAndArrivals()末尾のshowStopDetailModal()参照、
+           「一目でわかる・タップ不要」という既存コンセプトを維持するため）。
+           閉じるとマップをブラウズでき、別のバス停ピンをタップすればまた開く。 -->
+      <div class="stop-modal-overlay" id="stop-modal-overlay">
+        <div class="stop-modal" id="stop-modal">
+          <div class="stop-modal-header">
+            <div class="stop-modal-title">
+              <div class="stop-modal-title-code" id="stop-modal-code"></div>
+              <div class="stop-modal-title-name" id="stop-modal-name">Bus stop</div>
             </div>
-            <div class="home-approaching-ticks" id="home-approaching-ticks">
-              <span id="home-approaching-tick-now">Now</span><span id="home-approaching-tick-5">5</span><span id="home-approaching-tick-10">10</span><span id="home-approaching-tick-end">15 min+</span>
-            </div>
+            <button type="button" class="stop-modal-close" id="stop-modal-close-btn" aria-label="Close">
+              <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
           </div>
-          <div class="home-approaching-fade" id="home-approaching-fade" hidden></div>
+
+          <!-- ピル行をモーダル内に移設（ユーザー指示「バス停の情報ピルの情報は
+               このモーダルの中にしたい」）。地図の表示範囲には依存しない、
+               GPS直線距離で固定の近隣5件（app.js側のbuildStopPillRow()/DOM参照は
+               id="stop-pill-row"のまま変更不要）。 -->
+          <div class="stop-pill-row" id="stop-pill-row" role="tablist" aria-label="Nearest bus stops"></div>
+
+          <div class="stop-modal-body-wrap" id="stop-modal-body-wrap">
+
+            <!-- 直近の到着バスをETA位置に応じて並べる横帯（renderApproachingBar()が
+                 動的生成）。Now=左端のバス停マーカー、右端=15分以上。Save済み
+                 目的地行きの系統のみサイズ+アクセント色で強調する（それ以外は
+                 混雑度の色分け無しのニュートラル表示、Timetable側で既に見えるため
+                 二重に持たせない）。 -->
+            <div class="home-approaching-panel" id="home-approaching-panel">
+              <div class="home-approaching-scroll" id="home-approaching-scroll">
+                <div class="home-approaching-track" id="home-approaching-track">
+                  <div class="home-approaching-stop-flag"><i class="ti ti-map-pin" aria-hidden="true"></i></div>
+                  <div class="home-approaching-divider" id="home-approaching-divider-1" hidden></div>
+                  <div class="home-approaching-divider" id="home-approaching-divider-2" hidden></div>
+                  <div class="home-approaching-divider" id="home-approaching-divider-3" hidden></div>
+                </div>
+                <div class="home-approaching-ticks" id="home-approaching-ticks">
+                  <span id="home-approaching-tick-now">Now</span><span id="home-approaching-tick-5">5</span><span id="home-approaching-tick-10">10</span><span id="home-approaching-tick-end">15 min+</span>
+                </div>
+              </div>
+              <div class="home-approaching-fade" id="home-approaching-fade" hidden></div>
+            </div>
+
+            <!-- 系統ごとに1行、renderTimetableView()が動的生成。バス停の切替は
+                 ピルタップ、または一度バツで閉じて地図上の別ピンをタップする
+                 2手段のみ（2026-09-27ユーザー指示により横スワイプ切替は撤去）。 -->
+            <div class="timetable-list" id="home-timetable-list"></div>
+
+          </div>
         </div>
-
-        <!-- フェーズ6: Timetableビュー（系統ごとに1行、renderTimetableView()が動的生成）。
-             2026-09-20 Arrivalsビュー廃止に伴い、Home画面唯一のビューになった。 -->
-        <div class="timetable-list" id="home-timetable-list"></div>
-
       </div>
     </section>
 
