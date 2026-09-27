@@ -2291,14 +2291,19 @@
   // 対象から除く（見た目の二重強調を避ける）。
   function applyDestinationMatchStyles() {
     const hex = getCurrentHighlightColorHex();
-    const activeStopCode = currentDisplayedStop ? currentDisplayedStop.BusStopCode : null;
 
+    // 2026-09-27ユーザー指摘「目的地に行かないバスだけグリーンにしたい」で
+    // 撤去: 従来はアクティブなバス停を「二重に強調しすぎない」ため判定対象から
+    // 外していたが、これだとTimetable側は目的地一致でハイライトされているのに
+    // 上のピル・地図ピンだけ従来のニュートラルな緑のまま、という見た目の
+    // 不一致になっていた。アクティブでも一致していれば目的地の色にする
+    // （CSS側.stop-pill--active.stop-pill--dest-match等で「アクティブの塗り
+    // つぶし形状」自体は維持しつつ色だけ差し替える）。
     const pillRow = document.getElementById('stop-pill-row');
     if (pillRow) {
       Array.from(pillRow.querySelectorAll('.stop-pill')).forEach((pill, index) => {
         const stop = nearbyStops[index];
-        const matched =
-          Boolean(hex) && !!stop && stop.BusStopCode !== activeStopCode && destinationMatchCache.get(stop.BusStopCode) === true;
+        const matched = Boolean(hex) && !!stop && destinationMatchCache.get(stop.BusStopCode) === true;
         pill.classList.toggle('stop-pill--dest-match', matched);
         pill.style.setProperty('--pill-match-color', matched ? hex : '');
       });
@@ -2309,7 +2314,7 @@
       if (!iconEl) return;
       const pin = iconEl.querySelector('.home-map-stop-pin');
       if (!pin) return;
-      const matched = Boolean(hex) && entry.stopCode !== activeStopCode && destinationMatchCache.get(entry.stopCode) === true;
+      const matched = Boolean(hex) && destinationMatchCache.get(entry.stopCode) === true;
       pin.classList.toggle('home-map-stop-pin--dest-match', matched);
       pin.style.setProperty('--pin-match-color', matched ? hex : '');
     });
@@ -2970,19 +2975,21 @@
       }
       map.invalidateSize();
       if (bounds.length > 1) {
-        map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17, animate: false });
+        map.fitBounds(bounds, { padding: [30, 30], maxZoom: 18, animate: false });
         // 2026-09-24ユーザー指摘「最初に表示されるマップが少し遠い、2-3の
         // バス停が見えるか見えないかくらいでもう少しズームしてほしい」対応。
         // fitBounds()はnearbyStops(最大5件)全部が収まるよう自動でズーム
         // アウトするため、バス停同士が離れていると意図以上に引いた表示に
         // なっていた。最低限このズームレベルは確保する（全件は収まらなく
         // なってもよい、近くの2-3件がはっきり見えることを優先する）。
-        const MIN_HOME_MAP_ZOOM = 16;
+        // 2026-09-27ユーザー指示「もうちょっとズームした状態から始めていい」
+        // によりさらに1段階引き上げた（16→17、maxZoomも18に合わせて拡大）。
+        const MIN_HOME_MAP_ZOOM = 17;
         if (map.getZoom() < MIN_HOME_MAP_ZOOM) {
           map.setZoom(MIN_HOME_MAP_ZOOM, { animate: false });
         }
       } else {
-        map.setView([lat, lng], 16, { animate: false });
+        map.setView([lat, lng], 17, { animate: false });
       }
       // animate:falseなのでこの時点で同期的にmoveendが発火し、通常は
       // ensureHomeMap()内のmoveendリスナーがfetchAndRenderInBoundsStops()を

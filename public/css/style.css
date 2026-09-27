@@ -411,12 +411,25 @@ button {
    ピンにも反映させたい」): 選択中の目的地に「これから」到達できるバス停の
    ピルを、その目的地のアイコン色で縁取り+文字色にする（app.js側の
    applyDestinationMatchStyles()が--pill-match-colorをインラインで設定、
-   6色固定パレットのためCSSクラスでの色分けはしない）。アクティブ(表示中)の
-   ピルは対象外にしているため.stop-pill--activeとの併用は考慮不要。 */
+   6色固定パレットのためCSSクラスでの色分けはしない）。 */
 .stop-pill--dest-match {
   border-color: var(--pill-match-color);
   color: var(--pill-match-color);
   font-weight: 700;
+}
+
+/* 2026-09-27ユーザー指摘「目的地に行かないバスだけグリーンにしたい」対応。
+   アクティブ(表示中)のピルが目的地に一致する場合、ニュートラルな緑の
+   塗りつぶし(.stop-pill--active)ではなく目的地の色で塗りつぶす
+   （「塗りつぶしピル」という形自体は維持し、色だけ差し替える）。
+   2026-09-27実機で発見・修正: colorを明示していなかったため、後述の
+   .stop-pill--dest-match(color:var(--pill-match-color))が同じ詳細度で
+   スタイルシート順に勝ってしまい、文字色が背景色と同じになって文字が
+   読めなくなっていた。ここで白文字を明示的に指定し直す。 */
+.stop-pill--active.stop-pill--dest-match {
+  background: var(--pill-match-color);
+  border-color: var(--pill-match-color);
+  color: var(--on-accent);
 }
 
 /* フェーズ9: Home画面は全面マップ化に伴い専用スクロールコンテナ
@@ -609,11 +622,20 @@ button {
 /* フェーズ9追加(2026-09-27ユーザー指示): .stop-pill--dest-matchと同じ目的地
    ハイライトを地図ピンにも反映する。既定のニュートラル色(--caramel)の
    代わりに目的地のアイコン色でピンを塗る（app.js側の
-   applyDestinationMatchStyles()が--pin-match-colorをインラインで設定）。
-   アクティブ(表示中)のピンは対象外にしているため.home-map-stop-pin--active
-   との併用は考慮不要。 */
+   applyDestinationMatchStyles()が--pin-match-colorをインラインで設定）。 */
 .home-map-stop-pin--dest-match {
   color: var(--pin-match-color);
+}
+
+/* 2026-09-27ユーザー指摘「目的地に行かないバスだけグリーンにしたい」対応。
+   アクティブ(表示中)のピンが目的地に一致する場合、ニュートラルな緑の
+   塗りつぶし(.home-map-stop-pin--active)ではなく目的地の色で塗りつぶす。
+   2026-09-27実機で発見・修正: ピルと同じ理由（colorが.home-map-stop-pin
+   --dest-matchに競り負ける）でピンのアイコングリフ色も背景と同化していた
+   ため、ここでも白を明示的に指定し直す。 */
+.home-map-stop-pin--active.home-map-stop-pin--dest-match {
+  background: var(--pin-match-color);
+  color: var(--on-accent);
 }
 
 .home-map-stop-label {
