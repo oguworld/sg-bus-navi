@@ -3887,10 +3887,14 @@
    * だったため、MRTが使っていない色相(黄/黄緑/青緑/藍/赤紫/淡いピンク)を
    * 中心にした新パレットに差し替えた（モック比較
    * mockups/destination-palette-mrt-safe-v1.html）。 ── */
-  const DESTINATION_ICON_COLORS = ['gold', 'lime', 'turquoise', 'indigo', 'magenta', 'rose'];
+  // 2026-09-28ユーザー指摘「セーブするバス停の色、グリーン系はアプリの
+  // アクセントカラー(柳グリーン、--fill-accent)と紛らわしい」対応。
+  // 旧'lime'(#7FA23C、黄緑)はアプリ全体の柳グリーンと見分けにくかったため、
+  // 緑系を含まない'coral'(赤茶系)に差し替えた。
+  const DESTINATION_ICON_COLORS = ['gold', 'coral', 'turquoise', 'indigo', 'magenta', 'rose'];
   const DESTINATION_ICON_COLOR_LABELS = {
     gold: 'Gold',
-    lime: 'Lime',
+    coral: 'Coral',
     turquoise: 'Turquoise',
     indigo: 'Indigo',
     magenta: 'Magenta',
@@ -3900,8 +3904,11 @@
   // 旧パレットのキーが既存データ（localStorage）に残っている場合の読み替え表。
   // ユーザーの「色を区別して使い分けていた」意図はできるだけ保ったまま、
   // MRTと被らない対応する新色に1:1でマッピングする。
+  // 'lime'（2026-09-28に'coral'へ差し替え済みのため、それ以前に保存された
+  // 'lime'データもここで読み替える。'green'は元々その前身）。
   const LEGACY_DESTINATION_ICON_COLOR_MAP = {
-    green: 'lime',
+    green: 'coral',
+    lime: 'coral',
     blue: 'indigo',
     orange: 'gold',
     purple: 'magenta',
@@ -3922,8 +3929,12 @@
       const isActive = color === selectedColor;
       const activeClass = isActive ? ' destination-color-btn--active' : '';
       const label = DESTINATION_ICON_COLOR_LABELS[color];
+      // 2026-09-28ユーザー指摘「選んでいる色が分かりづらい」対応。選択中の
+      // スウォッチにだけ白いチェックマークを重ねる（CSS側の二重リングと
+      // 合わせて、離れた場所からでも選択状態が一目で分かるようにする）。
+      const checkIcon = isActive ? '<i class="ti ti-check" aria-hidden="true"></i>' : '';
       return `
-        <button type="button" class="destination-color-btn destination-color-btn--${color}${activeClass}" data-color="${color}" aria-label="${label}" aria-pressed="${isActive}"></button>
+        <button type="button" class="destination-color-btn destination-color-btn--${color}${activeClass}" data-color="${color}" aria-label="${label}" aria-pressed="${isActive}">${checkIcon}</button>
       `;
     }).join('');
     return `<div class="destination-color-picker">${swatches}</div>`;
