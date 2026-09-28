@@ -2602,6 +2602,28 @@
 
   // Timetableビュー全体を再描画する。上限なし・全件表示（8節確定事項、
   // MAX_DISPLAYED_ARRIVALSとは別概念）。系統番号の自然順でソートする。
+  // 2026-09-28ユーザー指摘「動作が少しカクカクしている」対応。以前は15秒ごとの
+  // ポーリングのたびに全行をinnerHTML=''で作り直していたが、モーダルを開いて
+  // 見ている間にチラつく原因になっていた。既存行(serviceNoで同定)は使い回して
+  // 到着時刻セルだけ更新し、なくなった系統の行だけ削除・新しく現れた系統だけ
+  // 追加する（fetchAndRenderInBoundsStops()の地図ピン差分更新と同じ方針）。
+  function updateTimetableRowContent(row, service, currentStopCode) {
+    const nextBuses = [service.NextBus, service.NextBus2, service.NextBus3];
+    const representative = nextBuses.find((nb) => nb && nb.EstimatedArrival) || nextBuses[0] || {};
+
+    row.setAttribute('data-route-to', representative.DestinationName || '');
+    row.setAttribute('data-origin-code', representative.OriginCode || '');
+    row.setAttribute('data-destination-code', representative.DestinationCode || '');
+    row.setAttribute('data-current-stop-code', currentStopCode || '');
+
+    const destText = representative.DestinationName || '';
+    const destEl = row.querySelector('.tt-dest');
+    if (destEl && destEl.textContent !== destText) destEl.textContent = destText;
+
+    const timesEl = row.querySelector('.tt-times');
+    if (timesEl) timesEl.innerHTML = nextBuses.map((nb) => buildTimetableTimeCellHtml(nb)).join('');
+  }
+
   function renderTimetableView(services) {
     const container = document.getElementById('home-timetable-list');
     if (!container) return;
@@ -2615,10 +2637,30 @@
     const sorted = list.slice().sort((a, b) => compareServiceNumbers(a.ServiceNo || '', b.ServiceNo || ''));
     const currentStopCode = currentDisplayedStop ? currentDisplayedStop.BusStopCode : '';
 
-    container.innerHTML = '';
+    // 既存行がplaceholder-screen（読み込み中/エラー表示）の場合は使い回せない
+    // ため、その場合のみ通常通り全消去してから組み立てる。
+    const existingRows = Array.from(container.querySelectorAll('.tt-row'));
+    if (existingRows.length !== container.children.length) {
+      container.innerHTML = '';
+      existingRows.length = 0;
+    }
+
+    const existingByServiceNo = new Map(existingRows.map((row) => [row.getAttribute('data-route-number'), row]));
+
     sorted.forEach((service) => {
-      container.appendChild(buildTimetableRow(service, currentStopCode));
+      const serviceNo = service.ServiceNo || '?';
+      const existing = existingByServiceNo.get(serviceNo);
+      if (existing) {
+        updateTimetableRowContent(existing, service, currentStopCode);
+        existingByServiceNo.delete(serviceNo);
+        container.appendChild(existing); // 既にDOM上にあるノードの移動のみ、作り直しはしない
+      } else {
+        container.appendChild(buildTimetableRow(service, currentStopCode));
+      }
     });
+
+    // 表示から消えた系統の行だけ削除する。
+    existingByServiceNo.forEach((row) => row.remove());
   }
 
   function renderTimetableLoadingState() {
@@ -2835,8 +2877,16 @@
     // 2026-09-24ユーザー指示「地図を動かしたとき遠くのバス停も表示・タップして
     // 見られるようにしたい」対応。移動が収まるたびに表示範囲内の全バス停を
     // 取得し直す（fetchAndRenderInBoundsStops()参照）。
+    // 2026-09-28ユーザー指摘「動作が少しカクカクしている」対応。ドラッグ中に
+    // 連続発火するmoveendのたびに即APIを叩くと無駄な取得・再描画が重なるため
+    // デバウンスする（ドラッグを止めてから静定するまで待つ）。
+    let moveEndDebounceTimer = null;
     map.on('moveend', () => {
-      fetchAndRenderInBoundsStops();
+      if (moveEndDebounceTimer) clearTimeout(moveEndDebounceTimer);
+      moveEndDebounceTimer = setTimeout(() => {
+        moveEndDebounceTimer = null;
+        fetchAndRenderInBoundsStops();
+      }, 200);
     });
 
     homeMapInstance = map;
@@ -2887,11 +2937,24 @@
     const stops = Array.isArray(data.stops) ? data.stops : [];
     const activeStopCode = currentDisplayedStop ? currentDisplayedStop.BusStopCode : null;
 
-    homeMapStopMarkers.forEach((entry) => homeMapInstance.removeLayer(entry.marker));
-    homeMapStopMarkers = [];
+    // 2026-09-28ユーザー指摘「動作が少しカクカクしている」対応。以前はmoveend
+    // のたびに全ピンをremoveLayer→再生成していたが、表示範囲を少しずらすだけ
+    // でも重なる大半のピンが一瞬消えて作り直されるためチラつきの原因になって
+    // いた。同じstopCodeのマーカーは使い回し、表示範囲から外れた分だけ削除・
+    // 新しく入った分だけ追加する差分更新にする（アクティブ状態・目的地マッチ
+    // 色は別経路が既存DOMにclassList操作で反映するため、ここでは触らない）。
+    const existingByCode = new Map(homeMapStopMarkers.map((entry) => [entry.stopCode, entry]));
+    const nextMarkers = [];
 
     stops.forEach((stop) => {
       if (stop.Latitude == null || stop.Longitude == null) return;
+
+      const existing = existingByCode.get(stop.BusStopCode);
+      if (existing) {
+        nextMarkers.push(existing);
+        existingByCode.delete(stop.BusStopCode);
+        return;
+      }
 
       const isActive = stop.BusStopCode === activeStopCode;
       // 2026-09-28ユーザー指示「マップ上の目的地のバス停のアイコンを、Saved
@@ -2920,8 +2983,12 @@
           loadNearbyStopsAndArrivals(stop.Latitude, stop.Longitude, { isGpsUpdate: false });
         }
       });
-      homeMapStopMarkers.push({ marker, stopCode: stop.BusStopCode, description: stop.Description });
+      nextMarkers.push({ marker, stopCode: stop.BusStopCode, description: stop.Description });
     });
+
+    // 新しい表示範囲に含まれなくなったピンだけ削除する。
+    existingByCode.forEach((entry) => homeMapInstance.removeLayer(entry.marker));
+    homeMapStopMarkers = nextMarkers;
 
     // 目的地ハイライトの色を地図ピンにも反映する（buildStopPillRow()と同じ
     // パターン）。
