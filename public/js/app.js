@@ -334,6 +334,14 @@
   // 連番を振り、自分より新しい呼び出し（clearHomeMapDestinationRoute()の
   // たびに増える）が既に走っていれば、古い呼び出しの結果は反映しない。
   let homeMapDestinationRouteSeq = 0;
+  // 2026-09-28ユーザー指摘「マップ移動するたびに線が引き直されるのは仕方ない?
+  // 変わらないなら一回引くだけでいい」対応。updateHomeMapDestinationRouteFrom
+  // NearestMatch()はnearbyStops（GPS基準、地図の表示範囲=パン操作とは無関係）
+  // からの判定のため、地図をパンしただけでは結果は変わらない。それでも
+  // moveendのたびに毎回clear+再fetch+再描画していたため、パン中に線が一瞬
+  // 消えて描き直される無駄なチラつきになっていた。直前に描いたルートと同一
+  // （出発バス停・系統・方向・行き先・色が全て同じ）なら再描画をスキップする。
+  let lastDrawnDestinationRouteKey = null;
   // 2026-09-24ユーザー指摘「一瞬現在地が表示されてその後に初期状態の場所に
   // 移動する」で発覚・修正: renderHomeMapPins()内でdvhの遅延解決対策として
   // 次フレーム以降にも表示範囲の再適用(applyHomeMapView())をスケジュール
@@ -1512,10 +1520,15 @@
   // 下記drawDestinationRouteOnHomeMap()のコメント参照）。
   function clearHomeMapDestinationRoute() {
     homeMapDestinationRouteSeq++;
+    lastDrawnDestinationRouteKey = null;
     if (homeMapDestinationRouteLine && homeMapInstance) {
       homeMapInstance.removeLayer(homeMapDestinationRouteLine);
     }
     homeMapDestinationRouteLine = null;
+  }
+
+  function buildDestinationRouteKey(routeInfo, fromStopCode, hex) {
+    return `${fromStopCode}|${routeInfo.serviceNo}|${routeInfo.direction}|${routeInfo.toStopCode}|${hex}`;
   }
 
   // フェーズ11改修(2026-09-28ユーザー指示「最寄りの、目的地への経路が出て
@@ -1533,7 +1546,7 @@
   // clearHomeMapDestinationRoute()で連番を進め、自分の番号を捕まえておき、
   // fetch完了時に「自分より新しい呼び出しが既に始まっていないか」を
   // 連番の比較だけで判定する（他の箇所のrequestSeqパターンと同じ方式）。
-  async function drawDestinationRouteOnHomeMap(routeInfo, fromStopCode, hex) {
+  async function drawDestinationRouteOnHomeMap(routeInfo, fromStopCode, hex, routeKey) {
     clearHomeMapDestinationRoute();
     const seq = homeMapDestinationRouteSeq;
     if (!homeMapInstance || !routeInfo || !fromStopCode || !hex) return;
@@ -1571,6 +1584,7 @@
     }).addTo(homeMapInstance);
     // ピン・現在地ドットの下に隠れないよう、常に最背面（タイルのすぐ上）に送る。
     homeMapDestinationRouteLine.bringToBack();
+    lastDrawnDestinationRouteKey = routeKey || null;
   }
 
   async function applyRouteEnrichment() {
@@ -2406,7 +2420,11 @@
       clearHomeMapDestinationRoute();
       return;
     }
-    drawDestinationRouteOnHomeMap(routeInfo, nearestMatch.BusStopCode, hex);
+    const routeKey = buildDestinationRouteKey(routeInfo, nearestMatch.BusStopCode, hex);
+    if (routeKey === lastDrawnDestinationRouteKey && homeMapDestinationRouteLine) {
+      return; // 直前と同じ経路が既に描画済みなので、地図パンのたびの再fetch・再描画は不要
+    }
+    drawDestinationRouteOnHomeMap(routeInfo, nearestMatch.BusStopCode, hex, routeKey);
   }
 
   // applyRouteEnrichment()が確定させたTimetable行のハイライト状態
