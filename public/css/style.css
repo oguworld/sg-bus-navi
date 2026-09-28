@@ -505,12 +505,15 @@ button {
      低い値(10)だったため、半透明(opacity:0.88)のタイル層の下に潜り込み、
      地図の色を透かして薄く見えていた。全ペインより確実に上になる値にする。 */
   z-index: 1000;
-  width: 36px;
-  height: 36px;
+  /* 2026-09-28ユーザー指摘「現在地ボタンが見づらい」対応。36px+薄い影のままだと
+     グレースケールフィルター済みの地図タイルに埋もれるため、一回り大きくし
+     枠線+濃い影で地図から浮かび上がらせる（Home画面・経路モーダル共通）。 */
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  border: none;
+  border: 1.5px solid var(--border);
   background: var(--surface-1);
-  box-shadow: 0 2px 6px rgba(43, 43, 39, 0.25);
+  box-shadow: 0 3px 10px rgba(43, 43, 39, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -518,7 +521,7 @@ button {
 }
 
 .map-recenter-btn i {
-  font-size: 18px;
+  font-size: 22px;
   color: var(--text-primary);
 }
 
