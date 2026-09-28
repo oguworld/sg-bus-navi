@@ -2422,6 +2422,16 @@
       )
     );
 
+    // 2026-09-28ユーザー指摘「プログレスバー一番左のバス停アイコンも目的地に
+    // 応じて色変えて」対応。このバス停発のいずれかの系統が目的地に一致して
+    // いれば（＝1件でもハイライトされていれば）、常時緑固定だった現在地
+    // フラグもその目的地の色にする。
+    const stopFlag = track.querySelector('.home-approaching-stop-flag');
+    if (stopFlag) {
+      const hasAnyMatch = Boolean(colorHex) && matchedServiceNos.size > 0;
+      stopFlag.style.background = hasAnyMatch ? colorHex : '';
+    }
+
     // 2026-09-22ユーザー指示「Saveしたバス停をハイライトさせてるとき、
     // プログレスバーの系統番号カードの下の5/10/15ラベルと同じ位置に、
     // その系統が来るまでの分数をハイライト色で表示」対応。既存のeta
@@ -4451,6 +4461,28 @@
         const titleInput = editor.querySelector('.destination-item-title-input');
         if (titleInput) {
           titleInput.focus();
+
+          // 2026-09-28ユーザー指摘「編集中、右下のDoneがキーボードで隠れる」
+          // 対応。タイトル欄にフォーカスするとソフトキーボードが開き、
+          // パネル下部のDoneボタンがその裏に隠れてしまっていた。iOS Safariは
+          // キーボード表示時にレイアウトビューポート自体は縮まず
+          // visualViewportだけが縮むため、scrollIntoView()だけでは正しく
+          // 判定できない。visualViewport.height（実際に見えている高さ）を
+          // 基準に、Doneボタンがその範囲に収まるよう明示的にスクロールする。
+          const scrollDoneButtonAboveKeyboard = () => {
+            const doneBtnEl = editor.querySelector('.destination-item-editor-done');
+            if (!doneBtnEl) return;
+            const rect = doneBtnEl.getBoundingClientRect();
+            const visibleBottom = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            const overflow = rect.bottom - visibleBottom;
+            if (overflow > 0) {
+              window.scrollBy({ top: overflow + 16, behavior: 'smooth' });
+            }
+          };
+          // キーボードのアニメーション完了を待ってから判定する（即座だと
+          // visualViewport.heightがまだ縮む前の値のまま）。
+          setTimeout(scrollDoneButtonAboveKeyboard, 350);
+
           titleInput.addEventListener('input', () => {
             const value = titleInput.value.trim();
             updateDestination(dest.id, { title: value });

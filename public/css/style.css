@@ -2522,15 +2522,18 @@ button {
 
 /* 終点（ゴール）マーカー（2026-09-14ユーザー指示「出発地点とゴール地点が色だけだと
    分かりづらい」対応）。出発点（青い丸）と色・形の両方で見分けられるよう、
-   丸ではなくピン型のアイコンにしている。 */
+   丸ではなくピン型のアイコンにしている。
+   2026-09-28ユーザー指示「経路マップ上の目的地の色もマップと合わせて緑に」
+   対応で、--midnight(黒)から経路線・地図全体のバス停ピンと同じ
+   --fill-accent(柳グリーン)に変更した。 */
 .route-modal-end-marker {
-  color: var(--midnight);
+  color: var(--fill-accent);
   font-size: 26px;
   line-height: 1;
   text-shadow: 0 0 2px var(--surface-2), 0 0 4px var(--surface-2);
   /* 実在するアウトライン版アイコン(ti-map-pin)に修正したことに伴い、線が
      細く見えすぎないよう縁取りを少し太らせて視認性を確保する。 */
-  -webkit-text-stroke: 0.6px var(--midnight);
+  -webkit-text-stroke: 0.6px var(--fill-accent);
 }
 
 /* 出発点(最寄バス停)・終点のラベル(2026-09-14ユーザー指示「現在地点(最寄駅)と
