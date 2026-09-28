@@ -1,6 +1,6 @@
 {
   "name": "sgbusnavi-ios",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "SGBusNavi iOS App (Capacitor)",
   "private": true,
   "scripts": {
@@ -21,5 +21,5 @@
     "@capacitor/cli": "^6.0.0",
     "@capacitor/ios": "^6.0.0"
   },
-  "releaseNotes": "Home is now a full-screen map — tap any stop to see arrivals. Saved destinations can link multiple bus stops, and matching stops are now highlighted with a live route line on the map."
+  "releaseNotes": "Improved the destination color picker — clearer color options and a more visible selection indicator."
 }
