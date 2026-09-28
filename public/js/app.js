@@ -269,6 +269,13 @@
   // selectHighlightDestination()参照）。
   let destinationMatchCache = new Map();
 
+  // フェーズ11改修(2026-09-28ユーザー指示「最寄りの、目的地への経路が出て
+  // いるバス停を出発点にして線を引くように」): BusStopCode ->
+  // {serviceNo, direction, toStopCode} のキャッシュ。/api/bus-routes/
+  // stops-towardのmatchDetailsを溜め、Home地図のルート線をどの系統・方向で
+  // 描くか（表示中のバス停に依存せず）を都度サーバーに聞き直さずに済ませる。
+  let destinationRouteDetailCache = new Map();
+
   function loadHighlightDestinationId() {
     try {
       return window.localStorage.getItem(HIGHLIGHT_DESTINATION_STORAGE_KEY) || null;
@@ -315,9 +322,18 @@
   let homeMapStopMarkers = []; // { marker, stopCode }[]
   // フェーズ11(2026-09-27ユーザー指示「選択した目的地の色で、アクティブな
   // バス停から目的地までの経路を線で結んで見えるようにしたい」): Home画面の
-  // 地図上に表示する、現在開いているバス停→選択中の目的地の実ルート線。
-  // applyRouteEnrichment()が判定を終えるたびに描き直す（drawDestinationRouteOnHomeMap()参照）。
+  // 地図上に表示する、最寄りの一致するバス停→選択中の目的地の実ルート線。
+  // updateHomeMapDestinationRouteFromNearestMatch()が判定のたびに描き直す。
   let homeMapDestinationRouteLine = null;
+  // 2026-09-28ユーザー指摘「別の目的地を選ぶと前の線が消えない」で発覚・
+  // 修正: drawDestinationRouteOnHomeMap()は/api/bus-routes/pathへの非同期
+  // fetchを伴うため、目的地を素早く切り替えると複数回の呼び出しが並行して
+  // 進行しうる。後から開始した呼び出しの結果が先に返ってくると、先に
+  // 開始した（＝古い目的地の）呼び出しが後から返ってきた時に最終的な
+  // 描画を上書きしてしまい、古い線が残ったままになっていた。呼び出しごとに
+  // 連番を振り、自分より新しい呼び出し（clearHomeMapDestinationRoute()の
+  // たびに増える）が既に走っていれば、古い呼び出しの結果は反映しない。
+  let homeMapDestinationRouteSeq = 0;
   // 2026-09-24ユーザー指摘「一瞬現在地が表示されてその後に初期状態の場所に
   // 移動する」で発覚・修正: renderHomeMapPins()内でdvhの遅延解決対策として
   // 次フレーム以降にも表示範囲の再適用(applyHomeMapView())をスケジュール
@@ -354,15 +370,19 @@
 
     isHomeScreenActive = target === 'home';
 
-    // 2026-09-27ユーザー指示「Homeを押したときに最寄りバス停のモーダルが
-    // 開くのは初回起動時だけでいい、使ってる途中でHomeを押した時はマップだけ
-    // でいい」対応。以前はここでopenStopDetailModal(0)を毎回強制していたが、
-    // 撤去した。起動直後の自動オープンはinitGpsLocation()
-    // →loadNearbyStopsAndArrivals()側のshowStopDetailModal()が既に担っている
-    // ため、この関数からは何もしなくても「初回のみ自動オープン」を満たす。
-    // モーダルを閉じてマップをブラウズしていた状態のままHome以外のタブへ
-    // 行って戻ってきても、その状態（開/閉）をそのまま保持する。
+    // 2026-09-27ユーザー指示により「初回起動時のみ自動オープン」に変更した
+    // ことがあったが、同日中に「やっぱりHomeを押した時は最寄りのバス停
+    // モーダルを表示して」と再度指示があり元に戻した。Homeタップのたびに
+    // 必ず最寄り(0番目)のバス停モーダルを開く。
     if (target === 'home') {
+      openStopDetailModal(0);
+
+      // ピル行のスクロール位置も念のためリセットする（openStopDetailModal(0)が
+      // currentStopIndexを変えない場合でも、ピル行自体のスクロール位置だけ
+      // 右にずれたまま残ることがあるため）。
+      const stopPillRow = document.getElementById('stop-pill-row');
+      if (stopPillRow) stopPillRow.scrollTo({ left: 0, behavior: 'smooth' });
+
       // Saved画面で目的地を追加・削除した後にHomeへ戻った場合に備え、
       // ハイライトピッカーボタンの表示/非表示・ラベルを最新の状態に同期する。
       updateHighlightButtonUI();
@@ -1486,22 +1506,36 @@
    * 何も選択していなければ判定自体を行わない。
    * ══════════════════════════════════════════════ */
   // フェーズ11: Home地図上の目的地ルート線を消す（選択解除・現在地=目的地・
-  // 一致なし等、描画すべきでない状態に入るたびに呼ぶ）。
+  // 一致なし等、描画すべきでない状態に入るたびに呼ぶ）。呼ぶたびに連番を
+  // 進め、進行中のdrawDestinationRouteOnHomeMap()呼び出しがあれば無効化する
+  // （2026-09-28ユーザー指摘「別の目的地を選ぶと前の線が消えない」対応、
+  // 下記drawDestinationRouteOnHomeMap()のコメント参照）。
   function clearHomeMapDestinationRoute() {
+    homeMapDestinationRouteSeq++;
     if (homeMapDestinationRouteLine && homeMapInstance) {
       homeMapInstance.removeLayer(homeMapDestinationRouteLine);
     }
     homeMapDestinationRouteLine = null;
   }
 
-  // フェーズ11: 現在開いているバス停(fromStopCode)から選択中の目的地への
-  // 実際のバス経路（/api/bus-routes/pathを再利用、経路モーダルと同じ
-  // データソース）をHome地図に選択中目的地の色で描画する。routeInfoは
-  // applyRouteEnrichment()が判定時に見つけた「最初に一致した系統・方向・
-  // 到達先バス停」（複数一致しても1本のみ描画、ユーザー決定「アクティブな
-  // バス停のみ」）。
+  // フェーズ11改修(2026-09-28ユーザー指示「最寄りの、目的地への経路が出て
+  // いるバス停を出発点にして線を引くように」): fromStopCodeは表示中の
+  // バス停ではなく、updateHomeMapDestinationRouteFromNearestMatch()が
+  // 選んだ「最寄りの一致するバス停」。実際のバス経路
+  // （/api/bus-routes/pathを再利用、経路モーダルと同じデータソース）を
+  // Home地図に選択中目的地の色で描画する。
+  //
+  // 2026-09-28ユーザー指摘「別の目的地を選ぶと前の線が消えない」で発覚・
+  // 修正: /api/bus-routes/pathへのfetchは非同期のため、目的地を素早く
+  // 切り替えると複数回の呼び出しが並行して進行しうる。色の一致だけで
+  // 古い応答を判定しようとしたが、たまたま2つの目的地の色が同じ場合等に
+  // すり抜ける可能性があり不十分だった。呼び出しのたびに
+  // clearHomeMapDestinationRoute()で連番を進め、自分の番号を捕まえておき、
+  // fetch完了時に「自分より新しい呼び出しが既に始まっていないか」を
+  // 連番の比較だけで判定する（他の箇所のrequestSeqパターンと同じ方式）。
   async function drawDestinationRouteOnHomeMap(routeInfo, fromStopCode, hex) {
     clearHomeMapDestinationRoute();
+    const seq = homeMapDestinationRouteSeq;
     if (!homeMapInstance || !routeInfo || !fromStopCode || !hex) return;
     if (!routeInfo.serviceNo || routeInfo.direction == null || !routeInfo.toStopCode) return;
 
@@ -1519,10 +1553,11 @@
       return;
     }
 
-    // 判定中に目的地の選択・表示中バス停が変わっていたら、古い結果を描画しない。
+    // 自分より新しい呼び出しが既に走っていたら（=自分は古い目的地/バス停の
+    // 結果）、この応答は破棄する。
+    if (seq !== homeMapDestinationRouteSeq) return;
     if (!highlightDestinationId) return;
     if (!homeMapInstance) return;
-    if (!currentDisplayedStop || currentDisplayedStop.BusStopCode !== fromStopCode) return;
 
     const path = Array.isArray(data.path) ? data.path : [];
     if (path.length < 2) return;
@@ -1620,33 +1655,20 @@
       return;
     }
 
-    // フェーズ11: 最初に一致した系統・方向・到達先バス停を1件だけ記録する
-    // （ユーザー決定「アクティブなバス停のみ」、複数一致しても地図には
-    // 1本だけ描く。ハイライトのマーキング自体は従来通り全一致系統に適用）。
-    let firstMatchedRoute = null;
-
     serviceNos.forEach((serviceNo, index) => {
       const routeInfo = routeInfos[index] || {};
       if (routeInfo.matched !== true) return;
       groups.get(serviceNo).forEach((card) => applyHighlightIndicator(card, hex));
-      if (!firstMatchedRoute) {
-        firstMatchedRoute = {
-          serviceNo,
-          direction: routeInfo.summary ? routeInfo.summary.direction : null,
-          toStopCode: Array.isArray(routeInfo.matchedStopCodes) ? routeInfo.matchedStopCodes[0] : null,
-        };
-      }
     });
 
     // Timetable側のハイライトが確定したので、Approachingバーの該当ドットにも
     // 同じ色を反映する（系統単位の判定を二重に行わない）。
+    // 2026-09-28ユーザー指示によりHome地図のルート線は表示中のバス停から
+    // 切り離し、「最寄りの一致するバス停」から描くようになった
+    // （applyDestinationMatchStyles()→updateHomeMapDestinationRouteFromNearestMatch()
+    // 参照）。このTimetableハイライト自体は引き続き表示中のバス停基準のまま
+    // （Timetableはそのバス停の実際の到着情報を表示しているため）。
     syncApproachingBarMatches(hex);
-
-    if (firstMatchedRoute) {
-      drawDestinationRouteOnHomeMap(firstMatchedRoute, currentStopCode, hex);
-    } else {
-      clearHomeMapDestinationRoute();
-    }
   }
 
   // 行(.tt-row)1件に選択中目的地の色でハイライトを適用する（背景の薄いトーン+
@@ -1723,6 +1745,7 @@
   function updateHighlightButtonUI() {
     const btn = document.getElementById('home-highlight-btn');
     const labelEl = document.getElementById('home-highlight-btn-label');
+    const iconEl = document.getElementById('home-highlight-btn-icon');
     if (!btn || !labelEl) return;
 
     const destinations = loadDestinations();
@@ -1740,11 +1763,20 @@
       btn.classList.add('home-highlight-btn--active');
       btn.style.background = hex || '';
       btn.style.color = hex ? 'var(--on-accent)' : '';
+      // 2026-09-28ユーザー指示: 汎用のti-map-pinではなく、Saved画面の
+      // カテゴリバッジ(.destination-item-category-badge)と同じアイコンにする。
+      if (iconEl) {
+        const category = normalizeDestinationCategory(selected.category);
+        iconEl.innerHTML = DESTINATION_CATEGORY_ICON_SVG[category];
+      }
     } else {
       labelEl.textContent = 'Select stop';
       btn.classList.remove('home-highlight-btn--active');
       btn.style.background = '';
       btn.style.color = '';
+      if (iconEl) {
+        iconEl.innerHTML = '<i class="ti ti-map-pin"></i>';
+      }
     }
   }
 
@@ -1765,7 +1797,10 @@
     // 変わると意味を持たなくなるため、まずキャッシュを破棄して見た目を
     // 即座にクリアし（選択解除時はhexがnullになるためここで消える）、その後
     // 現在表示中のピル・ピンぶんだけ新しい目的地で再判定する。
+    // destinationRouteDetailCacheも同様（別の目的地の系統・方向情報を
+    // 誤って使い回さないようにする）。
     destinationMatchCache = new Map();
+    destinationRouteDetailCache = new Map();
     applyDestinationMatchStyles();
     const knownStopCodes = [
       ...nearbyStops.map((stop) => stop.BusStopCode),
@@ -2282,6 +2317,9 @@
     Object.entries(data.matches || {}).forEach(([code, matched]) => {
       destinationMatchCache.set(code, matched === true);
     });
+    Object.entries(data.matchDetails || {}).forEach(([code, detail]) => {
+      destinationRouteDetailCache.set(code, detail);
+    });
     applyDestinationMatchStyles();
   }
 
@@ -2290,7 +2328,21 @@
   // 現在表示中(アクティブ)のバス停は、既にモーダルが開いて強調されているため
   // 対象から除く（見た目の二重強調を避ける）。
   function applyDestinationMatchStyles() {
+    const selectedDestination = highlightDestinationId
+      ? loadDestinations().find((dest) => dest.id === highlightDestinationId)
+      : null;
     const hex = getCurrentHighlightColorHex();
+    // 2026-09-28ユーザー指摘「先ほどのアイコン変更はマップ上の目的地のバス停の
+    // アイコンです」対応。選択中の目的地自身に紐づくバス停コード集合と、
+    // Saved画面のカテゴリバッジ(.destination-item-category-badge)と同じ
+    // アイコンSVGを、地図ピン用に用意しておく。
+    const ownStopCodes =
+      selectedDestination && Array.isArray(selectedDestination.stops)
+        ? new Set(selectedDestination.stops.map((stop) => stop.busStopCode))
+        : new Set();
+    const ownCategorySvg = selectedDestination
+      ? DESTINATION_CATEGORY_ICON_SVG[normalizeDestinationCategory(selectedDestination.category)]
+      : null;
 
     // 2026-09-27ユーザー指摘「目的地に行かないバスだけグリーンにしたい」で
     // 撤去: 従来はアクティブなバス停を「二重に強調しすぎない」ため判定対象から
@@ -2314,10 +2366,47 @@
       if (!iconEl) return;
       const pin = iconEl.querySelector('.home-map-stop-pin');
       if (!pin) return;
-      const matched = Boolean(hex) && destinationMatchCache.get(entry.stopCode) === true;
+
+      // 目的地自身のバス停は「これから行ける」判定の対象外（自分自身への
+      // ルートは意味がないため）だが、代わりにその目的地のカテゴリアイコン+
+      // 色で塗って「地図上のどこがその目的地か」を分かるようにする。
+      const isOwn = Boolean(hex) && ownStopCodes.has(entry.stopCode);
+      const matched = Boolean(hex) && !isOwn && destinationMatchCache.get(entry.stopCode) === true;
+
       pin.classList.toggle('home-map-stop-pin--dest-match', matched);
       pin.style.setProperty('--pin-match-color', matched ? hex : '');
+      pin.classList.toggle('home-map-stop-pin--own-dest', isOwn);
+      pin.style.setProperty('--own-dest-color', isOwn ? hex : '');
+      pin.innerHTML = isOwn && ownCategorySvg ? ownCategorySvg : '<i class="ti ti-map-pin"></i>';
     });
+
+    // 2026-09-28ユーザー指示「バス停をタップしなくてもいつも線が引かれる
+    // ように、最寄りの・目的地への経路が出ているバス停を出発点にして
+    // 線を引くように変えて」対応。表示中のバス停(currentDisplayedStop)とは
+    // 切り離し、常に「最寄りの一致するバス停」から描き直す。
+    updateHomeMapDestinationRouteFromNearestMatch(hex);
+  }
+
+  // フェーズ11改修: 目的地への経路線を、表示中のバス停からではなく
+  // 「最寄りの、目的地への経路が出ているバス停」から描く。nearbyStopsは
+  // GPSからの距離順（最寄り順）に並んでいるため、先頭から順に
+  // destinationMatchCacheを見ていけば最寄りの一致が見つかる。
+  function updateHomeMapDestinationRouteFromNearestMatch(hex) {
+    if (!hex) {
+      clearHomeMapDestinationRoute();
+      return;
+    }
+    const nearestMatch = nearbyStops.find((stop) => destinationMatchCache.get(stop.BusStopCode) === true);
+    if (!nearestMatch) {
+      clearHomeMapDestinationRoute();
+      return;
+    }
+    const routeInfo = destinationRouteDetailCache.get(nearestMatch.BusStopCode);
+    if (!routeInfo) {
+      clearHomeMapDestinationRoute();
+      return;
+    }
+    drawDestinationRouteOnHomeMap(routeInfo, nearestMatch.BusStopCode, hex);
   }
 
   // applyRouteEnrichment()が確定させたTimetable行のハイライト状態
@@ -2795,9 +2884,14 @@
       if (stop.Latitude == null || stop.Longitude == null) return;
 
       const isActive = stop.BusStopCode === activeStopCode;
+      // 2026-09-28ユーザー指示「マップ上の目的地のバス停のアイコンを、Saved
+      // 画面のカテゴリバッジと同じアイコン+色にしてほしい」対応。中身を
+      // 後からapplyDestinationMatchStyles()で差し替えられるよう、アイコン
+      // フォントの<i>を直接.home-map-stop-pinにするのではなく<span>で包む
+      // （中にti-map-pinの<i>、または目的地のカテゴリSVGのどちらかが入る）。
       const icon = window.L.divIcon({
         className: '',
-        html: `<i class="ti ti-map-pin home-map-stop-pin${isActive ? ' home-map-stop-pin--active' : ''}" aria-hidden="true"></i>`,
+        html: `<span class="home-map-stop-pin${isActive ? ' home-map-stop-pin--active' : ''}" aria-hidden="true"><i class="ti ti-map-pin"></i></span>`,
         iconSize: [20, 20],
         iconAnchor: [10, 18],
       });
@@ -4293,11 +4387,14 @@
         // フェーズ10新規: 紐づくバス停の管理セクション（削除・追加）。
         // 最後の1件はremoveStopFromDestination()側でも拒否するが、
         // UI上もボタン自体を出さずわかりやすくする。
+        // 2026-09-27ユーザー指摘「編集画面をもうちょい見やすく使いやすく」対応で
+        // 各行に停留所アイコンを追加し、他のリスト行と見た目を揃えた。
         const stopsEditorRowsHtml = dest.stops
           .map(
             (stop) => `
           <div class="destination-item-stops-editor-row" data-stop-code="${escapeHtml(stop.busStopCode)}">
-            <span>${escapeHtml(stop.busStopCode)} · ${escapeHtml(stop.description)}</span>
+            <i class="ti ti-map-pin destination-item-stops-editor-row-icon" aria-hidden="true"></i>
+            <span class="destination-item-stops-editor-row-text">${escapeHtml(stop.busStopCode)} · ${escapeHtml(stop.description)}</span>
             ${
               dest.stops.length > 1
                 ? '<button type="button" class="destination-item-stop-remove-btn" aria-label="Remove this stop"><i class="ti ti-x" aria-hidden="true"></i></button>'
@@ -4307,19 +4404,27 @@
           )
           .join('');
 
+        // 2026-09-28ユーザー指示「編集画面を整理整頓」対応。3案(A:セクション
+        // カード化/B:専用編集シート/C:統合ピッカー)のモックアップから
+        // A案を採用（mockups/destination-editor-reorganize-v1.html）。
+        // Title/Appearance(Category+Color統合)/Linked bus stopsの3枚の
+        // カード(背景色でブロックを分ける)に整理し、区切り線方式は廃止した。
         const editor = document.createElement('div');
         editor.className = 'destination-item-editor';
         editor.innerHTML = `
-          <div class="destination-item-title-row">
-            <span class="destination-item-title-label">Title</span>
+          <div class="destination-item-editor-card">
+            <div class="destination-item-editor-label">Title</div>
             <input type="text" class="destination-item-title-input" maxlength="30"
               placeholder="e.g. Japanese Association" aria-label="Custom title"
               value="${dest.title ? escapeHtml(dest.title) : ''}">
           </div>
-          ${buildCategoryPickerHtml(category, getCategoryColorHex(iconColor))}
-          ${buildIconColorPickerHtml(iconColor)}
-          <div class="destination-item-stops-editor">
-            <div class="destination-item-stops-editor-label">Linked bus stops</div>
+          <div class="destination-item-editor-card">
+            <div class="destination-item-editor-label">Appearance</div>
+            ${buildCategoryPickerHtml(category, getCategoryColorHex(iconColor))}
+            ${buildIconColorPickerHtml(iconColor)}
+          </div>
+          <div class="destination-item-editor-card">
+            <div class="destination-item-editor-label">Linked bus stops</div>
             <div class="destination-item-stops-editor-list">${stopsEditorRowsHtml}</div>
             <button type="button" class="destination-item-add-stop-btn">
               <i class="ti ti-plus" aria-hidden="true"></i><span>Add another stop</span>

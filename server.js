@@ -1678,31 +1678,48 @@ app.get('/api/bus-routes/stops-toward', (req, res) => {
     .map((code) => code.trim())
     .filter((code) => code.length > 0);
 
-  function stopReachesDestination(stopCode) {
+  // 2026-09-28追加: 単純なtrue/falseだけでなく、実際に一致した系統番号・
+  // 方向・到達先バス停も返す（フロント側がHome地図上にルート線を描く際、
+  // /api/bus-routes/pathへそのまま渡せるようにするため。ユーザー指示
+  // 「最寄りの、目的地への経路が出ているバス停を出発点にして線を引く」
+  // 対応で、表示中のバス停に依存せず任意の候補バス停について線を描けるように
+  // する必要が生じた）。最初に見つかった一致（1件で十分、複数系統の全列挙は
+  // 不要）を返す。
+  function findRouteTowardDestination(stopCode) {
     const serviceNos = busStopCodeToServiceNumbersMap.get(stopCode) || [];
-    return serviceNos.some((serviceNo) =>
-      [1, 2].some((direction) => {
+    for (const serviceNo of serviceNos) {
+      for (const direction of [1, 2]) {
         const stops = busRoutesByServiceDirection.get(makeServiceDirectionKey(serviceNo, direction));
-        if (!stops || stops.length === 0) return false;
+        if (!stops || stops.length === 0) continue;
         const fromIndex = stops.findIndex((stop) => stop.BusStopCode === stopCode);
-        if (fromIndex === -1) return false;
-        return destinationCodes.some((destCode) => {
+        if (fromIndex === -1) continue;
+        for (const destCode of destinationCodes) {
           const toIndex = stops.findIndex((stop) => stop.BusStopCode === destCode);
-          return toIndex !== -1 && fromIndex <= toIndex;
-        });
-      })
-    );
+          if (toIndex !== -1 && fromIndex <= toIndex) {
+            return { serviceNo, direction, toStopCode: destCode };
+          }
+        }
+      }
+    }
+    return null;
   }
 
   const matches = {};
+  const matchDetails = {};
   candidateCodes.forEach((stopCode) => {
     // 目的地自身（複数のいずれか）は判定対象外（Home画面側の既存ロジックと
     // 同じ扱い、どの系統の経路にも出発点として含まれてしまい常にtrueに
     // なるため）。
-    matches[stopCode] = destinationCodes.includes(stopCode) ? false : stopReachesDestination(stopCode);
+    if (destinationCodes.includes(stopCode)) {
+      matches[stopCode] = false;
+      return;
+    }
+    const route = findRouteTowardDestination(stopCode);
+    matches[stopCode] = Boolean(route);
+    if (route) matchDetails[stopCode] = route;
   });
 
-  res.json({ matches });
+  res.json({ matches, matchDetails });
 });
 
 /* ══════════════════════════════════════════════

@@ -282,6 +282,24 @@ button {
   font-size: 14px;
 }
 
+/* 2026-09-28ユーザー指示「目的地選択時のアイコンをSaved画面のカテゴリ
+   バッジと同じアイコンにしてほしい」対応。未選択時は汎用のti-map-pinの
+   ままだが、選択中はupdateHighlightButtonUI()がDESTINATION_CATEGORY_ICON_SVG
+   （Saved画面の.destination-item-category-badgeと同じSVG）をここに差し込む。
+   fill="currentColor"/stroke="currentColor"のSVGのため、ボタン自体の
+   color（選択中はvar(--on-accent)）をそのまま継承する。 */
+.home-highlight-btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-highlight-btn-icon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
 .home-highlight-btn--active {
   font-weight: 700;
   border-color: transparent;
@@ -594,7 +612,10 @@ button {
   justify-content: center;
   /* iconSize[20,20]と同じ固定ボックスにしておくことで、アクティブ時に
      border-radius:50%の円形背景を敷いても(下記--active参照)アイコンの
-     アンカー位置(iconAnchor)がズレない。 */
+     アンカー位置(iconAnchor)がズレない。2026-09-28: 中身を<i>(ti-map-pin)と
+     目的地のカテゴリSVGとで動的に差し替えられるよう<span>ラッパーにした
+     （applyDestinationMatchStyles()参照）。color/text-shadowは子要素の
+     currentColor継承で効く。 */
   width: 20px;
   height: 20px;
   font-size: 20px;
@@ -603,6 +624,12 @@ button {
   text-shadow: 0 0 2px var(--surface-1), 0 0 3px var(--surface-1);
   cursor: pointer;
   transition: transform 0.12s ease;
+}
+
+.home-map-stop-pin svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 /* ユーザー指示「表示しているバス停は色を反転させてもっと目立つように。
@@ -617,6 +644,34 @@ button {
   font-size: 13px;
   text-shadow: none;
   box-shadow: 0 2px 6px rgba(43, 43, 39, 0.3), 0 0 0 3px rgba(111, 143, 99, 0.25);
+}
+
+.home-map-stop-pin--active svg,
+.home-map-stop-pin--own-dest svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* 2026-09-28ユーザー指示「マップ上の目的地のバス停のアイコンを、Saved画面の
+   カテゴリバッジと同じアイコン+色にしてほしい」対応。選択中の目的地自身に
+   紐づくバス停のピンを、Saved画面の.destination-item-category-badgeと
+   同じ「カテゴリアイコン+その色の塗りつぶし円」にする（app.js側の
+   applyDestinationMatchStyles()が--own-dest-colorの設定とinnerHTMLの
+   差し替え(カテゴリSVG)の両方を行う）。アクティブ状態と両立する場合も
+   目的地の色を優先する（下の.home-map-stop-pin--active.home-map-stop-pin
+   --own-destでbackgroundを上書き）。 */
+.home-map-stop-pin--own-dest {
+  border-radius: 50%;
+  background: var(--own-dest-color);
+  color: var(--on-accent);
+  font-size: 13px;
+  text-shadow: none;
+  box-shadow: 0 2px 6px rgba(43, 43, 39, 0.3), 0 0 0 3px rgba(255, 255, 255, 0.6);
+}
+
+.home-map-stop-pin--active.home-map-stop-pin--own-dest {
+  background: var(--own-dest-color);
+  box-shadow: 0 2px 6px rgba(43, 43, 39, 0.3), 0 0 0 3px rgba(255, 255, 255, 0.6);
 }
 
 /* フェーズ9追加(2026-09-27ユーザー指示): .stop-pill--dest-matchと同じ目的地
@@ -1570,12 +1625,32 @@ button {
    強制的に次の行に折り返させ、行全体の幅で表示する。 */
 .destination-item-editor {
   flex-basis: 100%;
+  margin-top: 10px;
   padding-top: 10px;
-  margin-top: 2px;
   border-top: 0.5px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
+}
+
+/* 2026-09-28ユーザー指示「編集画面を整理整頓」対応(A案採用、
+   mockups/destination-editor-reorganize-v1.html参照)。従来の区切り線方式
+   （2026-09-27追加、Category/Colorにラベルが無く分かりにくかった問題への
+   一次対応）から、Title/Appearance(Category+Color統合)/Linked bus stopsを
+   それぞれ独立したカード（背景色の違いでブロックを分ける）に整理し直した。 */
+.destination-item-editor-card {
+  background: var(--surface-2);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.destination-item-editor-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
 }
 
 /* 編集パネルを閉じる明示的な手段（2026-09-14追加。従来はバッジ再タップのみで
@@ -1608,22 +1683,6 @@ button {
   transform: scale(0.96);
 }
 
-/* フェーズ10新規: 編集パネル内の「紐づくバス停」管理セクション
-   （削除ボタン付き一覧+「+ Add another stop」）。カテゴリ/色ピッカーの
-   直後、Doneボタンの前に配置する。 */
-.destination-item-stops-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 4px;
-}
-
-.destination-item-stops-editor-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
 .destination-item-stops-editor-list {
   display: flex;
   flex-direction: column;
@@ -1633,13 +1692,29 @@ button {
 .destination-item-stops-editor-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 8px 10px;
   background: var(--surface-2);
   border-radius: 10px;
   font-size: 13px;
   color: var(--text-primary);
+}
+
+/* 2026-09-27ユーザー指摘「編集画面をもうちょい見やすく使いやすく」対応。
+   他のリスト行（Timetable・Saved一覧等）と同じくアイコン+テキストの構成にし、
+   バス停の行だと一目で分かるようにする。 */
+.destination-item-stops-editor-row-icon {
+  flex-shrink: 0;
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+.destination-item-stops-editor-row-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .destination-item-stop-remove-btn {
@@ -1667,6 +1742,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  margin-top: 6px;
   padding: 8px 12px;
   border: 1px dashed var(--border);
   border-radius: 10px;
@@ -1682,24 +1758,6 @@ button {
 
 .destination-item-add-stop-btn:active {
   transform: scale(0.97);
-}
-
-/* カスタムタイトル入力欄の行（2026-09-14ユーザー指摘「Custome Tilteはフィール
-   ドの左にラベルをつけて、何のフィールドかわかるようにして」対応）。
-   従来はplaceholderのみで、値が入力されると何のフィールドか分からなくなって
-   いたため、常時表示のラベルを左に添えた。 */
-.destination-item-title-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.destination-item-title-label {
-  flex-shrink: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-muted);
 }
 
 /* カスタムタイトル入力欄（2026-09-14ユーザー指示: よく訪れる場所に
@@ -1722,7 +1780,7 @@ button {
   display: flex;
   justify-content: center;
   gap: 10px;
-  padding: 4px 4px 8px;
+  padding: 10px 4px 2px;
 }
 
 .destination-color-btn {
@@ -2022,7 +2080,7 @@ button {
   display: flex;
   justify-content: center;
   gap: 10px;
-  padding: 10px 4px 12px;
+  padding: 0 4px 4px;
 }
 
 .destination-category-btn {

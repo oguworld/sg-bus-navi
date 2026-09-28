@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGBusNavi — Saved: destination editor reorganization (mockup, not wired to app)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAFAF8; --warm-white: #FFFFFF; --sand: #EAEAE6; --sand-dark: #DCDCD6;
+    --caramel: #6F8F63; --caramel-pale: #EEF3EA;
+    --midnight: #2B2B27; --warm-gray: #767268; --light-gray: #A8A49A;
+    --shadow-card: 0 4px 18px rgba(43,43,39,0.08);
+    --font-heading: 'Inter', sans-serif;
+    --surface-2: var(--cream); --surface-1: var(--warm-white);
+    --text-primary: var(--midnight); --text-secondary: var(--warm-gray); --text-muted: var(--light-gray);
+    --text-accent: var(--caramel); --fill-accent: var(--caramel);
+    --border: var(--sand); --border-strong: var(--sand-dark); --on-accent: var(--warm-white);
+    --cat-gold: #C79A2E; --cat-lime: #7A9A3D; --cat-turquoise: #2E96A0; --cat-indigo: #5A5FB0; --cat-magenta: #A5447A; --cat-rose: #C46B87;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; font-family: var(--font-heading); }
+  body { background: #ECECE8; color: var(--text-primary); padding: 24px 0 60px; }
+
+  .note { max-width: 980px; margin: 0 auto 20px; padding: 0 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+  .note b { color: var(--text-primary); }
+  .note table { border-collapse: collapse; margin-top: 10px; width: 100%; }
+  .note td, .note th { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+  .note th { background: var(--surface-1); }
+
+  .gallery { display: flex; gap: 22px; overflow-x: auto; padding: 0 16px 20px; scroll-snap-type: x mandatory; }
+  .gallery-item { flex-shrink: 0; scroll-snap-align: start; width: 340px; }
+  .gallery-label { font-size: 13px; font-weight: 700; margin-bottom: 8px; text-align: center; }
+  .gallery-sub { font-size: 11px; color: var(--text-secondary); text-align: center; margin-bottom: 10px; min-height: 44px; }
+
+  .phone {
+    width: 340px; margin: 0 auto;
+    background: var(--surface-2);
+    border-radius: 28px;
+    overflow: hidden;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.18);
+    height: 700px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .phone-scroll { flex: 1; overflow-y: auto; padding: 14px 14px 20px; }
+
+  .saved-header { display:flex; align-items:center; justify-content:space-between; padding: 4px 2px 14px; }
+  .saved-header-title { font-size: 19px; font-weight: 700; }
+  .saved-add-btn { display:flex; align-items:center; gap:5px; background: var(--fill-accent); color: var(--on-accent); border-radius:999px; padding:7px 13px; font-size:12px; font-weight:700; }
+  .saved-add-btn i { font-size: 13px; }
+
+  .destination-item { background: var(--surface-1); border-radius: 18px; box-shadow: var(--shadow-card); padding: 12px; margin-bottom: 12px; }
+  .destination-item-row { display:flex; align-items:center; gap:10px; }
+  .destination-item-drag { color: var(--text-muted); font-size: 15px; }
+  .destination-item-badge { flex-shrink:0; width:30px; height:30px; border-radius:50%; background: var(--cat-turquoise); color:#fff; display:flex; align-items:center; justify-content:center; }
+  .destination-item-badge svg { width:16px; height:16px; }
+  .destination-item-info { flex:1; min-width:0; }
+  .destination-item-name { font-size: 15px; font-weight: 500; }
+  .destination-item-stops { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .destination-item-actions { display:flex; gap:2px; color: var(--text-muted); font-size: 16px; }
+  .destination-item-actions i { padding: 5px; }
+
+  .home-icon { width:16px; height:16px; }
+
+  /* ═══ shared: category + color swatches ═══ */
+  .cat-row { display:flex; gap:10px; justify-content:center; }
+  .cat-btn { width:38px; height:38px; border-radius:50%; background: var(--surface-2); color: var(--text-secondary); display:flex; align-items:center; justify-content:center; }
+  .cat-btn svg, .cat-btn i { width:17px; height:17px; font-size:17px; }
+  .cat-btn--active { background: var(--cat-turquoise); color:#fff; }
+  .color-row { display:flex; gap:9px; justify-content:center; margin-top: 10px; }
+  .color-dot { width:24px; height:24px; border-radius:50%; }
+  .color-dot--active { box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--text-primary); }
+
+  /* ═══ Variant A: sectioned cards ═══ */
+  .va-editor { margin-top: 10px; display:flex; flex-direction:column; gap: 10px; }
+  .va-card { background: var(--surface-2); border-radius: 14px; padding: 12px; }
+  .va-card-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 8px; }
+  .va-title-input { width:100%; box-sizing:border-box; padding: 9px 12px; border-radius: 10px; border: 0.5px solid var(--border); background: var(--surface-1); font-size: 14px; color: var(--text-primary); }
+  .va-stop-row { display:flex; align-items:center; gap:8px; background: var(--surface-1); border-radius: 10px; padding: 8px 10px; font-size: 12px; margin-bottom: 6px; }
+  .va-stop-row i.pin { color: var(--text-muted); font-size: 13px; }
+  .va-stop-row span { flex:1; }
+  .va-stop-row i.x { color: var(--text-muted); font-size: 12px; }
+  .va-add-btn { width:100%; border: 1px dashed var(--border); border-radius: 10px; padding: 8px; font-size: 12px; font-weight: 600; color: var(--text-accent); text-align:center; }
+  .va-done { align-self: flex-end; background: var(--fill-accent); color: var(--on-accent); border-radius: 999px; padding: 8px 18px; font-size: 13px; font-weight: 700; }
+
+  /* ═══ Variant B: dedicated modal sheet ═══ */
+  .vb-overlay { position:absolute; inset:0; background: rgba(0,0,0,0.45); display:flex; align-items:flex-end; z-index: 50; }
+  .vb-sheet { width:100%; max-height: 82%; background: var(--surface-2); border-radius: 20px 20px 0 0; display:flex; flex-direction:column; overflow:hidden; }
+  .vb-header { flex-shrink:0; display:flex; align-items:center; gap:10px; padding: 16px; background: var(--surface-1); border-bottom: 1px solid var(--border); }
+  .vb-header-icon { width:34px; height:34px; border-radius:50%; background: var(--cat-turquoise); color:#fff; display:flex; align-items:center; justify-content:center; }
+  .vb-header-icon svg { width:18px; height:18px; }
+  .vb-header-title { flex:1; font-size:15px; font-weight:700; }
+  .vb-close { width:28px; height:28px; border-radius:50%; background: var(--surface-2); display:flex; align-items:center; justify-content:center; color: var(--text-muted); }
+  .vb-body { flex:1; overflow-y:auto; padding: 16px; display:flex; flex-direction:column; gap: 18px; }
+  .vb-section-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 10px; }
+  .vb-title-input { width:100%; box-sizing:border-box; padding: 11px 13px; border-radius: 12px; border: 0.5px solid var(--border); background: var(--surface-1); font-size: 15px; }
+  .vb-stop-row { display:flex; align-items:center; gap:8px; background: var(--surface-1); border-radius: 12px; padding: 10px 12px; font-size: 13px; margin-bottom: 7px; }
+  .vb-stop-row i.pin { color: var(--text-muted); font-size: 14px; }
+  .vb-stop-row span { flex:1; }
+  .vb-add-btn { width:100%; border: 1px dashed var(--border); border-radius: 12px; padding: 10px; font-size: 13px; font-weight: 600; color: var(--text-accent); text-align:center; }
+  .vb-footer { flex-shrink:0; padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); background: var(--surface-1); border-top: 1px solid var(--border); }
+  .vb-done { width:100%; background: var(--fill-accent); color: var(--on-accent); border-radius: 999px; padding: 11px; font-size: 14px; font-weight: 700; text-align:center; }
+
+  /* ═══ Variant C: combined compact picker ═══ */
+  .vc-editor { margin-top: 10px; display:flex; flex-direction:column; gap: 14px; }
+  .vc-title-row { display:flex; align-items:center; gap:8px; }
+  .vc-title-label { font-size:11px; font-weight:700; color: var(--text-muted); flex-shrink:0; }
+  .vc-title-input { flex:1; padding: 8px 11px; border-radius: 10px; border: 0.5px solid var(--border); background: var(--surface-2); font-size: 13px; }
+  .vc-combo-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 8px; }
+  .vc-combo-row { display:flex; gap: 10px; justify-content:center; }
+  .vc-combo-btn { position:relative; width:40px; height:40px; border-radius:50%; background: var(--surface-2); color: var(--text-secondary); display:flex; align-items:center; justify-content:center; }
+  .vc-combo-btn svg, .vc-combo-btn i { width:17px; height:17px; font-size:17px; }
+  .vc-combo-btn--active { color:#fff; }
+  .vc-combo-hint { text-align:center; font-size:10px; color: var(--text-muted); margin-top:6px; }
+  .vc-stop-row { display:flex; align-items:center; gap:8px; background: var(--surface-2); border-radius: 10px; padding: 8px 10px; font-size: 12px; margin-bottom: 6px; }
+  .vc-stop-row i.pin { color: var(--text-muted); font-size: 13px; }
+  .vc-stop-row span { flex:1; }
+  .vc-add-btn { width:100%; border: 1px dashed var(--border); border-radius: 10px; padding: 8px; font-size: 12px; font-weight: 600; color: var(--text-accent); text-align:center; }
+  .vc-done { align-self: flex-end; background: var(--fill-accent); color: var(--on-accent); border-radius: 999px; padding: 8px 18px; font-size: 13px; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>SGBusNavi — Saved画面の目的地編集パネル 再整理案（モックアップ v1）</b><br>
+  現状（タイトル入力→カテゴリ行→色行→紐づくバス停、を1本の縦リストに並べただけ）を、3方向で整理し直した案です。中身（できること）はどれも同じで、「情報の塊をどう見せるか」だけが違います。
+  <table>
+    <tr><th>案</th><th>特徴</th><th>トレードオフ</th></tr>
+    <tr><td><b>A. セクションカード化</b></td><td>Title / Appearance / Linked stopsを、それぞれ背景色の違う独立したカードに分ける。今と同じ「一覧の中にインライン展開」のままなので改修は最小限。</td><td>依然としてリストの中に長く展開されるため、バス停を3件以上リンクすると全体はまだ縦に長くなる。</td></tr>
+    <tr><td><b>B. 専用編集シート</b></td><td>鉛筆アイコンタップで、目的地登録モーダルと同じ「下から出てくるシート」を開く。一覧はスッキリしたまま、編集中は専用の画面になり余白にゆとりが持てる。</td><td>改修範囲が一番大きい（新規モーダル）。「一覧の中で完結」という手軽さは失われる。</td></tr>
+    <tr><td><b>C. カテゴリ+色の統合ピッカー</b></td><td>カテゴリアイコンの行と色の行を1つに統合（アイコン自体をタップで色付き選択、常時2段見せない）。縦の占有スペースを一番小さくできる。</td><td>「アイコン」と「色」を別々に選ぶという分かりやすさがやや下がる（1回のタップで両方決める操作に慣れが要る）。</td></tr>
+  </table>
+  <b>この下、3案を横スクロールで比較できます（B案はモーダルを開いた状態で表示しています）:</b>
+</div>
+
+<div class="gallery">
+
+  <!-- A -->
+  <div class="gallery-item">
+    <div class="gallery-label">A. セクションカード化</div>
+    <div class="gallery-sub">改修が一番軽い。カードごとに背景を変えて塊をはっきりさせる。</div>
+    <div class="phone">
+      <div class="phone-scroll">
+        <div class="saved-header"><div class="saved-header-title">Bus Stops</div><button class="saved-add-btn"><i class="ti ti-map-pin-plus"></i>Add Bus Stop</button></div>
+        <div class="destination-item">
+          <div class="destination-item-row">
+            <i class="ti ti-menu-2 destination-item-drag"></i>
+            <div class="destination-item-badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg></div>
+            <div class="destination-item-info">
+              <div class="destination-item-name">Home</div>
+              <div class="destination-item-stops">42041 · The Nexus, 42039 · Opp The Nexus</div>
+            </div>
+            <div class="destination-item-actions"><i class="ti ti-pencil"></i><i class="ti ti-trash"></i></div>
+          </div>
+          <div class="va-editor">
+            <div class="va-card">
+              <div class="va-card-label">Title</div>
+              <input class="va-title-input" value="Home">
+            </div>
+            <div class="va-card">
+              <div class="va-card-label">Appearance</div>
+              <div class="cat-row">
+                <div class="cat-btn cat-btn--active"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg></div>
+                <div class="cat-btn"><i class="ti ti-building"></i></div>
+                <div class="cat-btn"><i class="ti ti-shopping-cart"></i></div>
+                <div class="cat-btn"><i class="ti ti-school"></i></div>
+                <div class="cat-btn"><i class="ti ti-star"></i></div>
+              </div>
+              <div class="color-row">
+                <div class="color-dot" style="background:var(--cat-gold)"></div>
+                <div class="color-dot" style="background:var(--cat-lime)"></div>
+                <div class="color-dot color-dot--active" style="background:var(--cat-turquoise)"></div>
+                <div class="color-dot" style="background:var(--cat-indigo)"></div>
+                <div class="color-dot" style="background:var(--cat-magenta)"></div>
+                <div class="color-dot" style="background:var(--cat-rose)"></div>
+              </div>
+            </div>
+            <div class="va-card">
+              <div class="va-card-label">Linked bus stops</div>
+              <div class="va-stop-row"><i class="ti ti-map-pin pin"></i><span>42041 · The Nexus</span><i class="ti ti-x x"></i></div>
+              <div class="va-stop-row"><i class="ti ti-map-pin pin"></i><span>42039 · Opp The Nexus</span><i class="ti ti-x x"></i></div>
+              <div class="va-add-btn">+ Add another stop</div>
+            </div>
+            <div class="va-done">Done</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- B -->
+  <div class="gallery-item">
+    <div class="gallery-label">B. 専用編集シート</div>
+    <div class="gallery-sub">一覧は常にスッキリ。編集は専用モーダルで、余白にゆとりを持って操作できる。</div>
+    <div class="phone">
+      <div class="phone-scroll">
+        <div class="saved-header"><div class="saved-header-title">Bus Stops</div><button class="saved-add-btn"><i class="ti ti-map-pin-plus"></i>Add Bus Stop</button></div>
+        <div class="destination-item">
+          <div class="destination-item-row">
+            <i class="ti ti-menu-2 destination-item-drag"></i>
+            <div class="destination-item-badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg></div>
+            <div class="destination-item-info">
+              <div class="destination-item-name">Home</div>
+              <div class="destination-item-stops">42041 · The Nexus, 42039 · Opp The Nexus</div>
+            </div>
+            <div class="destination-item-actions"><i class="ti ti-pencil"></i><i class="ti ti-trash"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="vb-overlay">
+        <div class="vb-sheet">
+          <div class="vb-header">
+            <div class="vb-header-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg></div>
+            <div class="vb-header-title">Edit Destination</div>
+            <div class="vb-close"><i class="ti ti-x"></i></div>
+          </div>
+          <div class="vb-body">
+            <div>
+              <div class="vb-section-label">Title</div>
+              <input class="vb-title-input" value="Home">
+            </div>
+            <div>
+              <div class="vb-section-label">Category</div>
+              <div class="cat-row">
+                <div class="cat-btn cat-btn--active"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg></div>
+                <div class="cat-btn"><i class="ti ti-building"></i></div>
+                <div class="cat-btn"><i class="ti ti-shopping-cart"></i></div>
+                <div class="cat-btn"><i class="ti ti-school"></i></div>
+                <div class="cat-btn"><i class="ti ti-star"></i></div>
+              </div>
+            </div>
+            <div>
+              <div class="vb-section-label">Color</div>
+              <div class="color-row" style="margin-top:0;">
+                <div class="color-dot" style="background:var(--cat-gold)"></div>
+                <div class="color-dot" style="background:var(--cat-lime)"></div>
+                <div class="color-dot color-dot--active" style="background:var(--cat-turquoise)"></div>
+                <div class="color-dot" style="background:var(--cat-indigo)"></div>
+                <div class="color-dot" style="background:var(--cat-magenta)"></div>
+                <div class="color-dot" style="background:var(--cat-rose)"></div>
+              </div>
+            </div>
+            <div>
+              <div class="vb-section-label">Linked bus stops</div>
+              <div class="vb-stop-row"><i class="ti ti-map-pin pin"></i><span>42041 · The Nexus</span><i class="ti ti-x"></i></div>
+              <div class="vb-stop-row"><i class="ti ti-map-pin pin"></i><span>42039 · Opp The Nexus</span><i class="ti ti-x"></i></div>
+              <div class="vb-add-btn">+ Add another stop</div>
+            </div>
+          </div>
+          <div class="vb-footer"><div class="vb-done">Done</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- C -->
+  <div class="gallery-item">
+    <div class="gallery-label">C. カテゴリ+色の統合ピッカー</div>
+    <div class="gallery-sub">縦の占有スペースが一番小さい。アイコン自体をタップで色付き選択。</div>
+    <div class="phone">
+      <div class="phone-scroll">
+        <div class="saved-header"><div class="saved-header-title">Bus Stops</div><button class="saved-add-btn"><i class="ti ti-map-pin-plus"></i>Add Bus Stop</button></div>
+        <div class="destination-item">
+          <div class="destination-item-row">
+            <i class="ti ti-menu-2 destination-item-drag"></i>
+            <div class="destination-item-badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg></div>
+            <div class="destination-item-info">
+              <div class="destination-item-name">Home</div>
+              <div class="destination-item-stops">42041 · The Nexus, 42039 · Opp The Nexus</div>
+            </div>
+            <div class="destination-item-actions"><i class="ti ti-pencil"></i><i class="ti ti-trash"></i></div>
+          </div>
+          <div class="vc-editor">
+            <div class="vc-title-row">
+              <span class="vc-title-label">Title</span>
+              <input class="vc-title-input" value="Home">
+            </div>
+            <div>
+              <div class="vc-combo-label">Icon &amp; color</div>
+              <div class="vc-combo-row">
+                <div class="vc-combo-btn vc-combo-btn--active" style="background:var(--cat-turquoise);"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 L4 10 V20 H9 V14 H15 V20 H20 V10 Z"/></svg></div>
+                <div class="vc-combo-btn"><i class="ti ti-building"></i></div>
+                <div class="vc-combo-btn"><i class="ti ti-shopping-cart"></i></div>
+                <div class="vc-combo-btn"><i class="ti ti-school"></i></div>
+                <div class="vc-combo-btn"><i class="ti ti-star"></i></div>
+              </div>
+              <div class="vc-combo-hint">Tap the selected icon again to change its color</div>
+            </div>
+            <div>
+              <div class="vc-combo-label">Linked bus stops</div>
+              <div class="vc-stop-row"><i class="ti ti-map-pin pin"></i><span>42041 · The Nexus</span><i class="ti ti-x"></i></div>
+              <div class="vc-stop-row"><i class="ti ti-map-pin pin"></i><span>42039 · Opp The Nexus</span><i class="ti ti-x"></i></div>
+              <div class="vc-add-btn">+ Add another stop</div>
+            </div>
+            <div class="vc-done">Done</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
