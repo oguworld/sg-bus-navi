@@ -2401,30 +2401,31 @@
     updateHomeMapDestinationRouteFromNearestMatch(hex);
   }
 
-  // フェーズ11改修: 目的地への経路線を、表示中のバス停からではなく
-  // 「最寄りの、目的地への経路が出ているバス停」から描く。nearbyStopsは
-  // GPSからの距離順（最寄り順）に並んでいるため、先頭から順に
-  // destinationMatchCacheを見ていけば最寄りの一致が見つかる。
+  // フェーズ11改修(2026-09-29ユーザー指示「常にGPS上、一番近いバス停を
+  // 始点にしたい。一致しないならこのケースでは線は引かれない、が正解」):
+  // 「目的地への経路がある中で最寄り」ではなく、常にGPS上の絶対的な最寄り
+  // バス停(nearbyStops[0])を起点候補にする。その最寄りバス停自体に目的地への
+  // 経路がなければ、線は引かない(他のバス停まで探しにいかない)。
   function updateHomeMapDestinationRouteFromNearestMatch(hex) {
     if (!hex) {
       clearHomeMapDestinationRoute();
       return;
     }
-    const nearestMatch = nearbyStops.find((stop) => destinationMatchCache.get(stop.BusStopCode) === true);
-    if (!nearestMatch) {
+    const nearestStop = nearbyStops[0];
+    if (!nearestStop || destinationMatchCache.get(nearestStop.BusStopCode) !== true) {
       clearHomeMapDestinationRoute();
       return;
     }
-    const routeInfo = destinationRouteDetailCache.get(nearestMatch.BusStopCode);
+    const routeInfo = destinationRouteDetailCache.get(nearestStop.BusStopCode);
     if (!routeInfo) {
       clearHomeMapDestinationRoute();
       return;
     }
-    const routeKey = buildDestinationRouteKey(routeInfo, nearestMatch.BusStopCode, hex);
+    const routeKey = buildDestinationRouteKey(routeInfo, nearestStop.BusStopCode, hex);
     if (routeKey === lastDrawnDestinationRouteKey && homeMapDestinationRouteLine) {
       return; // 直前と同じ経路が既に描画済みなので、地図パンのたびの再fetch・再描画は不要
     }
-    drawDestinationRouteOnHomeMap(routeInfo, nearestMatch.BusStopCode, hex, routeKey);
+    drawDestinationRouteOnHomeMap(routeInfo, nearestStop.BusStopCode, hex, routeKey);
   }
 
   // applyRouteEnrichment()が確定させたTimetable行のハイライト状態
